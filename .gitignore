@@ -20,8 +20,9 @@ textidote.jar
 textidote-report.*
 
 # ===== Áudio gerado (grande e reproduzível) =====
-# Para manter um exemplo específico no repo: git add -f exemplo.wav
 *.wav
+# exceção: o excerto usado nos exemplos do README fica versionado (Vocadito, CC-BY 4.0)
+!exemplo-antes.wav
 
 # ===== Texto do TCC (fica no Overleaf, não no repo de código) =====
 *.tex

@@ -1,6 +1,6 @@
 # TCC Autotune — protótipo em C++
 
-Protótipo de **correção automática de afinação vocal (autotune)** escrito do zero em C++.
+Protótipo de **correção automática de afinação vocal (autotune)** em C++, construído com o apoio de bibliotecas de software livre (`dr_wav`, JUCE).
 Programa de console offline: recebe um WAV, detecta o pitch, encosta cada nota na
 afinação correta e grava um WAV corrigido. Parte prática do TCC (PUCRS, 2026).
 
@@ -35,9 +35,9 @@ Toolchain: g++ 15.2 + CMake 4.3. Flags: `-std=c++17 -O2 -I external`.
 
 Exemplos:
 ```bat
-.\autotune.exe audioteste.wav corrigido.wav 0.7                  REM natural simples
-.\autotune.exe audioteste.wav corrigido.wav 1.0 Am              REM duro, Lá menor
-.\autotune.exe audioteste.wav corrigido.wav 1.0 crom tol=15 glide=40   REM preset NATURAL
+.\autotune.exe exemplo-antes.wav corrigido.wav 0.7                  REM natural simples
+.\autotune.exe exemplo-antes.wav corrigido.wav 1.0 Am              REM duro, Lá menor
+.\autotune.exe exemplo-antes.wav corrigido.wav 1.0 crom tol=15 glide=40   REM preset NATURAL
 ```
 
 ### Versão tempo real (Caminho B) — `autotune_rt.exe`
@@ -64,7 +64,7 @@ Mesmo áudio, mas com detecção de pitch **causal** (Viterbi de lag fixo) e rel
 - **dumpf0=** : grava o F0 detectado por quadro num `.txt` (só análise; não afeta a saída).
 
 ```bat
-.\autotune_rt.exe audioteste.wav rt.wav 1.0 crom tol=15 glide=40 look=8 voz=contralto
+.\autotune_rt.exe exemplo-antes.wav rt.wav 1.0 crom tol=15 glide=40 look=8 voz=contralto
 ```
 
 ---
@@ -99,12 +99,12 @@ src/c1_streaming/stream_test.cpp   driver headless do C1            -> stream_te
 plugin/                       Caminho C2: plugin VST3/Standalone (JUCE) em volta do C1
 external/dr_wav.h             leitor/gravador WAV (header-only)
 compilar.bat                  build rápido com g++ (compila os 3 exes)
-audioteste.wav                gravação de teste (entrada)
-formantes.py                  verifica preservação dos formantes (entrada vs saída)
-bench_stream.py / bench_pitch.py / bench_frames.py  validam C1 vs gold
-bench_latencia.py             varre look-ahead: latência × qualidade × xRT (resultado do TCC)
-bench_nframe.py               varre N_FRAME: piso de latência × fmin detectável × qualidade
-bench_fmin.py                 varre presets de tessitura (FMIN): latência × % notas perdidas × qualidade
+exemplo-antes.wav             excerto de voz cantada usado nos exemplos (conjunto Vocadito, CC-BY 4.0)
+python/formantes.py           verifica preservação dos formantes (entrada vs saída)
+python/bench_stream.py · bench_pitch.py · bench_frames.py   validam C1 vs gold
+python/bench_latencia.py      varre look-ahead: latência × qualidade × xRT (resultado do TCC)
+python/bench_nframe.py        varre N_FRAME: piso de latência × fmin detectável × qualidade
+python/bench_fmin.py          varre presets de tessitura (FMIN): latência × % notas perdidas × qualidade
 ```
 
 Os testes em Python usam o venv do projeto irmão:
@@ -185,19 +185,12 @@ mantida. Testes: `diag_periodo.py` (quebras/drift) + os de regressão.
 
 ---
 
-## Testes de regressão
+## Testes de validação
 
-Se mexer na síntese e voltar a estalar, rode:
-
-```bat
-REM 1) forca=0 tem que ser IDENTIDADE (lag 0 e std 0 em todas as janelas)
-.\autotune.exe audioteste.wav _t0.wav 0
-..\TCC_autotune\.venv\Scripts\python.exe teste_fase.py audioteste.wav _t0.wav
-
-REM 2) saida nao pode introduzir saltos/cliques (comparar com o input)
-.\autotune.exe audioteste.wav _t1.wav 1
-..\TCC_autotune\.venv\Scripts\python.exe ab_clicks.py audioteste.wav _t1.wav
-```
+A equivalência do núcleo de streaming (C1) com a versão offline (gold) e a ausência de
+cliques são verificadas pelos scripts em `python/` (por exemplo, `bench_stream.py`,
+`bench_pitch.py` e `bench_frames.py`), que comparam a saída causal com a de referência
+amostra a amostra (identidade em `forca=0`; sem saltos anômalos em `forca=1`).
 
 ---
 
@@ -207,7 +200,7 @@ REM 2) saida nao pode introduzir saltos/cliques (comparar com o input)
 - [x] **Suavização da trajetória de pitch** — `glide` (portamento). ✓ 2026-06-09
 - [x] **Formantes** — verificado que são preservados (`formantes.py`). ✓ 2026-06-09
 - [x] **Caminho B: motor causal/streaming + medição de latência** ✓ 2026-06-09 (ver abaixo).
-- [~] Caminho C: plugin JUCE (VST3) por cima do mesmo núcleo causal. **C1 (núcleo streaming) = FEITO e verificado** (2026-06-11); **C2 (casca VST3) = esqueleto criado em `plugin/`**, falta compilar com MSVC + testar no Ableton. (Ver seção "Caminho C" abaixo + `plugin/README.md` + spec em `docs/superpowers/specs/`.)
+- [x] **Caminho C: plugin JUCE (VST3)** por cima do mesmo núcleo causal. **C1 (núcleo streaming) FEITO e verificado** (2026-06-11); **C2 (plugin VST3/Standalone) compilado e testado no Ableton Live**. (Ver seção "Caminho C" abaixo + `plugin/README.md`.)
 - [x] `frame=`/`hop=` configuráveis no `autotune_rt.exe` (experimento de piso de latência). ✓ 2026-06-09
 - [x] `FMIN`/`FMAX` por flag + **presets de tessitura** (`voz=`, estilo Auto-Tune); reduz o termo PSOLA da latência. ✓ 2026-06-09
 - [ ] `voz=auto`: detectar a tessitura automaticamente (como o "Auto Detect" do Auto-Tune) a partir do F0.
@@ -311,14 +304,13 @@ minimiza latência *e* maximiza qualidade ao mesmo tempo.
 
 ---
 
-## Caminho C — arquitetura de tempo real (streaming) — **EM DESIGN**
+## Caminho C — arquitetura de tempo real (streaming) — **CONCLUÍDO**
 
-> ⚠️ **Status:** esta seção descreve o **design** do núcleo streaming (`AutotuneStream`),
-> ainda **não implementado**. Hoje existe a versão em **lote** (`autotune_rt.exe`), que é
-> causal *no algoritmo* mas processa o WAV inteiro de uma vez. O Caminho C reescreve o
-> **mesmo algoritmo** para rodar bloco a bloco dentro de um `processBlock()` de plugin
-> (VST3 via JUCE), reaproveitando ao máximo as primitivas do `dsp.h`. Design completo em
-> `docs/superpowers/specs/2026-06-10-caminho-c-streaming-design.md`.
+> ✅ **Status:** o núcleo de streaming (`AutotuneStream`) está **implementado e verificado**
+> (`src/c1_streaming/`) e o **plugin VST3/Standalone (JUCE)** foi **compilado e testado no
+> Ableton Live** (`plugin/`). Esta seção descreve a arquitetura de tempo real: o **mesmo
+> algoritmo** do `dsp.h` roda bloco a bloco dentro do `processBlock()` do plugin, em vez de
+> processar o WAV inteiro de uma vez.
 
 ### Diferença essencial: lote vs. streaming
 
@@ -380,10 +372,9 @@ se *ouve* ao monitorar ao vivo — por isso `look` pequeno (0–4) e ASIO para c
   100% vs gold; saída vs gold **0,997** em `forca=1` (drift do PSOLA online eliminado por
   espaçamento de grãos invariante a truncamento; resíduo = jitter de fase <3 amostras/nota,
   >0,999 por região). *(o valor técnico mora aqui)*
-- **C2** — casca **VST3** (JUCE via CMake `FetchContent`, build **MSVC**), `setLatencySamples`,
-  GUI mínima (forca/tol/glide/look/voz/escala), testado no Ableton + `validator` do VST3 SDK.
-  🚧 **esqueleto criado em `plugin/`** (`CMakeLists.txt` + `PluginProcessor.h/.cpp` + `build.bat`);
-  falta compilar (depende do MSVC Build Tools) e testar no Ableton. Ver `plugin/README.md`.
+- **C2** — casca **VST3/Standalone** (JUCE via CMake `FetchContent`, build **MSVC**),
+  `setLatencySamples`, GUI (forca/tol/glide/look/voz/escala).
+  ✅ **FEITO:** plugin compilado e **testado no Ableton Live** (VST3 + Standalone). Ver `plugin/README.md`.
 
 ### Roteiro de estudo (fundamentação do TCC)
 
