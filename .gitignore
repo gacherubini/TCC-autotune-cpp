@@ -1,0 +1,35 @@
+# ===== Build do JUCE (pesado e regenerável) =====
+plugin/build/
+build/
+
+# ===== Binários e artefatos de compilação =====
+*.exe
+*.dll
+*.lib
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.vst3
+*.component
+*.o
+*.a
+
+# ===== Ferramentas / relatórios =====
+textidote.jar
+textidote-report.*
+
+# ===== Áudio gerado (grande e reproduzível) =====
+# Para manter um exemplo específico no repo: git add -f exemplo.wav
+*.wav
+
+# ===== Texto do TCC (fica no Overleaf, não no repo de código) =====
+*.tex
+
+# ===== Config local de ferramentas =====
+.claude/
+.superpowers/
+
+# ===== Sistema =====
+Thumbs.db
+.DS_Store
