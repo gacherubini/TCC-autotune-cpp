@@ -164,19 +164,12 @@ int main(int argc, char** argv) {
     // É isto que tira o efeito "robô": a correção desliza entre notas (portamento).
     std::vector<float> foutSamp(N, 0.0f);
     {
-        double tau = glideMs / 1000.0;
-        double alpha = (tau > 0.0) ? std::exp(-1.0 / (tau * fs)) : 0.0;
-        double estado = 0.0; bool tinhaNota = false;
-        for (long long i = 0; i < N; ++i) {
-            if (f0samp[i] > 0) {
-                double alvoHz = notaAlvo(f0samp[i], forca, tolCents);
-                double alvoCents = 1200.0 * std::log2(alvoHz / FMIN);
-                estado = tinhaNota ? (alpha * estado + (1.0 - alpha) * alvoCents)
-                                   : alvoCents;            // reset no ataque
-                foutSamp[i] = (float)(FMIN * std::pow(2.0, estado / 1200.0));
-                tinhaNota = true;
-            } else { foutSamp[i] = 0.0f; tinhaNota = false; }
-        }
+        // Etapa 0 do plano: a malha (zona morta + glide + reset no ataque) mora
+        // agora em dsp.h, compartilhada com o causal e com o streaming.
+        ParamsCorrecao pc; pc.forca = forca; pc.tolCents = tolCents; pc.glideMs = glideMs;
+        CorretorAltura corr; corr.prepare(fs);
+        for (long long i = 0; i < N; ++i)
+            foutSamp[i] = (float)corr.proxima(f0samp[i], pc);
     }
 
     // 4. PASSO 5 — prévia da correção (1 leitura por segundo)

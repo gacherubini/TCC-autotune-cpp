@@ -199,11 +199,11 @@ public:
         //   foutSamp: pitch-ALVO por amostra (passo 3b do autotune_rt), com
         //             força+tolerância+glide aplicados, montado em paralelo
         //             a f0samp (mesmo laço de glide de 1 polo).
-        //   glideEstado/tinhaNota: estado do filtro de glide de 1 polo
-        //             (mesma matemática de 'estado'/'tinhaNota' em 3b).
+        //   corretor: estado da malha de correcao (glide + reset no ataque),
+        //             compartilhada com o gold e o causal via dsp.h.
         // -----------------------------------------------------------------
         xAll.clear(); f0samp.clear(); foutSamp.clear();
-        glideEstado = 0.0; tinhaNota = false;
+        corretor.prepare(fs);
 
         // -----------------------------------------------------------------
         // TAREFA 5: estado da SÍNTESE INCREMENTAL (PSOLA "online" via
@@ -417,24 +417,21 @@ private:
     //  emitirAmostras() — TAREFA 4, passo 2: para o quadro recém-emitido
     //  (F0 = f0q, em Hz; 0 = não-vozeado), preenche 'nHop' posições de
     //  f0samp (passo 3) e foutSamp (passo 3b do autotune_rt), aplicando o
-    //  mesmo filtro de glide de 1 polo (com reset no ataque, via
-    //  'tinhaNota'). É a versão CAUSAL/incremental do laço 3b: em vez de
+    //  mesma malha de correcao de dsp.h (glide + reset no ataque, via
+    //  CorretorAltura). É a versão CAUSAL/incremental do laço 3b: em vez de
     //  varrer todo o vetor f0samp[N] de uma vez, processa 'nHop' amostras
     //  por chamada, na ordem em que os quadros são emitidos — produzindo
     //  EXATAMENTE a mesma sequência de estados de glide que o offline.
     // -------------------------------------------------------------------
     void emitirAmostras(double f0q) {
+        // Etapa 0 do plano: a malha de correcao mora em dsp.h (CorretorAltura),
+        // identica a usada pelo gold e pelo causal. O estado (glide + ataque)
+        // vive em 'corretor', membro desta classe, e atravessa as chamadas de
+        // process() como o resto do estado de streaming.
+        ParamsCorrecao pc; pc.forca = p.forca; pc.tolCents = p.tolCents; pc.glideMs = p.glideMs;
         for (int k=0;k<p.nHop;++k) {
             f0samp.push_back((float)f0q);
-            if (f0q>0) {
-                double alvoHz = notaAlvo(f0q, p.forca, p.tolCents);
-                double alvoCents = 1200.0*std::log2(alvoHz/FMIN);
-                double tau = p.glideMs/1000.0;
-                double alpha = (tau>0.0)? std::exp(-1.0/(tau*fs)) : 0.0;
-                glideEstado = tinhaNota ? (alpha*glideEstado + (1.0-alpha)*alvoCents) : alvoCents;
-                foutSamp.push_back((float)(FMIN*std::pow(2.0, glideEstado/1200.0)));
-                tinhaNota = true;
-            } else { foutSamp.push_back(0.0f); tinhaNota=false; }
+            foutSamp.push_back((float)corretor.proxima(f0q, pc));
         }
     }
 
@@ -530,8 +527,7 @@ private:
     std::vector<float> xAll;       // todas as amostras de entrada, em ordem
     std::vector<float> f0samp;     // F0 real por amostra (passo 3 do autotune_rt)
     std::vector<float> foutSamp;   // pitch-alvo por amostra, com glide (passo 3b)
-    double glideEstado = 0.0;      // estado do filtro de glide de 1 polo (em cents)
-    bool   tinhaNota   = false;    // true se a amostra anterior já tinha nota (p/ reset do glide)
+    CorretorAltura corretor;       // malha de correcao (dsp.h) — glide + reset no ataque
 
     // ---- TAREFA 5: síntese incremental (re-síntese em janela + overlap-save) ----
     std::vector<float> outBuf;     // saída finalizada, indexada por amostra absoluta (C2 trocará por anel limitado)

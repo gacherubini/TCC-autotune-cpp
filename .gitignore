@@ -46,3 +46,6 @@ tcc-texto/*.pdf
 # ===== Sistema =====
 Thumbs.db
 .DS_Store
+
+# Referencia de saida gravada por baseline.sh (WAVs grandes; o resumo.txt basta)
+baseline/*.wav

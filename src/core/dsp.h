@@ -167,6 +167,51 @@ inline double notaAlvo(double f, double forca, double tolCents) {
     return 440.0 * std::pow(2.0, (corrMidi - 69.0) / 12.0);
 }
 
+// ---------------------------------------------------------------------------
+//  Malha de correcao de altura, amostra a amostra.
+//
+//  Ate a Etapa 0 do plano (docs/plano-de-implementacao.md) este bloco estava
+//  copiado LITERALMENTE em tres arquivos: offline_causal/main.cpp (caminho A),
+//  offline_causal/autotune_rt.cpp (caminho B) e c1_streaming/autotune_stream.h
+//  (caminho C1). Como a verificacao do projeto compara C1 contra o gold, uma
+//  divergencia entre as copias quebraria essa comparacao EM SILENCIO -- o teste
+//  passaria a comparar coisas diferentes sem acusar erro.
+//
+//  Comportamento (INALTERADO nesta etapa -- a Etapa 3 e que muda a matematica):
+//    - alvo   = notaAlvo(f0, forca, tol), a nota da escala com zona morta;
+//    - estado = filtro de 1 polo sobre o ALVO, em cents ("glide");
+//    - no ataque de nota o estado nasce no proprio alvo, sem trajeto ate ela.
+// ---------------------------------------------------------------------------
+struct ParamsCorrecao {
+    double forca    = 1.0;   // 0..1: fracao do desvio que e corrigida
+    double tolCents = 0.0;   // zona morta (cents) ao redor da nota-alvo
+    double glideMs  = 0.0;   // constante de tempo do deslize ate o alvo
+};
+
+class CorretorAltura {
+public:
+    void prepare(double fsHz) { fs = fsHz; reset(); }
+    void reset() { estado = 0.0; tinhaNota = false; }
+
+    // Devolve o pitch-alvo em Hz para uma amostra cujo F0 detectado e f0Hz.
+    // f0Hz <= 0 marca trecho nao-vozeado: devolve 0 e rearma o ataque.
+    double proxima(double f0Hz, const ParamsCorrecao& p) {
+        if (f0Hz <= 0.0) { tinhaNota = false; return 0.0; }
+        const double alvoHz    = notaAlvo(f0Hz, p.forca, p.tolCents);
+        const double alvoCents = 1200.0 * std::log2(alvoHz / FMIN);
+        const double tau       = p.glideMs / 1000.0;
+        const double alpha     = (tau > 0.0) ? std::exp(-1.0 / (tau * fs)) : 0.0;
+        estado    = tinhaNota ? (alpha * estado + (1.0 - alpha) * alvoCents) : alvoCents;
+        tinhaNota = true;
+        return FMIN * std::pow(2.0, estado / 1200.0);
+    }
+
+private:
+    double fs        = 44100.0;
+    double estado    = 0.0;    // pitch-alvo suavizado, em cents acima de FMIN
+    bool   tinhaNota = false;  // false = proxima amostra vozeada e um ataque
+};
+
 // Grava um WAV mono em 16-bit PCM (formato universal, sem glitch de player).
 inline bool gravarWav16(const char* caminho, const std::vector<float>& s, unsigned taxa) {
     std::vector<drwav_int16> pcm(s.size());

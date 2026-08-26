@@ -1,0 +1,17 @@
+gold_forca1                  wav=a10c561e7290fa8a log=0c0a18f738ee01a4
+gold_forca0                  wav=4f35cced6cc704b2 log=2788df0029fdedb4
+gold_tol30                   wav=511c1e14ee113393 log=514a45bcd005e5d9
+gold_glide120                wav=db0f52d6bd47b25f log=d040445028e5d82a
+gold_cmaior                  wav=74794f1942feb95e log=7c0d341de366a98b
+gold_aminor                  wav=74794f1942feb95e log=348542a6ba2633ab
+rt_look4                     wav=0c2fb55c41dcfe22 log=93c5cbaab499580e
+rt_look0                     wav=00016234ee2ea312 log=f6c661aa2d7364e5
+rt_glide0                    wav=0c2fb55c41dcfe22 log=b2f9b92674a7a94b
+rt_tol0                      wav=0c2fb55c41dcfe22 log=ae5e80443d5a9939
+st_forca1                    wav=522ffaf32a3d6e47 log=ac1b99e23ba15b62
+st_forca0                    wav=373037487675431e log=14b79e56ee25a38a
+st_glide40                   wav=a86b831cc550896a log=9f57842d648e3886
+st_tol15                     wav=42e8ad70d2356180 log=e7804306260335ae
+st_block64                   wav=522ffaf32a3d6e47 log=1bbcbec832efb725
+st_block512                  wav=270c22c19308a2e4 log=1570d2ada93f2d9e
+st_cmaior                    wav=44af6aebec7600ce log=8356144abf1c114e
