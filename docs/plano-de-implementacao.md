@@ -83,7 +83,7 @@ Escrevendo `LP(·)` para o filtro de 1 polo e `HP(x) = x − LP(x)` para o compl
 outCents = LP(alvo) + k·HP(real)
 ```
 
-### 4.1 `k = 0` reproduz o Glide atual, exatamente
+### 4.1 `k = 0` reproduz o Glide atual — com uma ressalva
 
 ```
 outCents = LP(alvo)
@@ -91,6 +91,11 @@ outCents = LP(alvo)
 
 que é **literalmente** a linha de hoje (`estado = α·estado + (1−α)·alvoCents`). O comportamento
 antigo não é perdido — vira um caso particular.
+
+> ⚠️ **Ressalva, corrigida em 2026-08-26:** a equivalência vale para o **regime**, não para o
+> **ataque**. O código atual inicializa o estado em `alvoCents`; a cadeia nova inicializa em
+> `realCents`. Reproduzir o comportamento antigo exige `k = 0` **e** a flag `ataqueNoAlvo`.
+> Ver §11.1.
 
 ### 4.2 `k = 1` é o Retune Speed da patente
 
@@ -233,7 +238,52 @@ anterior**, e deve ser planejado junto com a implementação — não depois.
 
 ---
 
-## 11. O que este plano **não** cobre
+## 11. Decisões de desenho tomadas em 2026-08-26
+
+### 11.1 A equivalência com o comportamento antigo precisa de **dois** valores neutros
+
+Registro de uma **correção a afirmação anterior deste próprio documento**: a §4.1 dizia que
+`k = 0` reproduz o Glide atual "exatamente". **Não reproduz** — o reset de ataque difere.
+
+| | Estado inicial no ataque |
+|---|---|
+| Código atual | `estado = alvoCents` — a nota **nasce afinada** |
+| Cadeia nova | `lpAlvo = lpReal = realCents` — a nota **nasce onde o cantor cantou** |
+
+A equivalência exata exige `vibrato = 0` **e** um segundo interruptor que restaure o reset
+antigo. Sem isso, o teste de não-regressão da etapa 3 falharia por um motivo legítimo, e o
+tempo seria gasto caçando um bug que não existe.
+
+**Decisão:** `ataqueNoAlvo` entra como **flag interna de `ParamsCorrecao`**, usada apenas pelo
+teste de comparação. **Não vira parâmetro de plugin** (ver §11.2).
+
+### 11.2 O deslize de entrada é fixo, não é controle
+
+**Decisão do autor:** a nota sempre nasce na afinação cantada e desliza até o alvo. Não haverá
+botão para escolher entre os dois comportamentos.
+
+**Motivos:** é um controle a menos na interface; o Auto-Tune também não expõe essa escolha; e
+o deslize de entrada é justamente o gesto que o diagnóstico apontou como apagado — deixá-lo
+opcional enfraqueceria a demonstração do resultado.
+
+### 11.3 A escala global fica como está — limitação documentada
+
+`g_permitida[12]` (`src/core/dsp.h:109`) é **estado global**, não estado de instância. Duas
+instâncias do plugin na mesma sessão compartilham a escala: mudar numa muda na outra.
+
+**Decisão do autor: fora do escopo, registrado como limitação conhecida.**
+
+**Motivos:** já é assim hoje, então **não é regressão** introduzida por este plano; o uso
+previsto no TCC é uma faixa por vez; e não tem relação com nenhum dos dois requisitos que o
+teste de usuário reprovou.
+
+> 📌 **Para o texto do TCC:** esta limitação deve ser declarada explicitamente na seção de
+> limitações, junto com o caminho de correção (mover `g_permitida` para dentro do estado do
+> `AutotuneStream`). Registrar uma limitação conhecida é mais forte do que a banca descobri-la.
+
+---
+
+## 12. O que este plano **não** cobre
 
 - **Modo de baixa latência** — especificado em
   [modo-baixa-latencia.md](modo-baixa-latencia.md), com 6 questões em aberto. É trabalho de

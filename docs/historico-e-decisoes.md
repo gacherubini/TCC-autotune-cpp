@@ -368,6 +368,24 @@ modo v1 (só parâmetros) chega a 17,1 ms no preset contralto, o que **ainda nã
 coloração**; só o v2, que exige mudança de arquitetura de detecção (CMNDF recursivo), chega aos
 5,7 ms.
 
+### Decisão 6 — escala global permanece global (2026-08-26)
+
+`g_permitida[12]` (`dsp.h:109`) é estado global. Duas instâncias do plugin compartilham a
+escala. **Decisão do autor: fora do escopo, documentar como limitação conhecida.** Não é
+regressão (já é assim), o uso previsto é uma faixa por vez, e não afeta os requisitos
+reprovados no teste de usuário. Caminho de correção registrado para trabalho futuro: mover
+`g_permitida` para dentro do estado do `AutotuneStream`.
+
+### Decisão 7 — o deslize de entrada é fixo (2026-08-26)
+
+A nota sempre nasce na afinação cantada e desliza até o alvo. **Não vira botão.** Um controle
+a menos, o Auto-Tune também não expõe a escolha, e o deslize é justamente o gesto que o
+diagnóstico apontou como apagado — torná-lo opcional enfraqueceria o resultado.
+
+O comportamento antigo continua alcançável por flag interna (`ataqueNoAlvo`), usada **apenas**
+pelo teste de não-regressão da etapa 3. Ver
+[plano-de-implementacao.md §11](plano-de-implementacao.md).
+
 ### Ordem de implementação acordada
 
 | # | Item | Muda DSP? | Risco | Questões em aberto |
