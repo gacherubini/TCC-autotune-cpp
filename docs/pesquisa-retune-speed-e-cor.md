@@ -298,13 +298,48 @@ C1 deixa de ser "um controle" e passa a ser **a fundação da camada de express�
 
 ---
 
-## 5. Referências
+## 5. Referências — com URL
 
-- **Antares** (s.d.). *Auto-Tune Artist User Guide*, 33 p. — PDF oficial. `[P]`
-- **Hildebrand, H. A.** (1999). *Pitch detection and intonation correction apparatus and
-  method.* US 5.973.252 A. `[P]`
-- **Santacruz, J. L.; Tardón, L. J.; Barbancho, I.; Barbancho, A. M.** (2016). *Spectral
-  Envelope Transformation in Singing Voice for Advanced Pitch Shifting.* **Applied Sciences**
-  6(11):368. DOI 10.3390/app6110368. `[P]`
-- Fontes secundárias sobre Flex-Tune e a interação Retune Speed × Flex-Tune (Sweetwater,
-  Black Ghost Audio, KVR). `[P-2ª]`
+Todas as fontes consultadas nesta pesquisa, com endereço, para conferência e para citação no
+texto do TCC.
+
+### 5.1 Fontes primárias — documentação de fabricante `[P]`
+
+| Fonte | URL | O que sustenta |
+|---|---|---|
+| **Antares** — *Auto-Tune Artist User Guide*, 33 p. (PDF oficial, lido integralmente) | https://antares-web-frontend.sfo3.cdn.digitaloceanspaces.com/documentation/pdfs/Auto-Tune_Artist_Manual.pdf | Retune Speed (§1.1), Flex-Tune (§2.1), Humanize (§3.5), Create Vibrato (§3.4), Classic Mode (§3.6), Throat, Tracking, Transpose, Detune |
+| **Antares** — *Auto-Tune Pro X User Guide* v10.3.1 | https://antares-web-frontend.sfo3.cdn.digitaloceanspaces.com/documentation/pdfs/Auto-Tune_Pro_X_User_Guide_Version_10.3.1.pdf | versão completa do produto; confirma a nomenclatura |
+| **Antares** — *Auto-Tune Access User Guide* v1.1 | https://antares-web-frontend.sfo3.cdn.digitaloceanspaces.com/documentation/pdfs/Auto-Tune_Access_User_Guide_v1.1.pdf | versão reduzida; confirma o subconjunto mínimo de controles |
+| **Antares** — documentação web, *Basic View Controls* | https://www.antarestech.com/documentation/auto-tune-artist/basic-view-controls | mesma redação do PDF, em HTML |
+| **Antares Support** — *AutoTune 2026 FAQ* | https://help.antarestech.com/hc/en-us/articles/42855736822932-AutoTune-2026-FAQ | estado atual do produto |
+| **Universal Audio** — *Auto-Tune Realtime X Manual* | https://media.uaudio.com/support/manuals/dd/Auto-Tune+Realtime+X+Manual.pdf | variante de baixa latência licenciada pela UA |
+
+### 5.2 Fontes primárias — patente e literatura revisada por pares `[P]`
+
+| Fonte | URL / DOI | O que sustenta |
+|---|---|---|
+| **Hildebrand, H. A.** (1999). *Pitch detection and intonation correction apparatus and method.* US 5.973.252 A | https://patents.google.com/patent/US5973252A/en | a implementação do Retune Speed como suavização da razão de reamostragem; o rastreio recursivo de período |
+| **Santacruz, J. L.; Tardón, L. J.; Barbancho, I.; Barbancho, A. M.** (2016). *Spectral Envelope Transformation in Singing Voice for Advanced Pitch Shifting.* Applied Sciences 6(11):368 | DOI [10.3390/app6110368](https://doi.org/10.3390/app6110368) · PDF: https://pdfs.semanticscholar.org/b49f/eeb850c5990e71a00af8a7d350230b9a9f67.pdf | **o resultado negativo da §3.1**: transformação de envelope só é perceptível a partir de ~uma quinta |
+
+### 5.3 Fontes secundárias `[P-2ª]`
+
+| Fonte | URL | O que sustenta |
+|---|---|---|
+| **KVR Audio** — *Antares releases Auto-Tune 8 with Flex-Tune Pitch Correction* | https://www.kvraudio.com/news/antares-releases-auto-tune-8-with-flex-tune-pitch-correction-28823 | confirmação independente da semântica do Flex-Tune (§2.1) |
+| **Sweetwater** — *How does Auto-Tune's Retune Speed setting work?* | https://www.sweetwater.com/sweetcare/articles/auto-tune-retune-speed-setting-work/ | faixa típica de uso |
+| **Black Ghost Audio** — *How to Perfectly Auto-Tune Vocals in 7 Steps* | https://www.blackghostaudio.com/blog/how-to-perfectly-auto-tune-vocals-in-7-steps | interação Retune Speed × Flex-Tune (§1.3); uso prático do Humanize |
+| **Sound on Sound** — *Antares Auto-Tune 8* (review) | https://www.soundonsound.com/reviews/antares-auto-tune-8 | contexto histórico da introdução do Flex-Tune |
+
+### 5.4 Consultadas e **não** utilizadas
+
+Registradas para que ninguém refaça o caminho.
+
+| Fonte | URL | Por que não foi usada |
+|---|---|---|
+| **Kong, T.** — *Phase Vocoder Implementation with FLWT and TD-PSOLA*, Stanford EE264 | https://web.stanford.edu/class/ee264/projects/EE264_w2015_final_project_kong.pdf | trabalho de disciplina, não revisado por pares; nada além do que já está em Moulines & Charpentier |
+| **Bernsee, S.** — *Time Stretching And Pitch Shifting of Audio Signals: An Overview* | http://blogs.zynaptiq.com/bernsee/time-pitch-overview/ | material de blog; bom panorama, sem dado citável novo |
+
+> ⚠️ **Nota de acesso.** O PDF do manual da Antares e o artigo da *Applied Sciences* foram
+> baixados e extraídos com `PyMuPDF` — o texto corrido do PDF não é legível por conversores
+> simples. As citações verbatim deste documento vieram dessa extração e **foram conferidas
+> contra o texto original**. Os PDFs devem ser arquivados junto ao TCC.
