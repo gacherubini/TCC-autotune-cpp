@@ -11,7 +11,8 @@ só como adaptador do host (callback de áudio, parâmetros, GUI, latência).
 |---|---|
 | `CMakeLists.txt` | traz o JUCE via `FetchContent` e declara o plugin (`juce_add_plugin`, formatos VST3 + Standalone) |
 | `PluginProcessor.h/.cpp` | o `AudioProcessor`: parâmetros (APVTS) ↔ `StreamParams`, `processBlock` → `core.process`, `setLatencySamples` |
-| `build.bat` | configura + compila (atalho dos 2 comandos CMake) |
+| `build.bat` | configura + compila no **Windows** (atalho dos 2 comandos CMake) |
+| `build.sh` | configura + compila + **valida** no **macOS/Linux** (ver seção própria abaixo) |
 
 GUI: por enquanto a **genérica do JUCE** (sliders/combos automáticos a partir dos
 parâmetros). Uma GUI custom é refinamento posterior.
@@ -49,6 +50,53 @@ Saída: `build/TccAutotune_artefacts/Release/VST3/TCC Autotune.vst3` e o
 > Para instalar no sistema, rode `instalar_vst3.bat` num prompt **como administrador**.
 > Sem admin: aponte o Ableton para a pasta de build (ver abaixo).
 
+## Compilar no macOS
+
+Acrescentado em **26/08/2026**. O `CMakeLists.txt` não tem nada específico de plataforma —
+serve aos dois sistemas sem alteração.
+
+Pré-requisitos:
+
+```
+xcode-select --install               # Command Line Tools (NÃO precisa do Xcode completo)
+brew install cmake ninja
+brew install --cask pluginval        # opcional, para o passo de validação
+```
+
+Depois, nesta pasta:
+
+```
+./build.sh          # configura + compila + valida
+./build.sh limpo    # apaga build-mac/ antes, para recompilar do zero
+```
+
+Saída: `build-mac/TccAutotune_artefacts/Release/VST3/TCC Autotune.vst3` e o
+`.../Standalone/TCC Autotune.app`.
+
+> O diretório é `build-mac`, e não `build`, **de propósito**: assim a árvore do Windows e a do
+> macOS coexistem na mesma cópia do repositório sem uma sobrescrever o cache da outra.
+
+### Validação automatizada
+
+O `build.sh` termina rodando o [pluginval](https://github.com/Tracktion/pluginval) no nível de
+rigor **10 (máximo)**, que carrega o VST3 num host de verdade e testa: processamento a 44,1 /
+48 / 96 kHz × blocos de 64 a 1024, automação em sub-blocos, abrir e fechar a GUI **durante** o
+callback de áudio, salvar e restaurar estado, thread-safety dos parâmetros e fuzzing. Saída
+esperada: `SUCCESS`.
+
+Ele é o complemento do `test_escalas` (rodado pelo `baseline.sh`): o teste unitário prova que a
+lógica está certa, o `pluginval` prova que o plugin não quebra o host. Detalhes e resultado em
+[`../docs/execucao-do-plano.md`](../docs/execucao-do-plano.md), seção *Etapa 1-bis*.
+
+### Testar rápido sem DAW (macOS)
+
+```
+open "build-mac/TccAutotune_artefacts/Release/Standalone/TCC Autotune.app"
+```
+
+Em *Options → Audio/MIDI Settings* escolha entrada (microfone) e saída (fones — **use fones**,
+senão realimenta). É o jeito mais rápido de ver a GUI e ouvir o efeito.
+
 ## Parâmetros expostos
 
 | parâmetro | faixa | tipo | efeito |
@@ -76,7 +124,7 @@ latência → o núcleo é re-preparado (e o host relê `setLatencySamples`).
 4. A latência reportada aparece na barra inferior (ex.: *"Latency: NNNN samples"*).
    Use **ASIO** e `look` pequeno (0–4) para cantar confortável.
 
-## Testar rápido SEM DAW (app Standalone)
+## Testar rápido SEM DAW (app Standalone — Windows)
 
 Rode `build\TccAutotune_artefacts\Release\Standalone\TCC Autotune.exe`. Em
 *Options/Audio Settings* escolha o driver (ASIO de preferência), entrada = microfone,

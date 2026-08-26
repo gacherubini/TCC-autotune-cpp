@@ -17,6 +17,14 @@
 #     cmake --build build --config Release
 #  Saída: build/TccAutotune_artefacts/Release/VST3/TCC Autotune.vst3
 #         (COPY_PLUGIN_AFTER_BUILD copia p/ a pasta de VST3 do usuário)
+#
+#  Pré-requisitos (macOS, acrescentado em 26/08/2026): Xcode Command Line Tools
+#  (`xcode-select --install`) e CMake ≥ 3.22 (`brew install cmake ninja`). NÃO
+#  precisa do Xcode completo — o SDK das Command Line Tools basta. Este arquivo
+#  não tem nada específico de plataforma; o mesmo CMakeLists serve aos dois.
+#     ./build.sh          (configura + compila + valida com o pluginval)
+#  Saída: build-mac/TccAutotune_artefacts/Release/VST3/TCC Autotune.vst3
+#  O build do macOS usa "build-mac" p/ não colidir com o cache do Windows.
 # ============================================================================
 cmake_minimum_required(VERSION 3.22)
 project(TccAutotune VERSION 1.0.0 LANGUAGES C CXX)

@@ -1,5 +1,6 @@
 # ===== Build do JUCE (pesado e regenerável) =====
 plugin/build/
+plugin/build-mac/
 build/
 
 # ===== Binários e artefatos de compilação =====

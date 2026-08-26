@@ -162,6 +162,11 @@ string e **já aceitavam as 24 tonalidades desde sempre**.
 
 ### ⚠️ Ressalva — o plugin não foi compilado
 
+> **RESOLVIDA em 26/08/2026.** O ambiente de compilação foi montado nesta mesma máquina
+> (macOS) e o plugin foi construído e validado — ver **Etapa 1-bis**, adiante. O texto
+> original da ressalva fica preservado abaixo, como registro do estado em que a etapa foi
+> fechada.
+
 **Esta máquina não tem CMake nem JUCE**, então o VST3 não foi construído. Foram verificados:
 
 - ✅ a lógica de mapeamento (`montarEscala`), pelo teste, na função real;
@@ -179,3 +184,101 @@ antigo em "Sol maior" (índice 3) abrirá como "Menor natural" com tônica C.
 
 Isso foi **decidido e aceito** (Decisão 4 em [historico-e-decisoes.md](historico-e-decisoes.md)):
 o plugin não tem base instalada. Registrado aqui para constar do texto do TCC.
+
+---
+
+## Etapa 1-bis — ambiente de compilação e validação do plugin (macOS)
+
+**Data:** 26/08/2026 · **Motivação:** a ressalva da Etapa 1 — o plugin era a única parte do
+projeto que nenhum teste alcançava, porque não havia como compilá-lo aqui.
+
+### O que faltava
+
+Só o **CMake**. O diagnóstico anterior ("não tem CMake nem JUCE") estava certo quanto ao CMake
+e enganado quanto ao JUCE: o JUCE nunca precisou estar instalado — o `CMakeLists.txt` já o baixa
+sozinho via `FetchContent` na primeira configuração. Compilador e SDK também já estavam
+presentes (Apple clang 21, Command Line Tools). Instalado com:
+
+```
+brew install cmake ninja            # cmake 4.4.3, ninja 1.13.2
+brew install --cask pluginval       # pluginval 1.0.4
+```
+
+### Resultado da compilação
+
+```
+cmake -S . -B build-mac -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build-mac
+```
+
+Compilou **sem um único erro**, gerando o `TCC Autotune.vst3` e o app Standalone. Os avisos que
+aparecem são todos de `-Wsign-conversion` / `-Wimplicit-int-conversion` no `dsp.h`, que o JUCE
+liga por padrão (`juce_recommended_warning_flags`) e o `compilar.bat` não liga — são
+**pré-existentes**, nenhum vem das mudanças da Etapa 0 ou 1. Ficam registrados como item de
+dívida técnica, sem ação nesta etapa (mexer neles alteraria o núcleo e quebraria a linha de base).
+
+Que o mesmo código compile em **MSVC (Windows)** e em **Apple clang (macOS)**, dois compiladores
+independentes, é evidência a favor da portabilidade do núcleo — vale citar no texto do TCC.
+
+### Validação automatizada — `pluginval`
+
+O [pluginval](https://github.com/Tracktion/pluginval) (Tracktion Corporation) é o validador de
+plugins usado como padrão na indústria; roda **headless**, o que o torna citável como
+verificação reproduzível. Executado no nível de rigor **máximo (10)**:
+
+```
+pluginval --strictness-level 10 --validate "TCC Autotune.vst3"
+→ SUCCESS      (0 falhas, 0 avisos)
+```
+
+O que ele exercitou:
+
+| Teste | Cobertura |
+|---|---|
+| Audio processing | 44,1 / 48 / 96 kHz × blocos de 64, 128, 256, 512, 1024 — sem NaN/Inf/denormals |
+| Non-releasing audio processing | as mesmas 15 combinações, sem liberar o plugin entre elas |
+| Automation | as 15 combinações, com automação em sub-blocos de 32 amostras |
+| Plugin state / state restoration | salvar e restaurar o estado do APVTS |
+| Editor / open editor whilst processing | abrir e fechar a GUI **durante** o callback de áudio |
+| Parameter thread safety | parâmetros alterados por outra thread durante o processamento |
+| Fuzz parameters | valores aleatórios em todos os parâmetros |
+| auval | validador da Apple (AudioUnit) |
+| Buses | mono e estéreo, entrada e saída |
+
+Isso cobre justamente o que o `test_escalas` **não** alcança: o plugin como objeto vivo dentro
+de um host. Os dois se complementam — o teste unitário prova que o mapeamento tônica × modo está
+certo, o `pluginval` prova que o plugin não quebra o host ao ser usado.
+
+**Um ponto anotado, sem ação:** o `pluginval` reporta `latency: 0` na fase *Plugin info*. É
+esperado — a latência só é conhecida depois do `prepareToPlay()`, e é lá que o
+`setLatencySamples()` é chamado. Hosts leem o valor após o `prepare`. Fica registrado para não
+ser confundido com defeito numa leitura futura do log.
+
+### O que ficou no repositório
+
+| Arquivo | Papel |
+|---|---|
+| `plugin/build.sh` | **novo** — contraparte do `build.bat` para macOS/Linux: configura, compila e valida num comando só |
+| `.gitignore` | passa a ignorar `plugin/build-mac/` |
+
+O diretório de build é `build-mac`, e **não** `build`, de propósito: assim a árvore do Windows e
+a do macOS coexistem na mesma cópia do repositório sem uma sobrescrever o cache da outra.
+
+### Situação da ressalva da Etapa 1
+
+| Item | Antes | Agora |
+|---|---|---|
+| Lógica de mapeamento (`montarEscala`) | ✅ `test_escalas` | ✅ inalterado |
+| CLIs e núcleo sem regressão | ✅ 17/17 idênticos | ✅ inalterado |
+| **Compilação do plugin** | ❌ não verificada | ✅ compila limpo (Apple clang 21) |
+| **Plugin vivo num host** | ❌ não verificada | ✅ `pluginval` nível 10, SUCCESS |
+| **Aparência dos ComboBox na GUI** | ❌ não verificada | ⚠️ app Standalone aberto e inspecionado por olho humano; não há verificação automatizada de layout |
+
+A ressalva está **resolvida para todos os itens verificáveis por máquina**. O único que
+permanece dependente de inspeção humana é a aparência dos dois combos na faixa de controles —
+o `pluginval` abre e fecha o editor sem falhar, o que prova que ele **funciona**, mas não que
+esteja **legível**.
+
+Continua valendo compilar em Windows/MSVC antes da entrega, já que o Ableton do teste de usuário
+roda lá — mas isso deixou de ser um risco de *compilar ou não*, e passou a ser uma conferência
+de plataforma.

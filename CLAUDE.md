@@ -53,11 +53,19 @@ implementa algoritmo.**
 ## Build
 
 ```bat
-compilar.bat          REM os 3 executáveis, via g++ (MinGW/scoop). Windows.
-cd plugin && build.bat  REM o plugin VST3 — exige MSVC Build Tools 2022, não g++.
+compilar.bat            REM Windows: os 3 executáveis, via g++ (MinGW/scoop).
+cd plugin && build.bat  REM Windows: o plugin VST3 — exige MSVC Build Tools 2022, não g++.
 ```
 
-Duas toolchains por necessidade: o caminho oficial do JUCE para VST3 no Windows é MSVC.
+```sh
+./baseline.sh conferir  # macOS/Linux: compila os 3 CLIs + testes e confere a linha de base
+cd plugin && ./build.sh # macOS/Linux: o plugin VST3 + Standalone, e valida com o pluginval
+```
+
+No Windows são duas toolchains por necessidade: o caminho oficial do JUCE para VST3 lá é MSVC.
+No macOS bastam as Command Line Tools + `brew install cmake ninja` — o mesmo `CMakeLists.txt`
+serve aos dois. O build do macOS vai para `plugin/build-mac/`, para não colidir com o cache do
+Windows. Ver [`docs/execucao-do-plano.md`](docs/execucao-do-plano.md), seção *Etapa 1-bis*.
 
 ## Verificação — rode isto depois de mexer em DSP
 
