@@ -183,3 +183,144 @@ minimiza latência *e* maximiza qualidade ao mesmo tempo.
 
 ---
 
+## Redesenho da interface para paridade com o Auto-Tune (2026-08-26)
+
+Origem: análise comparativa do Auto-Tune Artist (view ADVANCED) contra o protótipo, registrada
+em [comparacao-antares.md](comparacao-antares.md). A análise partiu do sintoma de naturalidade
+reprovado no teste de usuário e desembocou numa pergunta anterior: **o protótipo tem os
+controles que um corretor de afinação precisa ter?**
+
+> **Status geral: DECIDIDO, NÃO IMPLEMENTADO.** Nada abaixo alterou código ainda.
+> Este bloco existe para que cada passo do TCC 2 fique registrado com a data e o motivo.
+
+### Decisão 1 — remover o parâmetro `Forca`
+
+**O que muda:** `Forca` (0–1, `PluginProcessor.cpp:57`) sai da interface e de
+`notaAlvo()` (`dsp.h:159`).
+
+**Por quê:** a análise mostrou que `Forca` é um **escalar estático** multiplicando a correção
+(`corrMidi = midi + (forca * mov) / 100.0`) — sem estado, sem memória, sem dimensão temporal.
+É um dry/wet no domínio da afinação. O efeito prático de `Forca < 1` é deixar o cantor
+**permanentemente desafinado**: numa nota sustentada 50 cents abaixo, `Forca = 0,5` entrega
+25 cents abaixo *para sempre*, em vez de chegar à nota devagar.
+
+O Auto-Tune não tem controle equivalente justamente por isso: a filosofia é ir sempre 100% até
+a nota e controlar apenas o **tempo**. Ver [comparacao-antares.md §4](comparacao-antares.md).
+
+**Ressalva registrada:** `Forca = 0` é hoje o caminho de bypass usado pelo teste de regressão
+bit-perfect (`python/bench_stream.py` verifica identidade em `forca = 0`). **Remover `Forca`
+exige substituir esse teste** por um bypass explícito ou por um mix seco/molhado. Isso não pode
+ser esquecido na implementação.
+
+### Decisão 2 — renomear `Tolerancia` para `Flex-Tune`
+
+**O que muda:** o rótulo do parâmetro. O comportamento é idêntico.
+
+**Por quê:** a pesquisa bibliográfica confirmou que a Antares expõe **dois** controles
+separados — *Flex-Tune* (zona morta em cents) e *Retune Speed* (constante de tempo em ms) — e
+que o protótipo implementou corretamente o **primeiro**, apenas batizando-o de forma diferente.
+Adotar o nome do domínio elimina a ambiguidade no texto do TCC e na banca.
+
+**Nota de compatibilidade:** o `ParameterID` (`ids::tol`) **deve ser preservado** para não
+quebrar projetos de DAW já salvos. Muda o nome visível, não o identificador.
+
+### Decisão 3 — adicionar `Retune Speed`
+
+**O que muda:** parâmetro novo, em milissegundos, ao lado do Flex-Tune.
+
+**Por quê:** é o eixo que falta. Os três eixos de um corretor são **profundidade** (quão longe),
+**limiar** (quão grande o erro precisa ser) e **tempo** (quão rápido). O protótipo tinha os dois
+primeiros e nenhum controle real do terceiro.
+
+**Como implementar:** a infraestrutura já existe — o `Glide` é um filtro de 1 polo, exatamente a
+estrutura necessária. O problema é **onde** ele está ligado
+(`autotune_stream.h:434`): ele filtra `alvoCents`, o **destino**, que dentro de uma nota
+sustentada é praticamente constante — o filtro converge e deixa de agir. A formulação correta,
+retirada da patente Hildebrand US 5.973.252, filtra a **correção**:
+
+```c
+// hoje
+glideEstado = α*glideEstado + (1−α)*alvoCents;
+// proposto
+movFiltrado = α*movFiltrado + (1−α)*(mov);
+corrMidi    = midi + movFiltrado / 100.0;
+```
+
+**Dimensionamento:** τ ≳ 50 ms para preservar vibrato de 5–8 Hz, com faixa do controle indo de 0
+(efeito duro, que precisa continuar disponível) até ~200 ms. Ver
+[pesquisa-bibliografica.md §2.7](pesquisa-bibliografica.md).
+
+**Questão em aberto:** `Glide` e `Retune Speed` viram o mesmo controle, ou coexistem? O `Glide`
+atual tem função audível nas **transições** entre notas em legato, que o Retune Speed sozinho
+não cobre da mesma forma. Decidir antes de implementar.
+
+### Decisão 4 — expor as 24 tonalidades
+
+**O que muda:** o combo único `Escala` (7 opções fixas) vira dois controles: `Key` (12 tônicas)
+× `Scale` (cromática / maior / menor natural).
+
+**Por quê:** **o motor já suporta as 24 tonalidades; a interface expõe 6.** `definirEscala()`
+(`dsp.h:112`) calcula `g_permitida[(pc + iv[i]) % 12]` para qualquer tônica `pc`, mas
+`PluginProcessor.cpp:30` passa apenas sete strings fixas. Na prática é impossível corrigir em
+Ré maior, Si bemol maior ou Mi maior — qualquer tonalidade com mais de um sustenido ou bemol.
+
+**Custo:** nenhuma linha de DSP. É montagem de combo e formatação da string passada a
+`definirEscala()`. É a maior melhoria por linha de código identificada no projeto.
+
+**Nota de compatibilidade:** trocar um `AudioParameterChoice` por dois quebra o estado salvo.
+Definir estratégia de migração (ou aceitar a quebra e documentar) antes de implementar.
+
+### Decisão 5 — modo de baixa latência
+
+**O que muda:** um controle novo que reconfigura `look`, `nFrame` e a guarda do PSOLA de uma vez.
+
+**Por quê:** o teste de usuário reprovou o requisito de latência, e a pesquisa mostrou que a meta
+original (≤ 20 ms) estava mal fundamentada — os limiares medidos para voz com in-ear são
+**mais rigorosos** (Lester & Boley 2007: "Fair" ≈ 6,5 ms; Marentakis et al. 2012: coloração a
+partir de 13 ms).
+
+**Status:** ⏸️ **especificação escrita, implementação suspensa por decisão do autor.**
+A especificação completa está em [modo-baixa-latencia.md](modo-baixa-latencia.md) e inclui seis
+questões em aberto (§8) que precisam de resposta antes de qualquer código. O ponto central: o
+modo v1 (só parâmetros) chega a 17,1 ms no preset contralto, o que **ainda não cruza o limiar de
+coloração**; só o v2, que exige mudança de arquitetura de detecção (CMNDF recursivo), chega aos
+5,7 ms.
+
+### Ordem de implementação acordada
+
+| # | Item | Muda DSP? | Risco |
+|---|---|---|---|
+| 1 | Renomear Tolerancia → Flex-Tune | não | nenhum |
+| 2 | 24 tonalidades (Key × Scale) | não | quebra estado salvo |
+| 3 | Adicionar Retune Speed | sim (onde o polo age) | médio |
+| 4 | Remover Forca | sim | exige novo teste de bypass |
+| 5 | Modo de baixa latência | v1 não, v2 sim | ⏸️ suspenso até §8 respondida |
+
+---
+
+## Errata — afirmações corrigidas pela pesquisa bibliográfica (2026-08-26)
+
+> **Este bloco não apaga nada.** As afirmações originais continuam no corpo dos documentos, como
+> registro do que se acreditava antes da revisão bibliográfica. Esta errata diz o que mudou e
+> por quê — que é exatamente o tipo de rastro que um TCC precisa ter.
+
+Fonte das correções: [pesquisa-bibliografica.md](pesquisa-bibliografica.md), levantada em
+2026-08-26 (5 artigos revisados por pares, 1 patente, 4 manuais de fabricante, 2 implementações
+de código aberto).
+
+| # | Onde | Afirmação original | Correção |
+|---|---|---|---|
+| 1 | doc. técnica §8.2 | O protótipo implementou "o mecanismo errado" (zona morta em vez de retune speed) | **Falso.** A Antares expõe **os dois**, separadamente. O protótipo implementou o Flex-Tune corretamente e só o nomeou como o outro. Falta *acrescentar*, não *substituir* |
+| 2 | doc. técnica §9.2 (C1) | "Filtrar a correção em vez do alvo" apresentado como contribuição original | **Não é original.** Está na patente Hildebrand US 5.973.252 (1997) e é o comportamento documentado do Retune Speed. Reposicionar como **replicação fundamentada** |
+| 3 | doc. técnica §9.1 (L6) | Mecanismo descrito como "janela de 2τ → 1τ" | **Erra o mecanismo.** A janela continua sendo de 2 períodos — mas de sinal **passado**, atualizado recursivamente por amostra. O custo real é o **lote quadro/hop**, não a janela |
+| 4 | doc. técnica §10 | L6 no item 17 do backlog ("só se sobrar tempo") | **Repriorizar para o topo.** É a única mudança capaz de levar o RNF01 à faixa defensável pela literatura |
+| 5 | doc. técnica §9.2 | Meta da métrica: "razão ≥ 0,8 em 4–8 Hz **e** ≈ 0 abaixo de 1 Hz" | **Matematicamente insatisfazível com um único polo:** em f_c = 3 Hz, G(1 Hz) = 0,32, não 0. Ou a meta afrouxa, ou C1 precisa de filtro de ordem maior |
+| 6 | doc. técnica §12 | Dattorro (JAES 1997) citado para pitch shifting por linha de atraso modulada | **Referência errada** — o artigo não trata de pitch shifting. A fonte correta é **Disch & Zölzer, DAFx-99** |
+| 7 | doc. técnica §12 | WSOLA descrito como "potencialmente com menos look-ahead" | **Sem evidência.** Manter a referência, retirar a afirmação de redução de latência |
+| 8 | repo Python, comentário | "autotune ao vivo tolera no máximo ~20–30 ms" | **Sem respaldo revisado por pares.** Rastreia até marketing da Antares. Os valores medidos para voz + in-ear são bem mais rigorosos (§5 acima) |
+
+**Consequência para o texto do TCC:** o requisito **RNF01** precisa ser reescrito com um limiar
+**nomeado e citado**, e não com o número de 20–30 ms. Ver
+[modo-baixa-latencia.md §5](modo-baixa-latencia.md).
+
+---
