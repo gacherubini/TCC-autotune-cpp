@@ -101,15 +101,21 @@ senão realimenta). É o jeito mais rápido de ver a GUI e ouvir o efeito.
 
 | parâmetro | faixa | tipo | efeito |
 |---|---|---|---|
-| **Forca** | 0–1 | ao vivo | quanto puxa para a nota da escala (1 = "duro") |
+| **Mix** | 0–1 | ao vivo | seco/molhado: 0 = só a entrada, 1 = só o corrigido (padrão 1) |
 | **Tolerancia** | 0–50 cents | ao vivo | zona morta (preserva vibrato) |
 | **Glide** | 0–200 ms | ao vivo | portamento até a nota-alvo |
 | **Look-ahead** | 0–16 quadros | estrutural | latência × qualidade do Viterbi (re-prepara) |
 | **Voz** | preset | estrutural | tessitura → `fmin/fmax` (re-prepara, muda a latência) |
-| **Escala** | cromática / tônica | estrutural | grade de notas permitidas |
+| **Tonica** | 12 opções | estrutural | tônica da escala (Etapa 1) |
+| **Escala** | cromática / maior / menor | estrutural | grade de notas permitidas |
 
 "Ao vivo" = aplicado sem realocar, a cada bloco. "Estrutural" = muda dimensões/
 latência → o núcleo é re-preparado (e o host relê `setLatencySamples`).
+
+> **`Mix = 0` não é um bypass instantâneo.** A saída passa a ser a entrada **atrasada da
+> latência do motor**, não a entrada de agora. É o comportamento correto para um plugin que
+> reporta latência: se o bypass não atrasasse, mexer no Mix deslocaria o áudio no tempo. O
+> host compensa um atraso fixo; não compensa um atraso que aparece e some.
 
 ## Testar no Ableton
 

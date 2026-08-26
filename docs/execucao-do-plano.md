@@ -282,3 +282,195 @@ esteja **legível**.
 Continua valendo compilar em Windows/MSVC antes da entrega, já que o Ableton do teste de usuário
 roda lá — mas isso deixou de ser um risco de *compilar ou não*, e passou a ser uma conferência
 de plataforma.
+
+---
+
+## Etapa 2 — Mix seco/molhado, e a remoção da `Forca`
+
+**Data:** 26/08/2026 · **Plano:** §6 e §9.1 · **Decisão que a originou:** Decisão 1 em
+[historico-e-decisoes.md](historico-e-decisoes.md)
+
+### O que mudou, e por quê a troca não é cosmética
+
+A `Forca` (0–1) multiplicava o desvio antes da correção: `corrMidi = midi + forca·mov/100`.
+Com `forca = 0,5` numa nota sustentada 50 cents baixa, o cantor terminava **25 cents baixo, e
+ficava lá** — a correção era parcial *na afinação*, permanentemente. Não era uma dosagem de
+efeito; era uma correção mal feita de propósito.
+
+O Mix faz outra coisa: a correção é sempre **integral**, e o que se dosa é **quanto do sinal
+corrigido se ouve**. Em 50% ouvem-se dois sinais somados — o original e o corrigido —, não um
+terceiro sinal sintetizado num alvo intermediário.
+
+| | `Forca = 0,5` | `Mix = 0,5` |
+|---|---|---|
+| O que o PSOLA recebe | alvo a meio caminho | o alvo verdadeiro |
+| O que sai | **um** sinal, 25 ct desafinado | **dois** sinais somados |
+| Afinação percebida | fica errada | a do original e a certa, juntas |
+
+### A parte difícil: alinhamento
+
+No caminho offline não há problema — o TD-PSOLA preserva a duração, então `out[i]` e `x[i]`
+são a mesma posição no tempo. No **streaming**, não: a saída sai atrasada de `latSamples`.
+
+Misturar o seco *de agora* com o molhado *atrasado* somaria o sinal a uma cópia deslocada de si
+mesmo — **filtro-pente**, claramente audível. E é um erro traiçoeiro: em `mix = 0` e `mix = 1`
+o áudio sai certo, porque só um dos dois caminhos é lido. Só as posições **intermediárias**
+ficariam erradas, que são justamente as que nenhum teste de identidade cobre.
+
+A solução caiu de graça na estrutura que já existia. O `process()` já indexava a saída por
+amostra absoluta (`src = lida − latSamples`), e o `xAll` já guarda toda a entrada indexada do
+mesmo jeito. Então o seco alinhado é `xAll[src]` — **o mesmo índice**:
+
+```cpp
+const float molhado = (src >= 0 && src < synthFront)        ? outBuf[src] : 0.0f;
+const float seco    = (src >= 0 && src < (long long)xAll.size()) ? xAll[src]   : 0.0f;
+out[i] = misturar(seco, molhado, p.mix);
+```
+
+**Consequência deliberada:** com `mix = 0` a saída é a entrada **atrasada**, não a entrada
+instantânea. É o comportamento certo num plugin que reporta latência — se o bypass não
+atrasasse, mexer no Mix deslocaria o áudio no tempo. O host compensa um atraso fixo; não
+compensa um atraso que aparece e some.
+
+### O problema de cobertura de teste — e a saída que apareceu
+
+O plano (§9.1) tinha avisado do risco: `forca = 0` fazia **duas coisas ao mesmo tempo**, e o
+`mix = 0` só herda uma delas.
+
+| | O PSOLA roda? | O resultado vai pra saída? | O que isso testa |
+|---|---|---|---|
+| `forca = 0` (antes) | ✅ com β = 1 | ✅ | **drift de fase do PSOLA** |
+| `mix = 0` (agora) | ✅ | ❌ descartado | só o caminho de bypass |
+
+Perder isso seria perder, sem perceber, o teste que pegou o bug de drift de fase de 2026-08-25
+(Decisão 3 do histórico). O plano previa "acrescentar um teste que force β = 1 por outro
+caminho", sem dizer qual.
+
+**O caminho já existia, e não precisou de código nenhum:** a zona morta. Uma tolerância maior
+que meio semitom (`tol ≥ 50`) torna o desvio sempre menor que a tolerância, logo `mov = 0`,
+logo `alvo == f0`, logo **β = 1** — com o PSOLA rodando inteiro e o resultado indo pra saída.
+Usamos `tol=600` (meia oitava), folgado.
+
+Verificado por checksum **antes** de mexer em qualquer coisa, ainda com o código antigo:
+
+```
+autotune exemplo-antes.wav a.wav 0.0              -> 4f35cced6cc704b2
+autotune exemplo-antes.wav b.wav 1.0 crom tol=600 -> 4f35cced6cc704b2   (idêntico)
+stream_test … 0.0                                 -> 373037487675431e
+stream_test … 1.0 crom tol=600                    -> 373037487675431e   (idêntico)
+```
+
+Ou seja: `tol=600` **é** o antigo `forca=0`, byte a byte, nos dois caminhos. A cobertura migrou
+com prova, não com esperança.
+
+### O par que virou invariante
+
+Com isso o `baseline.sh` ganhou algo melhor que um checksum gravado. `gold_tol600` e
+`gold_mix0` **têm de ser iguais entre si** — um roda o PSOLA em identidade, o outro não roda
+nada. Se o PSOLA ganhar drift de fase, o primeiro muda e o segundo não.
+
+Isso é um **invariante do algoritmo**, não uma fotografia do passado: continua valendo depois
+de qualquer re-baseline legítimo. O script agora verifica os dois pares e **aborta** se
+quebrarem, antes de deixar gravar referência nova por cima de um resultado errado:
+
+```
+== invariantes (independem da referencia) ==
+  ok    PSOLA em identidade (beta=1) == bypass  [offline]
+  ok    PSOLA em identidade (beta=1) == bypass  [streaming]
+```
+
+### Verificação — nenhum áudio mudou
+
+Todos os 17 casos anteriores produzem WAV com o **mesmo checksum**. Só as hashes de *log*
+mudaram, porque a linha impressa passou a dizer `mix=` em vez de `forca=`.
+
+| caso (antes) | caso (agora) | wav antes | wav agora | |
+|---|---|---|---|---|
+| `gold_forca1` | `gold_mix1` | `a10c561e7290fa8a` | `a10c561e7290fa8a` | ✅ |
+| `gold_forca0` | `gold_mix0` | `4f35cced6cc704b2` | `4f35cced6cc704b2` | ✅ |
+| `gold_tol30` | `gold_tol30` | `511c1e14ee113393` | `511c1e14ee113393` | ✅ |
+| `gold_glide120` | `gold_glide120` | `db0f52d6bd47b25f` | `db0f52d6bd47b25f` | ✅ |
+| `gold_cmaior` | `gold_cmaior` | `74794f1942feb95e` | `74794f1942feb95e` | ✅ |
+| `gold_aminor` | `gold_aminor` | `74794f1942feb95e` | `74794f1942feb95e` | ✅ |
+| `rt_look4` | `rt_look4` | `0c2fb55c41dcfe22` | `0c2fb55c41dcfe22` | ✅ |
+| `rt_look0` | `rt_look0` | `00016234ee2ea312` | `00016234ee2ea312` | ✅ |
+| `rt_glide0` | `rt_glide0` | `0c2fb55c41dcfe22` | `0c2fb55c41dcfe22` | ✅ |
+| `rt_tol0` | `rt_tol0` | `0c2fb55c41dcfe22` | `0c2fb55c41dcfe22` | ✅ |
+| `st_forca1` | `st_mix1` | `522ffaf32a3d6e47` | `522ffaf32a3d6e47` | ✅ |
+| `st_forca0` | `st_mix0` | `373037487675431e` | `373037487675431e` | ✅ |
+| `st_glide40` | `st_glide40` | `a86b831cc550896a` | `a86b831cc550896a` | ✅ |
+| `st_tol15` | `st_tol15` | `42e8ad70d2356180` | `42e8ad70d2356180` | ✅ |
+| `st_block64` | `st_block64` | `522ffaf32a3d6e47` | `522ffaf32a3d6e47` | ✅ |
+| `st_block512` | `st_block512` | `270c22c19308a2e4` | `270c22c19308a2e4` | ✅ |
+| `st_cmaior` | `st_cmaior` | `44af6aebec7600ce` | `44af6aebec7600ce` | ✅ |
+| — | `gold_tol600` | — | `4f35cced6cc704b2` | 🆕 |
+| — | `st_tol600` | — | `373037487675431e` | 🆕 |
+
+> **Nuance que o texto do TCC precisa registrar.** A tabela mostra que *nenhum caso de teste*
+> mudou de áudio, mas isso **não** quer dizer que a Etapa 2 não mudou comportamento. Todos os
+> casos usam os **extremos** (`1.0` e `0.0`), e nos extremos as duas formulações coincidem. O
+> que mudou está nos valores **intermediários**, que nenhum caso exercitava — e mudou de
+> propósito. Dizer "não mudou nada" seria falso; o correto é "a regressão foi nula onde havia
+> teste, e a mudança intencional está fora do alcance dos testes existentes".
+
+### O teste novo — `test_mix.cpp`
+
+Cobre justamente o que os checksums não pegam:
+
+| Seção | O que prova |
+|---|---|
+| 1 · Extremos | `mix=1` devolve o molhado **bit a bit** e `mix=0` o seco, sem passar por multiplicação |
+| 2 · Cruzamento | `mix=0,5` é a média exata; a varredura de 0 a 1 é monótona (sem degrau nos extremos) |
+| 3 · **Alinhamento** | no streaming, `mix=0` é a entrada atrasada de **exatamente** `latSamples` — 40 950 amostras conferidas, e as `lat` primeiras são silêncio |
+| 4 · Blocos | o atraso do seco não depende do tamanho do bloco (32, 128, 256, 512, 1024 × 64) |
+
+A Seção 3 é a que importa: é a única coisa no projeto que pegaria o filtro-pente descrito
+acima. Está anotado no próprio teste que a Seção 4 **não** cobre o caminho molhado — com
+`mix = 0` ele nem é lido —, e portanto não diz nada sobre o achado em aberto de invariância em
+`block = 512`.
+
+### Estado da árvore
+
+| Arquivo | Mudança |
+|---|---|
+| `src/core/dsp.h` | `notaAlvo()` perde `forca`; `ParamsCorrecao` perde `forca`; **+`misturar()`** |
+| `src/offline_causal/main.cpp` | 3º posicional vira `mix`; mistura após o PSOLA |
+| `src/offline_causal/autotune_rt.cpp` | idem (a mistura fica **dentro** da região cronometrada — é custo real) |
+| `src/c1_streaming/autotune_stream.h` | `StreamParams.forca` → `.mix`; mistura alinhada no `process()` |
+| `src/c1_streaming/stream_test.cpp` | 3º posicional vira `mix` |
+| `plugin/PluginProcessor.cpp/.h` | id `"forca"` **aposentado**, id novo `"mix"`; `pForca` → `pMix` |
+| `plugin/PluginEditor.cpp/.h` | slider `Forca` → `Mix` |
+| `src/tests/test_mix.cpp` | **novo** |
+| `baseline.sh` | casos novos + o bloco de invariantes que aborta |
+
+**Sobre o id do parâmetro:** o `"forca"` foi aposentado e o novo chama-se `"mix"`, em vez de
+reaproveitar o id. Reaproveitar faria o host restaurar um valor antigo com semântica nova, em
+silêncio — um projeto salvo com `Forca = 0,5` abriria com `Mix = 0,5`, que soa diferente. Com
+id novo, o projeto antigo simplesmente cai no padrão (`Mix = 1`). Isso **amplia** a quebra de
+compatibilidade já aceita na Etapa 1, e pela mesma razão: o plugin não tem base instalada.
+
+### Verificação final
+
+```
+./baseline.sh conferir
+→ ok  test_escalas
+→ ok  test_mix
+→ ok  PSOLA em identidade (beta=1) == bypass  [offline]
+→ ok  PSOLA em identidade (beta=1) == bypass  [streaming]
+→ IDENTICO — nada mudou.
+
+cd plugin && ./build.sh
+→ compila limpo (Apple clang 21)
+→ pluginval --strictness-level 10 → SUCCESS
+```
+
+### O que fica pendente
+
+- **Escuta.** Nenhum teste decide se `Mix` intermediário soa bem. O plano (§9.3) já previa que
+  isso é teste de escuta, com o mesmo usuário — e continua não feito.
+- **Faixa do Mix na GUI** está em 0–1. A Antares mostra em %; converter é cosmético e ficou
+  para quando a GUI for revista.
+- O `bench_stream.py` **não quebra** — ele passa `"1.0"` no 3º posicional, que agora significa
+  `mix = 1` e produz o mesmo áudio de antes; só o comentário sobre `forca=0` foi corrigido. Mas
+  ele roda no venv do repositório irmão, em Windows, e **não foi executado nesta máquina**: os
+  números de correlação com o gold citados no README continuam sendo os da medição anterior.

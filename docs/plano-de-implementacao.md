@@ -1,7 +1,11 @@
 # Plano de implementação — camada de correção e expressão
 
 > **Data:** 2026-08-26
-> **Status:** 📐 **PLANO — nada implementado.**
+> **Status:** 🔨 **EM EXECUÇÃO.** Etapas 0, 1 e 2 feitas e verificadas; 3, 4 e 5 pendentes.
+> O que já foi executado, e o que se aprendeu executando, está em
+> [`execucao-do-plano.md`](execucao-do-plano.md). **Este documento continua sendo o plano tal
+> como foi concebido** — não é reescrito conforme a execução, para que dê para comparar
+> depois o que foi previsto com o que aconteceu.
 > **Decisões que o originam:** [historico-e-decisoes.md](historico-e-decisoes.md)
 > **Fundamentação:** [pesquisa-retune-speed-e-cor.md](pesquisa-retune-speed-e-cor.md) ·
 > [pesquisa-bibliografica.md](pesquisa-bibliografica.md)

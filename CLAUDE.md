@@ -81,7 +81,12 @@ python python\bench_latencia.py  REM latência × qualidade × xRT, e contagem d
 
 **Invariantes que não podem quebrar:**
 
-1. `forca = 0` produz saída **bit-perfect** idêntica à entrada. Se quebrar, há erro de fase.
+1. **Dois caminhos de identidade, que têm de concordar** (checados por `./baseline.sh`):
+   `mix = 0` (bypass — o PSOLA roda mas o resultado é descartado) e `tol = 600` (tolerância
+   maior que meio semitom → alvo = f0 → **β = 1**, o PSOLA roda em identidade e a saída é
+   usada). Os dois devolvem áudio bit-idêntico à entrada, e **um diferir do outro é erro de
+   fase no PSOLA**. Até a Etapa 2 esse papel era da `forca = 0`, que fazia as duas coisas ao
+   mesmo tempo; ao removê-la, o teste foi desdobrado em dois para não perder cobertura.
 2. Correlação do streaming com o gold ≥ **0,995** (hoje: 0,997).
 3. Contagem de "pipoco" (descontinuidades > 30× a mediana) = **0**.
 4. A saída é **idêntica para qualquer tamanho de bloco** do host (64, 128, 256, 512).
@@ -126,6 +131,6 @@ Diagnóstico completo em §8 do doc técnico; soluções em §9; ordem de ataque
   **inglês**.
 - **Comentários:** o código é didático por decisão de projeto (é um TCC) — comentários longos
   explicando o *porquê* são a norma, não ruído. Mantenha o estilo ao editar.
-- **Nomes:** identificadores em português (`notaAlvo`, `marcas`, `forca`, `tinhaNota`).
+- **Nomes:** identificadores em português (`notaAlvo`, `marcas`, `misturar`, `tinhaNota`).
 - **Sem dependências novas** sem necessidade: hoje são só `dr_wav.h` (header-only) e o JUCE
   (só no plugin, via FetchContent).

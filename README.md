@@ -75,24 +75,38 @@ Para o **plugin VST3**, veja [`plugin/README.md`](plugin/README.md) (exige MSVC)
 ## Como usar
 
 ```bat
-.\autotune.exe <entrada.wav> [saida.wav] [forca 0..1] [escala] [tol=cents] [glide=ms]
+.\autotune.exe <entrada.wav> [saida.wav] [mix 0..1] [escala] [tol=cents] [glide=ms]
 ```
 
-- **forca**: `0` = sem correção (idêntico à entrada) · `0.7` = natural · `1.0` = autotune "duro".
+- **mix**: cruzamento seco/molhado. `0` = só o sinal original (bypass exato) · `0.5` = metade
+  de cada · `1` = só o corrigido (padrão).
 - **escala**: `crom` (padrão, cromática) · `C`, `G`, `F#`... (maior) · `Am`, `C#m`... (menor).
 - **tol=** (cents): zona morta — desvios menores que isso **não** são corrigidos, preservando
   vibrato e micro-afinação. Padrão `0`. Sugerido `10–20`.
 - **glide=** (ms): suavização temporal da afinação (portamento). Padrão `0` (snap imediato).
   Sugerido `30–60`.
-- **forca negativa** (`-1`) = modo cópia (só converte pra mono, sem processar — diagnóstico).
+- **mix negativo** (`-1`) = modo cópia (só converte pra mono, sem processar — diagnóstico).
+
+> ⚠️ **Mudou na Etapa 2 (26/08/2026).** O 3º argumento posicional era `forca` (0–1, fração do
+> desvio a corrigir) e passou a ser `mix` (seco/molhado). Os extremos se comportam igual —
+> `1.0` continua sendo efeito cheio e `0.0` continua devolvendo a entrada — mas um valor
+> **intermediário significa outra coisa**: antes era "corrija pela metade" (o cantor terminava
+> permanentemente desafinado), agora é "ouça metade de cada sinal". Comandos antigos com `0.7`
+> produzem áudio diferente. Ver [`docs/execucao-do-plano.md`](docs/execucao-do-plano.md),
+> Etapa 2.
 
 ```bat
-.\autotune.exe exemplo-antes.wav corrigido.wav 0.7                        REM natural simples
+.\autotune.exe exemplo-antes.wav corrigido.wav 0.7                        REM 70% do efeito
 .\autotune.exe exemplo-antes.wav corrigido.wav 1.0 Am                     REM duro, Lá menor
 .\autotune.exe exemplo-antes.wav corrigido.wav 1.0 crom tol=15 glide=40   REM preset NATURAL
+.\autotune.exe exemplo-antes.wav corrigido.wav 1.0 crom tol=600           REM PSOLA em beta=1
 ```
 
-**Preset natural recomendado:** `forca 1.0  tol=15  glide=40`.
+**Preset natural recomendado:** `mix 1.0  tol=15  glide=40`.
+
+> `tol=600` (última linha do exemplo) é um caso de **teste**, não de uso: uma tolerância maior
+> que meio semitom faz o alvo coincidir com o pitch detectado, então o TD-PSOLA roda inteiro
+> com β = 1 e a saída tem de sair idêntica à entrada. É o que verifica drift de fase no PSOLA.
 
 ### Versão tempo real (causal) — `autotune_rt.exe`
 
@@ -100,7 +114,7 @@ Mesmo áudio, mas com detecção de pitch **causal** (Viterbi de lag fixo) e rel
 **latência (ms)** e **fator de tempo real (xRT)**:
 
 ```bat
-.\autotune_rt.exe <in.wav> [out.wav] [forca] [escala] [tol=] [glide=] [look=L] [block=N] [frame=] [hop=] [voz=] [fmin=] [fmax=] [dumpf0=]
+.\autotune_rt.exe <in.wav> [out.wav] [mix] [escala] [tol=] [glide=] [look=L] [block=N] [frame=] [hop=] [voz=] [fmin=] [fmax=] [dumpf0=]
 ```
 
 - **look=** : quadros de look-ahead do Viterbi causal. `0` = guloso (menor latência, menor
@@ -130,14 +144,15 @@ Mesmo áudio, mas com detecção de pitch **causal** (Viterbi de lag fixo) e rel
    Parâmetros no topo de `src/core/dsp.h`: `N_FRAME=1024`, `N_HOP=256`, `FMIN`, `FMAX`.
 3. **Suavização do vozeamento**: tampa buracos curtos e remove ilhas curtas *(só no offline —
    é não-causal)*.
-4. **Nota-alvo**: encosta na nota mais próxima da escala, com intensidade `forca` e
-   **zona morta** `tol`.
+4. **Nota-alvo**: encosta na nota mais próxima da escala, com **zona morta** `tol`.
 5. **Trajetória com glide**: a afinação-alvo é suavizada no tempo (filtro de 1 polo, com
    reset no ataque de cada nota).
 6. **Correção (TD-PSOLA)**: marcas de análise por período (alinhadas por correlação), síntese
    por overlap-add no novo período, reconstrução por cobertura. Como copia grãos no tempo e
    só muda o espaçamento, **preserva os formantes** (timbre).
-7. **Gravar WAV** 16-bit PCM mono.
+7. **Mix seco/molhado**: cruzamento linear entre a entrada e o sinal corrigido (`mix`).
+   No streaming o seco é atrasado da latência do motor, para os dois ficarem alinhados.
+8. **Gravar WAV** 16-bit PCM mono.
 
 Detalhamento matemático de cada estágio:
 [`docs/documentacao-tecnica.md` §4](docs/documentacao-tecnica.md#4-repositório-c-o-pipeline-em-7-estágios).
@@ -183,8 +198,9 @@ amostra a amostra.
 
 | Verificação | Script | Resultado atual |
 |---|---|---|
-| Identidade em `forca = 0` | `bench_stream.py` | **bit-perfect** |
-| Correlação com o gold, `forca = 1` | `bench_stream.py` | **0,997** (>0,999 por região) |
+| Identidade em `mix = 0` (bypass) | `baseline.sh`, `test_mix` | **bit-perfect** |
+| Identidade em `tol = 600` (PSOLA com β = 1) | `baseline.sh` | **bit-perfect** |
+| Correlação com o gold, `mix = 1` | `bench_stream.py` | **0,997** (>0,999 por região) |
 | Invariância ao tamanho de bloco (64–512) | `bench_stream.py` | **confirmada** |
 | Trilha de F0 vs. gold | `bench_pitch.py` | **100 %** |
 | Disparo de quadros | `bench_frames.py` | **confirmado** |

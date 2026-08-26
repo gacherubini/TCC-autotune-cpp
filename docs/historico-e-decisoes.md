@@ -232,6 +232,27 @@ exige substituir esse teste.**
 > PSOLA com β = 1. Esse teste ainda tem valor (ele pegava drift de fase), então convém
 > **manter os dois**: identidade por `mix = 0%` e identidade por β = 1 forçado.
 
+> 🔨 **EXECUTADO em 2026-08-26** — Etapa 2 do plano. Registro completo em
+> [`execucao-do-plano.md`](execucao-do-plano.md).
+>
+> A ressalva acima estava certa, e o "β = 1 forçado" não precisou de código novo: **`tol=600`**
+> (tolerância maior que meio semitom) faz `mov = 0`, logo `alvo == f0`, logo β = 1 com o PSOLA
+> rodando inteiro. Verificado por checksum **antes** de qualquer alteração, ainda com o código
+> antigo: `tol=600` produz o mesmo arquivo, byte a byte, que `forca=0` produzia — nos dois
+> caminhos (offline `4f35cced…`, streaming `373037487…`). A cobertura migrou com prova.
+>
+> Os dois casos viraram um **invariante** verificado pelo `baseline.sh`: `tol600` e `mix0` têm
+> de ser iguais **entre si**, o que continua valendo depois de qualquer re-baseline. Se o PSOLA
+> ganhar drift de fase, o primeiro muda e o segundo não. O script aborta se isso quebrar.
+>
+> **Duas coisas a mais, que a decisão não previa:**
+>
+> 1. **Alinhamento no streaming.** A saída sai atrasada de `latSamples`; o seco precisa ser
+>    atrasado igual, senão a mistura vira filtro-pente. Como só afeta valores *intermediários*
+>    de mix, nenhum teste de identidade pegaria. Virou a Seção 3 do `test_mix.cpp`.
+> 2. **O id do parâmetro mudou** (`"forca"` → `"mix"`), em vez de ser reaproveitado — senão o
+>    host restauraria um valor antigo com semântica nova, calado.
+
 ### Decisão 2 — renomear `Tolerancia` para `Flex-Tune`
 
 **O que muda:** o rótulo do parâmetro. O comportamento é idêntico.
