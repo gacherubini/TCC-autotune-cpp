@@ -9,6 +9,7 @@
 | **[arquitetura-streaming.md](arquitetura-streaming.md)** | Como o algoritmo de lote virou causal: as três fronteiras, ring buffer, Viterbi de lag fixo, PSOLA online, orçamento de latência. Inclui o roteiro de estudo da fundamentação. | Para mexer em `src/c1_streaming/` ou no plugin. |
 | **[historico-e-decisoes.md](historico-e-decisoes.md)** | Registro cronológico: bugs caçados (o "pipoco"), decisões de arquitetura, varreduras experimentais (look-ahead, `N_FRAME`, tessitura), **as decisões do redesenho de interface** e a **errata da revisão bibliográfica**. | Para escrever o texto do TCC, ou antes de refazer algo que já foi tentado. |
 | **[comparacao-antares.md](comparacao-antares.md)** | Comparação controle a controle com o Auto-Tune Artist: o que o protótipo tem, o que falta e em que nível. Contém a análise dos **três eixos** (profundidade / limiar / tempo) e por que `Forca` não é Retune Speed. | Antes de mexer em qualquer parâmetro do plugin. |
+| **[execucao-do-plano.md](execucao-do-plano.md)** | 📓 **Diário das etapas** — o que já foi feito, a verificação de cada uma e os achados que apareceram no caminho. Comece por aqui para saber o estado real do código. | Antes de continuar a implementação. |
 | **[plano-de-implementacao.md](plano-de-implementacao.md)** | 📐 **O plano de execução**: a cadeia de correção proposta, a prova de que a fusão é retrocompatível, as 6 etapas verificáveis, mudanças por arquivo e a estratégia de teste. | **Antes de escrever qualquer código.** |
 | **[modo-baixa-latencia.md](modo-baixa-latencia.md)** | Especificação do modo de baixa latência: cada mudança, o ganho, o custo, os números por preset de voz e **seis questões em aberto**. ⚠️ Nada implementado. | Antes de escrever a primeira linha do modo. |
 | **[pesquisa-bibliografica.md](pesquisa-bibliografica.md)** | Fundamentação das soluções: 5 artigos revisados por pares, a patente do Auto-Tune, manuais de fabricante. Cada afirmação com grau de evidência declarado. | Para citar qualquer coisa no texto do TCC. |
@@ -23,6 +24,7 @@
    (raiz)         ├─ historico-e-decisoes.md ──── o que já foi tentado, decidido e corrigido
                   ├─ comparacao-antares.md ────── o que falta para ser um plugin completo
                   ├─ plano-de-implementacao.md ── o que vai ser feito e em que ordem
+                  ├─ execucao-do-plano.md ─────── o que JA foi feito, etapa por etapa
                   ├─ modo-baixa-latencia.md ───── o que o modo vai fazer (não implementado)
                   ├─ pesquisa-bibliografica.md ── as fontes de tudo acima
                   └─ pesquisa-retune-speed-e-cor.md ─ Retune Speed e a origem da "cor"
@@ -65,6 +67,8 @@ lista **correções pendentes no texto do TCC 1** identificadas durante a revis�
 | Comparação com o estado da arte | ✅ concluída |
 | Redesenho de interface | 📋 decidido, não implementado |
 | Pesquisa sobre Retune Speed e "cor" | ✅ concluída — 1 decisão cancelada, 6 itens novos (K1–K6) |
-| Plano de implementação | ✅ escrito — 6 etapas, nenhuma executada |
+| Plano de implementação | ✅ escrito — 6 etapas |
+| **Etapa 0** — malha de correção unificada | ✅ **concluída** (2026-08-26), 17/17 casos idênticos |
+| Etapas 1–5 | ⬜ não iniciadas |
 | Modo de baixa latência | ⏸️ especificado, implementação suspensa |
 | Correções de código (§8.3) | ⏳ não medidas |
