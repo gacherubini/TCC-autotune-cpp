@@ -32,12 +32,12 @@
 
 // ----------------------------------------------------------------------------
 //  Parâmetros do streaming. Espelham as flags de linha de comando do
-//  autotune_rt (forca, escala já é global via definirEscala/g_permitida,
+//  autotune_rt (mix, escala já é global via definirEscala/g_permitida,
 //  tolCents, glideMs, look, frame/hop, fmin/fmax) para que o driver de teste
 //  possa repassar os mesmos argumentos usados nas versões offline/causal.
 // ----------------------------------------------------------------------------
 struct StreamParams {
-    double forca    = 1.0;     // 0..1: o quanto puxa em direção à nota da escala
+    double mix      = 1.0;     // 0..1: seco/molhado (0 = só a entrada, 1 = só o corrigido)
     double tolCents = 0.0;     // zona morta (cents) ao redor da nota-alvo
     double glideMs  = 0.0;     // tempo de "deslize" até a nota-alvo (1 polo)
     int    look     = 4;       // look-ahead (em quadros) do Viterbi causal
@@ -117,13 +117,13 @@ public:
     // -------------------------------------------------------------------
     //  updateLiveParams() — CAMINHO C2 (plugin): atualiza, EM TEMPO REAL e
     //  sem realocar nada, os parâmetros que NÃO mudam as dimensões do motor
-    //  (força, zona morta em cents, glide em ms). É seguro chamar dentro do
+    //  (mix seco/molhado, zona morta em cents, glide em ms). É seguro chamar dentro do
     //  process()/processBlock (RT-safe: só escreve escalares lidos depois por
     //  emitirAmostras). Já os parâmetros ESTRUTURAIS (look, fmin/fmax via voz,
     //  frame, hop) mudam ringbuffers/HMM/latência → exigem prepare() de novo.
     // -------------------------------------------------------------------
-    void updateLiveParams(double forca, double tolCents, double glideMs) {
-        p.forca = forca; p.tolCents = tolCents; p.glideMs = glideMs;
+    void updateLiveParams(double mix, double tolCents, double glideMs) {
+        p.mix = mix; p.tolCents = tolCents; p.glideMs = glideMs;
     }
 
     // -------------------------------------------------------------------
@@ -277,9 +277,24 @@ public:
         // (lida < lat) ou enquanto a síntese ainda não finalizou essa posição,
         // entregamos silêncio. 'lida' avança SEMPRE de 'n' (amostra-a-amostra
         // com a entrada) — é o índice que materializa o atraso fixo.
+        //
+        // ETAPA 2 — mistura seco/molhado. O ponto que exige atencao: 'src' e' o
+        // indice ABSOLUTO da amostra que esta saindo agora. O molhado vem de
+        // outBuf[src] e o seco vem de xAll[src] -- o MESMO indice. Nao e'
+        // coincidencia nem economia: e' o que garante que os dois sinais estejam
+        // alinhados no tempo. Pegar o seco "de agora" (xAll.back()) somaria o
+        // sinal a uma copia sua deslocada de latSamples -> filtro-pente audivel.
+        //
+        // Consequencia deliberada: com mix=0 a saida NAO e' a entrada instantanea,
+        // e sim a entrada ATRASADA da latencia do motor. E' o comportamento certo
+        // para um plugin que reporta latencia ao host -- se o bypass nao atrasasse,
+        // baixar o Mix deslocaria o audio no tempo. O host compensa o atraso; o
+        // que ele nao pode compensar e' um atraso que aparece e some.
         for (int i = 0; i < n; ++i) {
             long long src = lida - (long long)latSamples;
-            out[i] = (src >= 0 && src < synthFront) ? outBuf[(size_t)src] : 0.0f;
+            const float molhado = (src >= 0 && src < synthFront) ? outBuf[(size_t)src] : 0.0f;
+            const float seco    = (src >= 0 && src < (long long)xAll.size()) ? xAll[(size_t)src] : 0.0f;
+            out[i] = misturar(seco, molhado, p.mix);
             ++lida;
         }
     }
@@ -428,7 +443,7 @@ private:
         // identica a usada pelo gold e pelo causal. O estado (glide + ataque)
         // vive em 'corretor', membro desta classe, e atravessa as chamadas de
         // process() como o resto do estado de streaming.
-        ParamsCorrecao pc; pc.forca = p.forca; pc.tolCents = p.tolCents; pc.glideMs = p.glideMs;
+        ParamsCorrecao pc; pc.tolCents = p.tolCents; pc.glideMs = p.glideMs;
         for (int k=0;k<p.nHop;++k) {
             f0samp.push_back((float)f0q);
             foutSamp.push_back((float)corretor.proxima(f0q, pc));

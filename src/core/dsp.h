@@ -168,16 +168,61 @@ inline int notaMaisProximaMidi(double f) {
     return alvo;
 }
 
-// Nota-alvo: nota mais próxima da escala, com "forca" 0..1 e zona morta (tolCents).
-inline double notaAlvo(double f, double forca, double tolCents) {
+// Nota-alvo: nota mais próxima da escala, com zona morta (tolCents).
+//
+// ETAPA 2 do plano: o parâmetro "forca" (0..1, fração do desvio a corrigir) foi
+// REMOVIDO daqui. Ele não tinha equivalente no Auto-Tune e misturava duas coisas
+// distintas — "quanto corrigir" e "quanto do efeito ouvir". A segunda virou o
+// Mix seco/molhado (misturar(), abaixo); a primeira simplesmente não existe mais:
+// a correção agora é sempre integral, e o que se dosa é a mistura.
+//
+// A zona morta continua sendo o único controle que decide o ALVO. Vale notar,
+// para quem vier depois: uma tolerância maior que meio semitom (tolCents >= 50)
+// faz mov=0 sempre, logo alvo == f, logo beta = 1 no PSOLA. É por isso que
+// `tol=600` é o caso de teste que exercita o PSOLA inteiro em identidade —
+// exatamente a cobertura que a antiga `forca=0` dava. Ver docs/execucao-do-plano.md,
+// Etapa 2, onde a equivalência está verificada por checksum.
+inline double notaAlvo(double f, double tolCents) {
     double midi = 69.0 + 12.0 * std::log2(f / 440.0);
     int alvo = notaMaisProximaMidi(f);
     double errCents = (alvo - midi) * 100.0;
     double mag = std::fabs(errCents);
     double mov = (mag <= tolCents) ? 0.0
                                    : (errCents > 0 ? 1.0 : -1.0) * (mag - tolCents);
-    double corrMidi = midi + (forca * mov) / 100.0;
+    double corrMidi = midi + mov / 100.0;
     return 440.0 * std::pow(2.0, (corrMidi - 69.0) / 12.0);
+}
+
+// ---------------------------------------------------------------------------
+//  Mistura seco/molhado (Etapa 2 do plano) — o substituto da "forca".
+//
+//  A troca não é de grau, é de natureza:
+//    - a FORCA agia DENTRO da correção: o PSOLA recebia um alvo intermediário e
+//      sintetizava um sinal que não era nem o original nem o corrigido;
+//    - o MIX age DEPOIS: os dois sinais existem por inteiro e são cruzados
+//      linearmente. O que se ouve em 50% é metade do original mais metade do
+//      corrigido — não um terceiro sinal sintetizado num alvo intermediário.
+//
+//  Isso é o que todo plugin de efeito faz, e é o que a Antares expõe. Também é
+//  o que torna `mix = 0` um bypass EXATO: nenhuma operação sobra no caminho.
+//
+//  ⚠️ ALINHAMENTO — a armadilha desta função. O "seco" tem de ser a MESMA
+//  amostra que o "molhado". No caminho offline os dois vetores já são paralelos
+//  e não há o que fazer. No STREAMING o molhado sai atrasado da latência do
+//  motor: misturar o seco instantâneo com o molhado atrasado somaria o sinal com
+//  uma cópia deslocada de si mesmo — um filtro-pente, claramente audível. Por
+//  isso o process() indexa os dois pelo MESMO índice absoluto (ver
+//  autotune_stream.h). Quem replicar esta mistura em outro lugar precisa
+//  atrasar o seco na mesma medida.
+//
+//  Os extremos são casos exatos de propósito: mix=1 devolve o molhado bit a bit
+//  e mix=0 devolve o seco bit a bit, sem passar por multiplicação nenhuma. É o
+//  que sustenta o teste de identidade da etapa (test_mix.cpp).
+// ---------------------------------------------------------------------------
+inline float misturar(float seco, float molhado, double mix) {
+    if (mix >= 1.0) return molhado;
+    if (mix <= 0.0) return seco;
+    return (float)(mix * (double)molhado + (1.0 - mix) * (double)seco);
 }
 
 // ---------------------------------------------------------------------------
@@ -191,12 +236,14 @@ inline double notaAlvo(double f, double forca, double tolCents) {
 //  passaria a comparar coisas diferentes sem acusar erro.
 //
 //  Comportamento (INALTERADO nesta etapa -- a Etapa 3 e que muda a matematica):
-//    - alvo   = notaAlvo(f0, forca, tol), a nota da escala com zona morta;
+//    - alvo   = notaAlvo(f0, tol), a nota da escala com zona morta;
 //    - estado = filtro de 1 polo sobre o ALVO, em cents ("glide");
 //    - no ataque de nota o estado nasce no proprio alvo, sem trajeto ate ela.
 // ---------------------------------------------------------------------------
 struct ParamsCorrecao {
-    double forca    = 1.0;   // 0..1: fracao do desvio que e corrigida
+    // Etapa 2: 'forca' saiu daqui. Ela nao era um parametro da MALHA (nao tem
+    // dimensao de tempo, nem decide o alvo) -- era uma dosagem de efeito, e
+    // dosagem de efeito e' mix, aplicado depois do PSOLA. Ver misturar().
     double tolCents = 0.0;   // zona morta (cents) ao redor da nota-alvo
     double glideMs  = 0.0;   // constante de tempo do deslize ate o alvo
 };
@@ -210,7 +257,7 @@ public:
     // f0Hz <= 0 marca trecho nao-vozeado: devolve 0 e rearma o ataque.
     double proxima(double f0Hz, const ParamsCorrecao& p) {
         if (f0Hz <= 0.0) { tinhaNota = false; return 0.0; }
-        const double alvoHz    = notaAlvo(f0Hz, p.forca, p.tolCents);
+        const double alvoHz    = notaAlvo(f0Hz, p.tolCents);
         const double alvoCents = 1200.0 * std::log2(alvoHz / FMIN);
         const double tau       = p.glideMs / 1000.0;
         const double alpha     = (tau > 0.0) ? std::exp(-1.0 / (tau * fs)) : 0.0;

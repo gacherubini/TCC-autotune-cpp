@@ -56,6 +56,14 @@ done
 # ---------------------------------------------------------------------------
 #  Casos. Cobrem: bypass, correcao cheia, zona morta, glide, look-ahead,
 #  invariancia ao tamanho de bloco e escalas diferentes.
+#
+#  Etapa 2: os casos "forca0" viraram DOIS casos, porque a antiga forca=0 fazia
+#  duas coisas ao mesmo tempo e so uma delas sobreviveu como parametro:
+#    mix0   -> bypass de verdade; o PSOLA roda mas o resultado e' descartado;
+#    tol600 -> tolerancia maior que meio semitom => alvo == f0 => beta = 1, e o
+#              PSOLA roda EM IDENTIDADE, com o resultado indo para a saida.
+#  Os dois tem de dar o MESMO checksum. E' isso que os torna um teste: se o
+#  PSOLA ganhar drift de fase, tol600 muda e mix0 nao. Ver o par-a-par abaixo.
 # ---------------------------------------------------------------------------
 rodar() {  # $1 = nome do caso, $@ = comando
     local nome="$1"; shift
@@ -70,8 +78,9 @@ rodar() {  # $1 = nome do caso, $@ = comando
 
 echo "== rodando casos =="
 {
-  rodar gold_forca1      "$BIN/autotune"    "$WAV" gold_forca1.wav      1.0
-  rodar gold_forca0      "$BIN/autotune"    "$WAV" gold_forca0.wav      0.0
+  rodar gold_mix1        "$BIN/autotune"    "$WAV" gold_mix1.wav        1.0
+  rodar gold_mix0        "$BIN/autotune"    "$WAV" gold_mix0.wav        0.0
+  rodar gold_tol600      "$BIN/autotune"    "$WAV" gold_tol600.wav      1.0 crom tol=600
   rodar gold_tol30       "$BIN/autotune"    "$WAV" gold_tol30.wav       1.0 crom tol=30
   rodar gold_glide120    "$BIN/autotune"    "$WAV" gold_glide120.wav    1.0 crom glide=120
   rodar gold_cmaior      "$BIN/autotune"    "$WAV" gold_cmaior.wav      1.0 C
@@ -82,14 +91,38 @@ echo "== rodando casos =="
   rodar rt_glide0        "$BIN/autotune_rt" "$WAV" rt_glide0.wav        1.0 crom glide=0
   rodar rt_tol0          "$BIN/autotune_rt" "$WAV" rt_tol0.wav          1.0 crom tol=0
 
-  rodar st_forca1        "$BIN/stream_test" "$WAV" st_forca1.wav        1.0
-  rodar st_forca0        "$BIN/stream_test" "$WAV" st_forca0.wav        0.0
+  rodar st_mix1          "$BIN/stream_test" "$WAV" st_mix1.wav          1.0
+  rodar st_mix0          "$BIN/stream_test" "$WAV" st_mix0.wav          0.0
+  rodar st_tol600        "$BIN/stream_test" "$WAV" st_tol600.wav        1.0 crom tol=600
   rodar st_glide40       "$BIN/stream_test" "$WAV" st_glide40.wav       1.0 crom glide=40
   rodar st_tol15         "$BIN/stream_test" "$WAV" st_tol15.wav         1.0 crom tol=15
   rodar st_block64       "$BIN/stream_test" "$WAV" st_block64.wav       1.0 crom block=64
   rodar st_block512      "$BIN/stream_test" "$WAV" st_block512.wav      1.0 crom block=512
   rodar st_cmaior        "$BIN/stream_test" "$WAV" st_cmaior.wav        1.0 C
 } | tee "$TMP/resumo.txt"
+
+# ---------------------------------------------------------------------------
+#  Pares que TEM de bater entre si, independentemente da referencia gravada.
+#  Sao invariantes do algoritmo, nao fotografias do passado: valem mesmo depois
+#  de um re-baseline legitimo. Se um destes quebrar, o problema e' real.
+# ---------------------------------------------------------------------------
+echo
+echo "== invariantes (independem da referencia) =="
+par() {  # $1 = descricao, $2/$3 = arquivos que devem ser identicos
+    if cmp -s "$TMP/$2" "$TMP/$3"; then echo "  ok    $1"
+    else echo "  FALHA $1  ($2 != $3)"; INVAR_FALHOU=1; fi
+}
+INVAR_FALHOU=0
+par "PSOLA em identidade (beta=1) == bypass  [offline]"   gold_tol600.wav gold_mix0.wav
+par "PSOLA em identidade (beta=1) == bypass  [streaming]" st_tol600.wav   st_mix0.wav
+
+# Invariante quebrada e' defeito, nao mudanca de comportamento: para aqui, antes
+# de gravar uma referencia nova por cima de um resultado errado.
+if [[ "$INVAR_FALHOU" == "1" ]]; then
+    echo; echo "ERRO: invariante quebrada. Isso NAO se resolve com 'gravar' —"
+    echo "      significa que o PSOLA deixou de ser identidade em beta=1."
+    exit 1
+fi
 
 if [[ "$ACAO" == "gravar" ]]; then
     mkdir -p "$REF"

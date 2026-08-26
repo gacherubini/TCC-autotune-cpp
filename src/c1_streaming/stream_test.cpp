@@ -12,7 +12,7 @@
 //  a saída deve ser BIT-A-BIT (a menos de quantização 16-bit) igual à entrada,
 //  para qualquer 'block' — isso é o que valida o pipeline de build + I/O.
 //
-//  Uso: stream_test.exe <in.wav> [out.wav] [forca] [escala] [tol=] [glide=] [look=]
+//  Uso: stream_test.exe <in.wav> [out.wav] [mix] [escala] [tol=] [glide=] [look=]
 //                       [frame=] [hop=] [voz=] [fmin=] [fmax=] [block=B] [dumpf0=arq]
 // ============================================================================
 #define DR_WAV_IMPLEMENTATION
@@ -20,7 +20,7 @@
 #include "autotune_stream.h"
 
 int main(int argc, char** argv) {
-    if (argc < 2) { std::printf("Uso: %s <in.wav> [out.wav] [forca] [escala] [flags...] [block=B]\n", argv[0]); return 1; }
+    if (argc < 2) { std::printf("Uso: %s <in.wav> [out.wav] [mix] [escala] [flags...] [block=B]\n", argv[0]); return 1; }
 
     // ------------------------------------------------------------------
     // 1. Leitura dos argumentos de linha de comando (mesmo formato do
@@ -30,8 +30,9 @@ int main(int argc, char** argv) {
     // ------------------------------------------------------------------
     const char* saida = (argc >= 3) ? argv[2] : "saida_stream.wav";
     StreamParams p;
-    p.forca = (argc >= 4) ? std::atof(argv[3]) : 1.0;
-    if (p.forca < 0) p.forca = 0; if (p.forca > 1) p.forca = 1;
+    // ETAPA 2: 3o posicional era 'forca', agora e' 'mix' (seco/molhado).
+    p.mix = (argc >= 4) ? std::atof(argv[3]) : 1.0;
+    if (p.mix < 0) p.mix = 0; if (p.mix > 1) p.mix = 1;
     std::string a4 = (argc >= 5) ? argv[4] : "";
     const char* escalaTxt = (!a4.empty() && a4.find('=') == std::string::npos) ? argv[4] : "crom";
     definirEscala(escalaTxt);

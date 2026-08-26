@@ -9,7 +9,7 @@
 //  O resto do pipeline (marcas + PSOLA com preservação de duração + cobertura) é
 //  LOCAL (look-ahead ~1 período) e reaproveitado de dsp.h — o mesmo do offline.
 //
-//  Uso: autotune_rt.exe <in.wav> [out.wav] [forca] [escala] [tol=] [glide=] [look=L] [block=N]
+//  Uso: autotune_rt.exe <in.wav> [out.wav] [mix] [escala] [tol=] [glide=] [look=L] [block=N]
 // ============================================================================
 #define DR_WAV_IMPLEMENTATION
 #include "../core/dsp.h"
@@ -17,7 +17,7 @@
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::printf("Uso: %s <in.wav> [out.wav] [forca] [escala] [tol=] [glide=] [look=] [block=] [frame=] [hop=] [voz=] [fmin=] [fmax=] [dumpf0=]\n", argv[0]);
+        std::printf("Uso: %s <in.wav> [out.wav] [mix] [escala] [tol=] [glide=] [look=] [block=] [frame=] [hop=] [voz=] [fmin=] [fmax=] [dumpf0=]\n", argv[0]);
         std::printf("  look=  : quadros de look-ahead do Viterbi causal (0=guloso, +qualidade c/ +latencia). Padrao 4.\n");
         std::printf("  block= : tamanho do bloco de audio (afeta latencia). Padrao %d.\n", N_HOP);
         std::printf("  frame= : tamanho do quadro de analise (menor=menos latencia, mas detecta menos graves). Padrao %d.\n", N_FRAME);
@@ -29,9 +29,10 @@ int main(int argc, char** argv) {
         return 1;
     }
     const char* saida = (argc >= 3) ? argv[2] : "saida_rt.wav";
-    double forca = (argc >= 4) ? std::atof(argv[3]) : 1.0;
-    if (forca < 0) forca = 0;
-    if (forca > 1) forca = 1;
+    // ETAPA 2: 3o posicional era 'forca', agora e' 'mix' (seco/molhado).
+    double mix = (argc >= 4) ? std::atof(argv[3]) : 1.0;
+    if (mix < 0) mix = 0;
+    if (mix > 1) mix = 1;
     std::string a4 = (argc >= 5) ? argv[4] : "";
     const char* escalaTxt = (!a4.empty() && a4.find('=') == std::string::npos) ? argv[4] : "crom";
     definirEscala(escalaTxt);
@@ -92,8 +93,8 @@ int main(int argc, char** argv) {
     int fs = (int)taxa;
     if (FMAX > 0.45 * fs) FMAX = 0.45 * fs;   // segurança: tauMin = fs/FMAX >= ~2 amostras
     double fDetMin = (double)fs / (nFrame / 2);  // menor freq que a janela do YIN alcança
-    std::printf("Sinal: %.2f s | %u Hz | forca=%.2f | look=%d | frame=%d | hop=%d | block=%d\n",
-                (double)N / fs, taxa, forca, look, nFrame, nHop, block);
+    std::printf("Sinal: %.2f s | %u Hz | mix=%.2f | look=%d | frame=%d | hop=%d | block=%d\n",
+                (double)N / fs, taxa, mix, look, nFrame, nHop, block);
     std::printf("Faixa de pitch: FMIN=%.0f Hz .. FMAX=%.0f Hz%s%s%s\n", FMIN, FMAX,
                 vozNome.empty() ? "" : "  [voz=", vozNome.empty() ? "" : vozNome.c_str(), vozNome.empty() ? "" : "]");
     if (FMIN < fDetMin)
@@ -197,7 +198,7 @@ int main(int argc, char** argv) {
     std::vector<float> foutSamp(N, 0.0f);
     {
         // Etapa 0 do plano: malha compartilhada (ver dsp.h / CorretorAltura).
-        ParamsCorrecao pc; pc.forca = forca; pc.tolCents = tolCents; pc.glideMs = glideMs;
+        ParamsCorrecao pc; pc.tolCents = tolCents; pc.glideMs = glideMs;
         CorretorAltura corr; corr.prepare(fs);
         for (long long i = 0; i < N; ++i)
             foutSamp[i] = (float)corr.proxima(f0samp[i], pc);
@@ -205,6 +206,11 @@ int main(int argc, char** argv) {
 
     // 4. TD-PSOLA (compartilhado com o offline; local -> causal)
     std::vector<float> out = psolaSintetiza(x, N, f0samp, foutSamp, fs);
+
+    // 4b. ETAPA 2 — mistura seco/molhado. Fica DENTRO da regiao cronometrada de
+    // proposito: e' custo de processamento real, e omiti-lo inflaria o xRT a
+    // nosso favor. Alinhamento trivial aqui (o PSOLA preserva a duracao).
+    if (mix < 1.0) for (long long i = 0; i < N; ++i) out[i] = misturar(x[i], out[i], mix);
 
     auto t_fim = std::chrono::high_resolution_clock::now();
     double procS = std::chrono::duration<double>(t_fim - t_ini).count();

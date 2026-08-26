@@ -3,7 +3,7 @@
 //  Detecta pitch (pYIN), escolhe a nota-alvo (cromática) e corrige a afinação
 //  com TD-PSOLA, gravando um WAV corrigido.
 //
-//  Uso: autotune.exe <entrada.wav> [saida.wav] [forca 0..1]
+//  Uso: autotune.exe <entrada.wav> [saida.wav] [mix 0..1]
 // ============================================================================
 
 #define DR_WAV_IMPLEMENTATION
@@ -39,7 +39,8 @@ void suavizarVozeamento(std::vector<double>& tr, int minSeg, int maxGap) {
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::printf("Uso: %s <entrada.wav> [saida.wav] [forca 0..1] [escala] [tol=cents] [glide=ms]\n", argv[0]);
+        std::printf("Uso: %s <entrada.wav> [saida.wav] [mix 0..1] [escala] [tol=cents] [glide=ms]\n", argv[0]);
+        std::printf("  mix    : 0=so o sinal original, 1=so o corrigido (padrao 1). Negativo = modo copia.\n");
         std::printf("  escala: crom (padrao) | C, G, F#... (maior) | Am, C#m... (menor)\n");
         std::printf("  tol=   : zona morta em cents (nao corrige desvios menores) — natural. Padrao 0.\n");
         std::printf("  glide= : suavizacao temporal da afinacao em ms (portamento). Padrao 0 (snap).\n");
@@ -47,10 +48,15 @@ int main(int argc, char** argv) {
         return 1;
     }
     const char* saida = (argc >= 3) ? argv[2] : "saida_corrigida.wav";
-    bool bypass = (argc >= 4 && std::atof(argv[3]) < 0); // forca negativa = modo copia
-    double forca = (argc >= 4) ? std::atof(argv[3]) : 1.0;
-    if (forca < 0) forca = 0;
-    if (forca > 1) forca = 1;
+    // ETAPA 2: o 3o argumento posicional deixou de ser 'forca' e passou a ser
+    // 'mix' (seco/molhado). O nome mudou E o significado mudou -- comandos
+    // antigos com um valor intermediario (ex.: 0.5) produzem outro audio agora.
+    // Os extremos, que sao o que os testes usam, se comportam igual: 1.0
+    // continua sendo "efeito cheio". Ver docs/execucao-do-plano.md, Etapa 2.
+    bool bypass = (argc >= 4 && std::atof(argv[3]) < 0); // mix negativo = modo copia
+    double mix = (argc >= 4) ? std::atof(argv[3]) : 1.0;
+    if (mix < 0) mix = 0;
+    if (mix > 1) mix = 1;
     // escala = argv[4] só se for um nome de escala (não um flag chave=valor)
     std::string a4 = (argc >= 5) ? argv[4] : "";
     const char* escalaTxt = (!a4.empty() && a4.find('=') == std::string::npos) ? argv[4] : "crom";
@@ -78,7 +84,7 @@ int main(int argc, char** argv) {
     }
     drwav_free(dados, nullptr);
     int fs = (int)taxa;
-    std::printf("Sinal: %.2f s | %u Hz | forca=%.2f\n", (double)N / fs, taxa, forca);
+    std::printf("Sinal: %.2f s | %u Hz | mix=%.2f\n", (double)N / fs, taxa, mix);
 
     // MODO COPIA (diagnóstico): grava o mono sem processar e sai.
     if (bypass) {
@@ -166,7 +172,7 @@ int main(int argc, char** argv) {
     {
         // Etapa 0 do plano: a malha (zona morta + glide + reset no ataque) mora
         // agora em dsp.h, compartilhada com o causal e com o streaming.
-        ParamsCorrecao pc; pc.forca = forca; pc.tolCents = tolCents; pc.glideMs = glideMs;
+        ParamsCorrecao pc; pc.tolCents = tolCents; pc.glideMs = glideMs;
         CorretorAltura corr; corr.prepare(fs);
         for (long long i = 0; i < N; ++i)
             foutSamp[i] = (float)corr.proxima(f0samp[i], pc);
@@ -178,7 +184,7 @@ int main(int argc, char** argv) {
     for (long long q = 0; q < numQ; q += passo) {
         double t = (double)(q * N_HOP) / fs, f = trackF0[q];
         if (f > 0) {
-            double ft = notaAlvo(f, forca, tolCents);
+            double ft = notaAlvo(f, tolCents);
             double dc = 1200.0 * std::log2(ft / f); // cents de correção aplicados
             std::printf("  t=%5.1fs  %6.1f Hz -> %-4s (%6.1f Hz)  correcao %+5.0f ct\n",
                         t, f, hzParaNota(ft).c_str(), ft, dc);
@@ -190,6 +196,11 @@ int main(int argc, char** argv) {
     // 5/6. TD-PSOLA (marcas + reamostragem com preservação de duração + cobertura).
     // Função compartilhada em dsp.h — a mesma usada pelo motor causal (autotune_rt).
     std::vector<float> out = psolaSintetiza(x, N, f0samp, foutSamp, fs);
+
+    // 5b. ETAPA 2 — mistura seco/molhado. Aqui o alinhamento e' trivial: o PSOLA
+    // preserva a duracao, entao out[i] e x[i] sao a MESMA posicao no tempo. (No
+    // streaming nao e' assim; ver o comentario de misturar() em dsp.h.)
+    if (mix < 1.0) for (long long i = 0; i < N; ++i) out[i] = misturar(x[i], out[i], mix);
 
     // 6. Gravar WAV corrigido (16-bit PCM)
     if (!gravarWav16(saida, out, taxa)) { std::printf("ERRO ao criar '%s'\n", saida); return 1; }
