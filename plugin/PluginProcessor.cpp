@@ -12,10 +12,15 @@
 // ----------------------------------------------------------------------------
 //  IDs estáveis dos parâmetros (não mudar: o host salva por esse nome).
 //  Estruturais (mudam dimensões/latência -> re-prepare): look, voz, escala.
-//  "Ao vivo" (sem realocar): forca, tol, glide.
+//  "Ao vivo" (sem realocar): mix, tol, glide.
 // ----------------------------------------------------------------------------
 namespace ids {
-    static constexpr const char* forca  = "forca";
+    // Etapa 2 do plano: o id "forca" foi APOSENTADO e o parametro que ocupa o
+    // lugar dele chama-se "mix". Id novo de proposito: o significado mudou (era
+    // fracao do desvio corrigido, agora e' cruzamento seco/molhado), entao
+    // reaproveitar o id faria o host restaurar um valor antigo com semantica
+    // nova, calado. Com id novo, o projeto salvo simplesmente cai no padrao.
+    static constexpr const char* mix    = "mix";
     static constexpr const char* tol    = "tol";
     static constexpr const char* glide  = "glide";
     static constexpr const char* look   = "look";
@@ -59,9 +64,11 @@ TccAutotuneProcessor::criarParametros() {
     using namespace juce;
     AudioProcessorValueTreeState::ParameterLayout layout;
 
-    // forca 0..1 — o quanto puxa em direção à nota da escala (1 = "duro").
+    // mix 0..1 — cruzamento seco/molhado. 0 = so o sinal original (bypass
+    // exato, mas ainda atrasado da latencia do motor), 1 = so o corrigido.
+    // Padrao 1.0 para que a instalacao nova soe como a versao anterior soava.
     layout.add(std::make_unique<AudioParameterFloat>(
-        ParameterID{ ids::forca, 1 }, "Forca", NormalisableRange<float>(0.0f, 1.0f), 1.0f));
+        ParameterID{ ids::mix, 1 }, "Mix", NormalisableRange<float>(0.0f, 1.0f), 1.0f));
     // tol 0..50 cents — zona morta (preserva vibrato/microafinacao).
     layout.add(std::make_unique<AudioParameterFloat>(
         ParameterID{ ids::tol, 1 }, "Tolerancia (cents)", NormalisableRange<float>(0.0f, 50.0f), 15.0f));
@@ -94,7 +101,7 @@ TccAutotuneProcessor::TccAutotuneProcessor()
           .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       apvts(*this, nullptr, "PARAMS", criarParametros())
 {
-    pForca  = apvts.getRawParameterValue(ids::forca);
+    pMix    = apvts.getRawParameterValue(ids::mix);
     pTol    = apvts.getRawParameterValue(ids::tol);
     pGlide  = apvts.getRawParameterValue(ids::glide);
     pLook   = apvts.getRawParameterValue(ids::look);
@@ -102,7 +109,7 @@ TccAutotuneProcessor::TccAutotuneProcessor()
     pEscala = apvts.getRawParameterValue(ids::escala);
     pTonica = apvts.getRawParameterValue(ids::tonica);
 
-    // Só os estruturais disparam re-prepare (forca/tol/glide são "ao vivo").
+    // Só os estruturais disparam re-prepare (mix/tol/glide são "ao vivo").
     apvts.addParameterListener(ids::look,   this);
     apvts.addParameterListener(ids::voz,    this);
     apvts.addParameterListener(ids::escala, this);
@@ -129,7 +136,7 @@ void TccAutotuneProcessor::parameterChanged(const juce::String&, float) {
 // ----------------------------------------------------------------------------
 void TccAutotuneProcessor::aplicarParametros() {
     StreamParams p;
-    p.forca    = pForca  ? pForca->load()  : 1.0;
+    p.mix      = pMix    ? pMix->load()    : 1.0;
     p.tolCents = pTol    ? pTol->load()    : 0.0;
     p.glideMs  = pGlide  ? pGlide->load()  : 0.0;
     p.look     = pLook   ? (int) pLook->load() : 4;
@@ -191,8 +198,8 @@ void TccAutotuneProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         updateHostDisplay();   // pede ao host p/ reler a latência
     }
 
-    // (2) Parâmetros "ao vivo" (sem realocar): forca/tol/glide.
-    core.updateLiveParams(pForca->load(), pTol->load(), pGlide->load());
+    // (2) Parâmetros "ao vivo" (sem realocar): mix/tol/glide.
+    core.updateLiveParams(pMix->load(), pTol->load(), pGlide->load());
 
     // Segurança: se o host mandar um bloco maior que o previsto, cresce os
     // scratch buffers (não deveria ocorrer; JUCE garante n <= samplesPerBlock).

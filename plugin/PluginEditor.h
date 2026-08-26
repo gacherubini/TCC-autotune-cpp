@@ -64,12 +64,12 @@ private:
     TunerDisplay tuner;
 
     juce::ComboBox vozCombo, tonicaCombo, escalaCombo;
-    juce::Slider   forcaSlider, tolSlider, glideSlider, lookSlider;
-    juce::Label    vozLabel, tonicaLabel, escalaLabel, forcaLabel, tolLabel, glideLabel, lookLabel;
+    juce::Slider   mixSlider, tolSlider, glideSlider, lookSlider;
+    juce::Label    vozLabel, tonicaLabel, escalaLabel, mixLabel, tolLabel, glideLabel, lookLabel;
 
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ComboAttachment  = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
-    std::unique_ptr<SliderAttachment> forcaAttach, tolAttach, glideAttach, lookAttach;
+    std::unique_ptr<SliderAttachment> mixAttach, tolAttach, glideAttach, lookAttach;
     std::unique_ptr<ComboAttachment>  vozAttach, tonicaAttach, escalaAttach;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TccAutotuneEditor)

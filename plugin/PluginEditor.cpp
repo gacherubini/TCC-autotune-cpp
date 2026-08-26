@@ -124,7 +124,7 @@ TccAutotuneEditor::TccAutotuneEditor(TccAutotuneProcessor& p)
         l.setFont(juce::Font(11.0f));
         addAndMakeVisible(l);
     };
-    configurarSlider(forcaSlider, forcaLabel, "Forca");
+    configurarSlider(mixSlider, mixLabel, "Mix");
     configurarSlider(tolSlider,   tolLabel,   "Tolerancia");
     configurarSlider(glideSlider, glideLabel, "Glide");
     configurarSlider(lookSlider,  lookLabel,  "Look-ahead");
@@ -143,7 +143,7 @@ TccAutotuneEditor::TccAutotuneEditor(TccAutotuneProcessor& p)
     configurarCombo(escalaCombo, escalaLabel, "Escala", kEscalas);
 
     auto& apvts = processorRef.apvts;
-    forcaAttach = std::make_unique<SliderAttachment>(apvts, "forca", forcaSlider);
+    mixAttach = std::make_unique<SliderAttachment>(apvts, "mix",   mixSlider);
     tolAttach   = std::make_unique<SliderAttachment>(apvts, "tol",   tolSlider);
     glideAttach = std::make_unique<SliderAttachment>(apvts, "glide", glideSlider);
     lookAttach  = std::make_unique<SliderAttachment>(apvts, "look",  lookSlider);
@@ -188,7 +188,7 @@ void TccAutotuneEditor::resized() {
     montarCombo(vozCombo,    vozLabel);
     montarCombo(tonicaCombo, tonicaLabel);
     montarCombo(escalaCombo, escalaLabel);
-    montarSlider(forcaSlider, forcaLabel);
+    montarSlider(mixSlider, mixLabel);
     montarSlider(tolSlider,   tolLabel);
     montarSlider(glideSlider, glideLabel);
     montarSlider(lookSlider,  lookLabel);
