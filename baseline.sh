@@ -37,6 +37,23 @@ for par in "src/offline_causal/main.cpp:autotune" \
 done
 
 # ---------------------------------------------------------------------------
+#  Testes de unidade que se auto-verificam (nao entram no checksum: ou passam
+#  ou o script para aqui).
+# ---------------------------------------------------------------------------
+echo "== testes de unidade =="
+for t in src/tests/*.cpp; do
+    [[ -e "$t" ]] || break
+    nome=$(basename "$t" .cpp)
+    "$CXX" -std=c++17 -O2 -I "$RAIZ/external" "$RAIZ/$t" -o "$BIN/$nome" || {
+        echo "ERRO ao compilar $t"; exit 1; }
+    if "$BIN/$nome" > "$TMP/$nome.out" 2>&1; then
+        echo "  ok    $nome"
+    else
+        echo "  FALHA $nome:"; cat "$TMP/$nome.out"; exit 1
+    fi
+done
+
+# ---------------------------------------------------------------------------
 #  Casos. Cobrem: bypass, correcao cheia, zona morta, glide, look-ahead,
 #  invariancia ao tamanho de bloco e escalas diferentes.
 # ---------------------------------------------------------------------------

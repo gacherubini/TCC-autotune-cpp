@@ -23,6 +23,7 @@
 // define o índice salvo no parâmetro (ver nomeVoz()/textoEscala()). Usadas
 // também pela GUI custom (PluginEditor.cpp) para popular os juce::ComboBox.
 extern const juce::StringArray kVozes;
+extern const juce::StringArray kTonicas;
 extern const juce::StringArray kEscalas;
 
 class TccAutotuneProcessor : public juce::AudioProcessor,
@@ -83,7 +84,9 @@ private:
 
     // Mapeiam o índice do combo para o texto que dsp.h entende.
     static const char* nomeVoz(int idx);
-    static const char* textoEscala(int idx);
+    // Etapa 1: monta a string de definirEscala() a partir dos combos
+    // Tonica (0=C..11=B) e Escala (0=cromatica, 1=maior, 2=menor natural).
+    static std::string textoEscala(int tonica, int escala);
 
     AutotuneStream core;                 // o motor C1 (estado entre blocos)
     double          sampleRateAtual = 44100.0;
@@ -98,6 +101,7 @@ private:
     std::atomic<float>* pLook   = nullptr;
     std::atomic<float>* pVoz    = nullptr;
     std::atomic<float>* pEscala = nullptr;
+    std::atomic<float>* pTonica = nullptr;
 
     // Valores atuais do pitch (Hz; 0 = sem voz), escritos em processBlock()
     // e expostos via getUiF0()/getUiFout() acima.

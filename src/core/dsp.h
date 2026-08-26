@@ -137,6 +137,19 @@ inline void definirEscala(const char* txt) {
     for (int i = 0; i < 7; ++i) g_permitida[(pc + iv[i]) % 12] = true;
 }
 
+// Monta a string que definirEscala() entende a partir de dois indices de combo.
+// Existe aqui, e nao na GUI, para que a interface e os testes usem a MESMA
+// tabela — o mesmo motivo que levou a malha de correcao para dsp.h (Etapa 0).
+//   tonica: 0=C, 1=C#, 2=D, ... 11=B
+//   modo:   0=cromatico (ignora a tonica), 1=maior, 2=menor natural
+inline std::string montarEscala(int tonica, int modo) {
+    if (modo <= 0 || modo > 2) return "crom";
+    static const char* RAIZ[12] =
+        { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+    if (tonica < 0 || tonica > 11) tonica = 0;
+    return std::string(RAIZ[tonica]) + (modo == 2 ? "m" : "");
+}
+
 // Acha, entre as notas permitidas pela escala atual (g_permitida), a mais
 // próxima (em semitons) da frequência 'f'. Retorna o número MIDI dessa nota
 // (ex.: 69 = A4 = 440 Hz). Usada por notaAlvo() e pela GUI do plugin (nota-alvo

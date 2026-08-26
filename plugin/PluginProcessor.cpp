@@ -21,15 +21,23 @@ namespace ids {
     static constexpr const char* look   = "look";
     static constexpr const char* voz    = "voz";
     static constexpr const char* escala = "escala";
+    // Etapa 1 do plano: a tonica virou parametro proprio. O id "escala" foi
+    // MANTIDO (agora guarda so o modo) para nao inventar id novo a toa; quem
+    // abrir um projeto salvo com a versao antiga cai no indice equivalente
+    // quando ele existe, e em cromatico quando nao existe.
+    static constexpr const char* tonica = "tonica";
 }
 
 // Listas dos combos. A ORDEM define o índice salvo — manter em sincronia com
 // nomeVoz()/textoEscala() abaixo.
 const juce::StringArray kVozes  {
     "Baixo", "Baritono", "Tenor", "Contralto", "Mezzo", "Soprano", "Instrumento" };
+// Etapa 1: 12 tonicas x 3 modos = 24 tonalidades + cromatico, no lugar dos
+// 6 combos fixos que existiam antes (ver docs/execucao-do-plano.md).
+const juce::StringArray kTonicas {
+    "C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab", "A", "A#/Bb", "B" };
 const juce::StringArray kEscalas {
-    "Cromatica", "Do maior (C)", "La menor (Am)", "Sol maior (G)",
-    "Mi menor (Em)", "Fa maior (F)", "Re menor (Dm)" };
+    "Cromatica", "Maior", "Menor natural" };
 
 const char* TccAutotuneProcessor::nomeVoz(int idx) {
     switch (idx) {
@@ -38,11 +46,9 @@ const char* TccAutotuneProcessor::nomeVoz(int idx) {
         default: return "instrumento";
     }
 }
-const char* TccAutotuneProcessor::textoEscala(int idx) {
-    switch (idx) {
-        case 0: return "crom"; case 1: return "C";  case 2: return "Am"; case 3: return "G";
-        case 4: return "Em";   case 5: return "F";  case 6: return "Dm"; default: return "crom";
-    }
+// A tabela mora em dsp.h (montarEscala), para que GUI e testes usem a mesma.
+std::string TccAutotuneProcessor::textoEscala(int tonica, int escala) {
+    return montarEscala(tonica, escala);
 }
 
 // ----------------------------------------------------------------------------
@@ -70,6 +76,9 @@ TccAutotuneProcessor::criarParametros() {
         ParameterID{ ids::voz, 1 }, "Voz (tessitura)", kVozes, 3));
     // escala — cromatica ou tonica maior/menor. ESTRUTURAL (re-prepare por simplicidade).
     layout.add(std::make_unique<AudioParameterChoice>(
+        ParameterID{ ids::tonica, 1 }, "Tonica", kTonicas, 0));
+
+    layout.add(std::make_unique<AudioParameterChoice>(
         ParameterID{ ids::escala, 1 }, "Escala", kEscalas, 0));
 
     return layout;
@@ -91,17 +100,20 @@ TccAutotuneProcessor::TccAutotuneProcessor()
     pLook   = apvts.getRawParameterValue(ids::look);
     pVoz    = apvts.getRawParameterValue(ids::voz);
     pEscala = apvts.getRawParameterValue(ids::escala);
+    pTonica = apvts.getRawParameterValue(ids::tonica);
 
     // Só os estruturais disparam re-prepare (forca/tol/glide são "ao vivo").
     apvts.addParameterListener(ids::look,   this);
     apvts.addParameterListener(ids::voz,    this);
     apvts.addParameterListener(ids::escala, this);
+    apvts.addParameterListener(ids::tonica, this);
 }
 
 TccAutotuneProcessor::~TccAutotuneProcessor() {
     apvts.removeParameterListener(ids::look,   this);
     apvts.removeParameterListener(ids::voz,    this);
     apvts.removeParameterListener(ids::escala, this);
+    apvts.removeParameterListener(ids::tonica, this);
 }
 
 void TccAutotuneProcessor::parameterChanged(const juce::String&, float) {
@@ -128,7 +140,8 @@ void TccAutotuneProcessor::aplicarParametros() {
     p.fmin = fmin; p.fmax = fmax;
 
     // Escala é global (g_permitida via definirEscala), lida por notaAlvo.
-    definirEscala(textoEscala(pEscala ? (int) pEscala->load() : 0));
+    definirEscala(textoEscala(pTonica ? (int) pTonica->load() : 0,
+                              pEscala ? (int) pEscala->load() : 0).c_str());
 
     core.prepare(sampleRateAtual, p);
     setLatencySamples(core.getLatencySamples());   // aparece na barra do Ableton

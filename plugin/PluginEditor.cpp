@@ -139,6 +139,7 @@ TccAutotuneEditor::TccAutotuneEditor(TccAutotuneProcessor& p)
         addAndMakeVisible(l);
     };
     configurarCombo(vozCombo,    vozLabel,    "Voz",    kVozes);
+    configurarCombo(tonicaCombo, tonicaLabel, "Tonica", kTonicas);
     configurarCombo(escalaCombo, escalaLabel, "Escala", kEscalas);
 
     auto& apvts = processorRef.apvts;
@@ -147,6 +148,7 @@ TccAutotuneEditor::TccAutotuneEditor(TccAutotuneProcessor& p)
     glideAttach = std::make_unique<SliderAttachment>(apvts, "glide", glideSlider);
     lookAttach  = std::make_unique<SliderAttachment>(apvts, "look",  lookSlider);
     vozAttach    = std::make_unique<ComboAttachment>(apvts, "voz",    vozCombo);
+    tonicaAttach = std::make_unique<ComboAttachment>(apvts, "tonica", tonicaCombo);
     escalaAttach = std::make_unique<ComboAttachment>(apvts, "escala", escalaCombo);
 
     setSize(480, 320);
@@ -168,7 +170,8 @@ void TccAutotuneEditor::resized() {
 
     area.removeFromTop(10); // espaco entre o afinador e a faixa de controles
 
-    const int n = 6;
+    // Etapa 1: 7 colunas — a Tonica entrou ao lado da Escala.
+    const int n = 7;
     const int largura = area.getWidth() / n;
 
     auto montarCombo = [&](juce::ComboBox& ctrl, juce::Label& label) {
@@ -183,6 +186,7 @@ void TccAutotuneEditor::resized() {
     };
 
     montarCombo(vozCombo,    vozLabel);
+    montarCombo(tonicaCombo, tonicaLabel);
     montarCombo(escalaCombo, escalaLabel);
     montarSlider(forcaSlider, forcaLabel);
     montarSlider(tolSlider,   tolLabel);

@@ -7,7 +7,7 @@
 | Etapa | Status | Data |
 |---|---|---|
 | **0 — malha de correção unificada** | ✅ **concluída** | 2026-08-26 |
-| 1 — 24 tonalidades | ⬜ não iniciada | |
+| **1 — 24 tonalidades** | ✅ **concluída** (plugin não compilado localmente — ver ressalva) | 2026-08-26 |
 | 2 — Mix / remoção da Forca | ⬜ não iniciada | |
 | 3 — Retune Speed (funde o Glide) | ⬜ não iniciada | |
 | 4 — Humanize | ⬜ não iniciada | |
@@ -112,3 +112,70 @@ medir antes — o xRT atual é 0,025, então provavelmente não é gargalo.
 Com três cópias, uma divergência entre elas quebraria **em silêncio** a comparação C1 × gold —
 o teste passaria a comparar coisas diferentes sem acusar erro. Agora existe uma implementação
 só, e as etapas seguintes mudam a matemática **em um lugar**.
+
+---
+
+## Etapa 1 — 24 tonalidades
+
+**Concluída em 2026-08-26. Muda apenas a interface do plugin; o DSP e os CLIs não mudam.**
+
+### O que foi feito
+
+O combo único `Escala`, com 6 tonalidades fixas mais cromático, virou **dois** combos:
+`Tonica` (12) × `Escala` (cromática / maior / menor natural) = **24 tonalidades**.
+
+O motor nunca teve a limitação — `definirEscala()` (`dsp.h`) sempre calculou as classes
+permitidas para qualquer tônica. A restrição era só a lista de strings do plugin.
+
+| Arquivo | Mudança |
+|---|---|
+| `src/core/dsp.h` | `+montarEscala(tonica, modo)` — a tabela de nomes, num lugar só |
+| `plugin/PluginProcessor.cpp/.h` | novo parâmetro `tonica`; `textoEscala()` delega a `montarEscala()` |
+| `plugin/PluginEditor.cpp/.h` | combo novo; a faixa de controles foi de 6 para 7 colunas |
+| `src/tests/test_escalas.cpp` | **novo** — 6 seções de verificação |
+
+**Decisão de desenho:** a tabela de nomes foi para `dsp.h`, não para a GUI. Mesmo motivo da
+Etapa 0 — se a GUI tivesse a própria cópia, o teste verificaria uma lógica e o plugin
+executaria outra. Assim o teste exercita **exatamente** a função que o plugin chama.
+
+### Verificação
+
+```
+./baseline.sh conferir
+→ ok  test_escalas
+→ IDENTICO — nada mudou.
+```
+
+O `test_escalas` (agora rodado pelo `baseline.sh`) cobre:
+
+| Seção | O que prova |
+|---|---|
+| 1 · Regressão | as **6 escalas antigas** produzem exatamente o mesmo conjunto de notas |
+| 2 · Cobertura | as **24 tonalidades** dão 7 notas cada, com os intervalos certos |
+| 3 · Enarmonia | `Db`≡`C#`, `Eb`≡`D#`, `Gb`≡`F#`, `Ab`≡`G#`, `Bb`≡`A#` (e menores) |
+| 4 · Entrada inválida | `""`, `"H"`, `"xyz"` caem em cromático sem travar |
+| 5 · Os 36 combos da GUI | 12 tônicas × 3 modos, pela função que o plugin realmente chama |
+| 6 · Índice fora da faixa | tônica −1/12/99 e modo −1/3/99 não quebram |
+
+Os 17 casos de áudio continuam idênticos — como esperado, já que os CLIs recebem a escala como
+string e **já aceitavam as 24 tonalidades desde sempre**.
+
+### ⚠️ Ressalva — o plugin não foi compilado
+
+**Esta máquina não tem CMake nem JUCE**, então o VST3 não foi construído. Foram verificados:
+
+- ✅ a lógica de mapeamento (`montarEscala`), pelo teste, na função real;
+- ✅ que os CLIs e o núcleo não regrediram (17/17 idênticos);
+- ❌ **a compilação do plugin e o comportamento dos ComboBox na GUI.**
+
+**Antes de fechar a etapa, rodar `compilar.bat` + o build do plugin em máquina Windows** e
+conferir que os dois combos aparecem e mudam a escala.
+
+### Quebra de compatibilidade, como decidido
+
+Projetos de DAW salvos com a versão anterior **não recuperam a escala**: o parâmetro `escala`
+mudou de 7 opções para 3, e a tônica passou a ser um parâmetro novo (`tonica`). Um projeto
+antigo em "Sol maior" (índice 3) abrirá como "Menor natural" com tônica C.
+
+Isso foi **decidido e aceito** (Decisão 4 em [historico-e-decisoes.md](historico-e-decisoes.md)):
+o plugin não tem base instalada. Registrado aqui para constar do texto do TCC.
