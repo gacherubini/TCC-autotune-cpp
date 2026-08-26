@@ -44,7 +44,7 @@ Controles do Auto-Tune Artist (view ADVANCED) contra os do protótipo
 | Display de nota + medidor de cents | `TunerDisplay`, **duas agulhas** | ✅ o protótipo mostra *antes* **e** *depois* |
 | — | `Look-ahead` (0–16 quadros) | ➕ o Auto-Tune **não expõe** isso |
 | Mix seco/molhado | — | ❌ ausente (item C4 do backlog) |
-| — | `Forca` (0–1) | ➕ o Auto-Tune **não tem** equivalente — ver §4 |
+| — | `Forca` (0–1) | ➕ o Auto-Tune **não tem** equivalente — ver §4. ⚠️ **decidido remover** |
 
 Legenda: ✅ paridade · ⚠️ existe com ressalva · ❌ ausente e relevante · 🔵 ausente e fora do
 escopo · ➕ o protótipo tem e o Auto-Tune não.
@@ -78,6 +78,16 @@ const juce::StringArray kEscalas {
 tonalidade com mais de um sustenido ou bemol. São **6 de 24** tonalidades disponíveis.
 
 É a maior melhoria por linha de código do projeto: o DSP não muda, só a montagem do combo.
+
+> 🔴 **Esta lacuna não é hipotética — ela bloqueou o teste de usuário.** Para realizar a
+> sessão foi preciso procurar um instrumental que estivesse numa das 6 tonalidades
+> disponíveis, em vez de escolher o material livremente. Registrado como **Achado 3** em
+> [teste-de-usuario.md §5-bis](teste-de-usuario.md), com a consequência metodológica de que o
+> repertório do teste ficou enviesado pela limitação da ferramenta.
+>
+> Isso muda o peso do item: ele deixa de ser "paridade com o concorrente" e passa a ser
+> **correção de uma falha de usabilidade observada em uso real**. É o argumento mais forte, e
+> é o que deve ir para o texto do TCC.
 
 ---
 
@@ -166,11 +176,11 @@ pesquisa bibliográfica.
 
 ### Nível 1 — necessário para ser um *plugin*, não só um autotune
 
-| Item | Por quê |
-|---|---|
-| `KEY` × `SCALE` separados (24 tonalidades) | hoje só 6 das 24 são alcançáveis (§3) |
-| **Mix seco/molhado** | `Forca` mistura *afinação*, não *sinal*. Não é a mesma coisa |
-| **Detune** (afinação de referência) | A4 = 440 Hz está cravado; inviabiliza tocar com material fora de 440 |
+| Item | Por quê | Status |
+|---|---|---|
+| `KEY` × `SCALE` separados (24 tonalidades) | hoje só 6 das 24 são alcançáveis (§3). **Bloqueou o teste de usuário** — ver [Achado 3](teste-de-usuario.md) | ✅ **decidido** |
+| **Mix seco/molhado** | `Forca` mistura *afinação*, não *sinal*. Não é a mesma coisa | ✅ **decidido** — substitui a `Forca` |
+| **Detune** (afinação de referência) | A4 = 440 Hz está cravado; inviabiliza tocar com material fora de 440 | ⏳ não decidido |
 
 ### Nível 2 — esperado de um autotune, e já mapeado no backlog
 

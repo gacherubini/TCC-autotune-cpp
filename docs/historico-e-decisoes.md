@@ -209,8 +209,28 @@ a nota e controlar apenas o **tempo**. Ver [comparacao-antares.md §4](comparaca
 
 **Ressalva registrada:** `Forca = 0` é hoje o caminho de bypass usado pelo teste de regressão
 bit-perfect (`python/bench_stream.py` verifica identidade em `forca = 0`). **Remover `Forca`
-exige substituir esse teste** por um bypass explícito ou por um mix seco/molhado. Isso não pode
-ser esquecido na implementação.
+exige substituir esse teste.**
+
+> ✅ **Resolvido em 2026-08-26 — decisão do autor: mix seco/molhado.**
+>
+> A `Forca` é substituída por um **mix seco/molhado** (item C4 do backlog), que passa a
+> acumular as duas funções:
+>
+> 1. **Controle musical.** Mistura de *sinal*, não de *afinação* — é o recurso que engenheiros
+>    usam para devolver naturalidade, e é o que faltava na interface (ver
+>    [comparacao-antares.md §5](comparacao-antares.md), Nível 1).
+> 2. **Caminho de bypass para o teste de regressão.** Com `mix = 0%` (100% seco) a saída deve
+>    ser **bit-idêntica** à entrada, exatamente como `forca = 0` era hoje. O
+>    `python/bench_stream.py` passa a verificar identidade nessa condição.
+>
+> **Diferença conceitual que precisa ficar clara no texto do TCC:** `Forca = 0` e `mix = 0%`
+> produzem o mesmo áudio, mas por motivos diferentes. `Forca = 0` mandava o corretor mirar na
+> própria altura do cantor (o PSOLA rodava, com β = 1); `mix = 0%` **não processa** — devolve a
+> entrada. O segundo é mais barato e mais honesto como bypass.
+>
+> **Consequência não óbvia:** com o mix, `bench_stream.py` deixa de exercitar o caminho de
+> PSOLA com β = 1. Esse teste ainda tem valor (ele pegava drift de fase), então convém
+> **manter os dois**: identidade por `mix = 0%` e identidade por β = 1 forçado.
 
 ### Decisão 2 — renomear `Tolerancia` para `Flex-Tune`
 
@@ -268,7 +288,27 @@ Ré maior, Si bemol maior ou Mi maior — qualquer tonalidade com mais de um sus
 `definirEscala()`. É a maior melhoria por linha de código identificada no projeto.
 
 **Nota de compatibilidade:** trocar um `AudioParameterChoice` por dois quebra o estado salvo.
-Definir estratégia de migração (ou aceitar a quebra e documentar) antes de implementar.
+
+> ✅ **Resolvido em 2026-08-26 — decisão do autor: expor todas as tonalidades, aceitando a
+> quebra de estado salvo.**
+>
+> **A justificativa deixou de ser teórica.** Durante a preparação do teste de usuário foi
+> preciso **procurar um instrumental que estivesse em uma das 6 tonalidades disponíveis**, em
+> vez de escolher o material musical livremente. Isso foi registrado retroativamente como
+> **Achado 3** do teste de usuário — ver
+> [teste-de-usuario.md §5-bis](teste-de-usuario.md).
+>
+> Ou seja: a limitação não é uma lacuna de paridade com o Auto-Tune detectada em análise de
+> escritório. É uma **falha de usabilidade observada em uso real**, que chegou a **enviesar o
+> repertório do próprio teste** (registrada como limitação metodológica §6, item 7).
+>
+> **A quebra de estado salvo é aceitável** porque o plugin ainda não tem base instalada — não
+> há projetos de terceiros a preservar. Documentar a quebra e seguir.
+>
+> **Escopo confirmado:** 12 tônicas × {cromática, maior, menor natural}. Os modos gregos e as
+> menores harmônica/melódica **não** entram — não foram pedidos, e o `definirEscala()` hoje só
+> conhece `maior[7]` e `menorN[7]` (`dsp.h:132-133`). Ampliar além disso seria mudança de DSP,
+> não de interface, e sairia do escopo desta decisão.
 
 ### Decisão 5 — modo de baixa latência
 
@@ -288,13 +328,18 @@ coloração**; só o v2, que exige mudança de arquitetura de detecção (CMNDF 
 
 ### Ordem de implementação acordada
 
-| # | Item | Muda DSP? | Risco |
-|---|---|---|---|
-| 1 | Renomear Tolerancia → Flex-Tune | não | nenhum |
-| 2 | 24 tonalidades (Key × Scale) | não | quebra estado salvo |
-| 3 | Adicionar Retune Speed | sim (onde o polo age) | médio |
-| 4 | Remover Forca | sim | exige novo teste de bypass |
-| 5 | Modo de baixa latência | v1 não, v2 sim | ⏸️ suspenso até §8 respondida |
+| # | Item | Muda DSP? | Risco | Questões em aberto |
+|---|---|---|---|---|
+| 1 | **24 tonalidades (Key × Scale)** | não | quebra estado salvo (aceito) | ✅ nenhuma |
+| 2 | Renomear Tolerancia → Flex-Tune | não | nenhum | ✅ nenhuma |
+| 3 | Remover Forca, adicionar mix seco/molhado | sim | teste de regressão a reescrever | ✅ nenhuma |
+| 4 | Adicionar Retune Speed | sim (onde o polo age) | médio | ⚠️ `Glide` coexiste ou funde? |
+| 5 | Modo de baixa latência | v1 não, v2 sim | alto | ⏸️ 6 questões em aberto |
+
+**A ordem mudou em 2026-08-26.** As 24 tonalidades subiram para o primeiro lugar: é o único
+item com risco nulo, causa trivial e **evidência direta de uso real** (Achado 3 do teste de
+usuário). Os itens 1–3 não têm mais nenhuma questão em aberto e podem ser implementados
+imediatamente. O item 4 tem uma decisão de projeto pendente; o item 5 tem seis.
 
 ---
 
