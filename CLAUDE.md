@@ -88,6 +88,13 @@ python python\bench_latencia.py  REM latência × qualidade × xRT, e contagem d
   `exemplo-antes.wav`). O texto do TCC **é** versionado, em `tcc-texto/` — só os artefatos de
   compilação do LaTeX (`.aux`, `.bbl`, `.pdf`…) ficam de fora.
 
+## Texto do TCC
+
+O LaTeX está em `tcc-texto/`, versionado. O Overleaf (conta gratuita, sem integração Git) é
+onde o autor escreve; a sincronização é via ZIP com `tcc-texto/sync-overleaf.sh` — veja
+`tcc-texto/README.md`. **Não edite `tcc-texto/` sem avisar que isso vai precisar ser subido
+manualmente no Overleaf** (`./tcc-texto/sync-overleaf.sh --alterados` lista o que subir).
+
 ## Problemas em aberto
 
 O teste com usuário reprovou dois requisitos não funcionais:
