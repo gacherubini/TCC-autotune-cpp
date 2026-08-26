@@ -1,0 +1,110 @@
+# CLAUDE.md — guia para agentes
+
+Contexto operacional deste repositório. Leia antes de mexer no código.
+
+## O que é
+
+Protótipo de autotune (correção automática de afinação vocal) em C++17, parte prática de um
+TCC de Ciência da Computação (PUCRS, 2026). Pipeline: **pYIN** (detecção de pitch) →
+**nota-alvo** (quantização 12-TET com zona morta e glide) → **TD-PSOLA** (deslocamento de
+pitch preservando formantes).
+
+Repositório irmão: [`TCC-autotune-python`](https://github.com/gacherubini/TCC-autotune-python)
+— estudo comparativo de algoritmos de detecção de pitch (autocorrelação, YIN, pYIN, SWIPE′)
+que fundamentou a escolha do pYIN.
+
+## Onde ler antes de agir
+
+| Preciso de… | Leia |
+|---|---|
+| Entender o sistema inteiro | [`docs/documentacao-tecnica.md`](docs/documentacao-tecnica.md) |
+| Saber o que está quebrado hoje | [`docs/teste-de-usuario.md`](docs/teste-de-usuario.md) e §8 do doc técnico |
+| Saber o que fazer a seguir | §9 (soluções) e §10 (backlog priorizado) do doc técnico |
+| Mexer no motor de tempo real | [`docs/arquitetura-streaming.md`](docs/arquitetura-streaming.md) |
+| Saber se algo já foi tentado | [`docs/historico-e-decisoes.md`](docs/historico-e-decisoes.md) |
+
+**Não reimplemente nada antes de checar `historico-e-decisoes.md`** — vários bugs sutis
+(drift de fase do PSOLA, cliques, compressão temporal) já foram caçados e resolvidos, e as
+soluções têm justificativa registrada.
+
+## Arquitetura em uma tela
+
+```
+src/core/dsp.h                      ← TODA a matemática. Compartilhado, sem cópia, por
+                                      offline + causal + streaming + plugin.
+                                      Mexer aqui afeta os quatro.
+src/offline_causal/main.cpp         → autotune.exe      (offline, Viterbi global = GOLD)
+src/offline_causal/autotune_rt.cpp  → autotune_rt.exe   (causal, Viterbi de lag fixo)
+src/c1_streaming/autotune_stream.h  ← núcleo de streaming (header-only). O plugin é uma
+                                      casca fina em volta disto.
+src/c1_streaming/stream_test.cpp    → stream_test.exe   (driver headless)
+plugin/                             → VST3 + Standalone (JUCE). Zero DSP próprio.
+```
+
+Regra do projeto: **DSP novo entra em `dsp.h` ou em `autotune_stream.h`. O plugin não
+implementa algoritmo.**
+
+## Build
+
+```bat
+compilar.bat          REM os 3 executáveis, via g++ (MinGW/scoop). Windows.
+cd plugin && build.bat  REM o plugin VST3 — exige MSVC Build Tools 2022, não g++.
+```
+
+Duas toolchains por necessidade: o caminho oficial do JUCE para VST3 no Windows é MSVC.
+
+## Verificação — rode isto depois de mexer em DSP
+
+Os scripts ficam em `python/` e usam o venv do repositório irmão
+(`..\TCC-autotune-python\.venv\Scripts\python.exe`). Precisam dos `.exe` compilados.
+
+```bat
+python python\bench_stream.py    REM streaming vs. gold + invariância ao tamanho de bloco
+python python\bench_pitch.py     REM trilha de F0 do streaming vs. gold
+python python\bench_frames.py    REM disparo de quadros do ring buffer
+python python\bench_latencia.py  REM latência × qualidade × xRT, e contagem de cliques
+```
+
+**Invariantes que não podem quebrar:**
+
+1. `forca = 0` produz saída **bit-perfect** idêntica à entrada. Se quebrar, há erro de fase.
+2. Correlação do streaming com o gold ≥ **0,995** (hoje: 0,997).
+3. Contagem de "pipoco" (descontinuidades > 30× a mediana) = **0**.
+4. A saída é **idêntica para qualquer tamanho de bloco** do host (64, 128, 256, 512).
+
+## Armadilhas conhecidas
+
+- **`W_TRANS` e `SIGMA_TRANS` estão em bins, não em cents.** Mudar `RES_CENTS` sem reescalar
+  esses dois muda o modelo probabilístico do HMM. Ver doc técnico §9.2 C2.
+- **Duas fórmulas de latência divergentes.** `autotune_rt.cpp` usa `1·fs/FMIN + block`;
+  `autotune_stream.h` usa `2·fs/FMIN` sem bloco. Padronizar antes de citar números.
+- **`psolaSintetiza()` normaliza por pico.** No streaming ela roda uma vez por janela, então
+  janelas diferentes podem receber ganhos diferentes. Ver §8.3, Achado 3.
+- **O streaming aloca dentro do callback de áudio** (`push_back` por amostra em `xAll`,
+  `f0samp`, `foutSamp`, `outBuf`). Viola a regra RT-safe. Ver §8.3, Achado 2.
+- **A janela de re-síntese cresce sem limite** durante notas longas (`autotune_stream.h:481`
+  recua até o início da região vozeada). Custo quadrático por frase. Ver §8.3, Achado 1.
+- **`*.wav` está no `.gitignore`.** Áudio gerado fica fora do repo (exceção versionada:
+  `exemplo-antes.wav`). O texto do TCC **é** versionado, em `tcc-texto/` — só os artefatos de
+  compilação do LaTeX (`.aux`, `.bbl`, `.pdf`…) ficam de fora.
+
+## Problemas em aberto
+
+O teste com usuário reprovou dois requisitos não funcionais:
+
+| | Situação | Meta |
+|---|---|---|
+| **Latência** | 57,9 ms algorítmica (`frame 1024 + look 4×256 + guarda 504`) | ≤ 20 ms |
+| **Naturalidade** | "duro, estático, robótico" na escuta | vibrato preservado, ataque com glide |
+
+Diagnóstico completo em §8 do doc técnico; soluções em §9; ordem de ataque em §10.
+
+## Convenções
+
+- **Idioma:** código, comentários e documentação em **português**. Mensagens de commit em
+  **inglês**.
+- **Comentários:** o código é didático por decisão de projeto (é um TCC) — comentários longos
+  explicando o *porquê* são a norma, não ruído. Mantenha o estilo ao editar.
+- **Nomes:** identificadores em português (`notaAlvo`, `marcas`, `forca`, `tinhaNota`).
+- **Sem dependências novas** sem necessidade: hoje são só `dr_wav.h` (header-only) e o JUCE
+  (só no plugin, via FetchContent).
