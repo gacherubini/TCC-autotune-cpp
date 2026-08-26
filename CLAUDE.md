@@ -23,6 +23,7 @@ que fundamentou a escolha do pYIN.
 | Mexer no motor de tempo real | [`docs/arquitetura-streaming.md`](docs/arquitetura-streaming.md) |
 | Saber se algo já foi tentado | [`docs/historico-e-decisoes.md`](docs/historico-e-decisoes.md) |
 | Mexer em **qualquer parâmetro do plugin** | [`docs/comparacao-antares.md`](docs/comparacao-antares.md) — as decisões já tomadas estão no histórico |
+| **Implementar qualquer coisa** | [`docs/plano-de-implementacao.md`](docs/plano-de-implementacao.md) — ⚠️ a **etapa 0** (extrair a malha duplicada em 3 arquivos) vem antes de tudo |
 | Trabalhar no **modo de baixa latência** | [`docs/modo-baixa-latencia.md`](docs/modo-baixa-latencia.md) — ⚠️ há 6 questões em aberto a resolver antes de codar |
 | Mexer em **Retune Speed, vibrato ou qualquer controle de expressão** | [`docs/pesquisa-retune-speed-e-cor.md`](docs/pesquisa-retune-speed-e-cor.md) — ⚠️ `Tolerancia` **não** é Flex-Tune, e formante **não** resolve "cor" |
 | Citar qualquer coisa no texto do TCC | [`docs/pesquisa-bibliografica.md`](docs/pesquisa-bibliografica.md) — e confira a [errata](docs/historico-e-decisoes.md#errata--afirmações-corrigidas-pela-pesquisa-bibliográfica-2026-08-26) antes de citar o doc técnico |

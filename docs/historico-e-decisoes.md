@@ -292,9 +292,29 @@ corrMidi    = midi + movFiltrado / 100.0;
 (efeito duro, que precisa continuar disponível) até ~200 ms. Ver
 [pesquisa-bibliografica.md §2.7](pesquisa-bibliografica.md).
 
-**Questão em aberto:** `Glide` e `Retune Speed` viram o mesmo controle, ou coexistem? O `Glide`
-atual tem função audível nas **transições** entre notas em legato, que o Retune Speed sozinho
-não cobre da mesma forma. Decidir antes de implementar.
+**Questão em aberto:** `Glide` e `Retune Speed` viram o mesmo controle, ou coexistem?
+
+> ✅ **Resolvido em 2026-08-26 — decisão do autor: fundir.**
+>
+> A fusão não é uma troca, é uma **generalização**. Com dois estados de filtro:
+>
+> ```
+> outCents = LP(alvoCents) + k·(realCents − LP(realCents))
+> ```
+>
+> | `k` | Comportamento |
+> |---:|---|
+> | **0** | `outCents = LP(alvo)` — **exatamente o Glide de hoje** |
+> | **1** | `outCents = real + LP(mov)` — Retune Speed da patente |
+> | **> 1** | vibrato exagerado — Natural Vibrato positivo (K1) |
+>
+> O comportamento antigo **não se perde**: vira o caso `k = 0`. Isso dá o teste de
+> não-regressão da etapa — com `k = 0` e o τ atual, a saída deve bater **amostra a amostra**
+> com a versão anterior.
+>
+> E o Natural Vibrato (K1) deixa de ser item separado: é o próprio `k`.
+>
+> Plano completo em [plano-de-implementacao.md](plano-de-implementacao.md).
 
 ### Decisão 4 — expor as 24 tonalidades
 
@@ -354,8 +374,8 @@ coloração**; só o v2, que exige mudança de arquitetura de detecção (CMNDF 
 |---|---|---|---|---|
 | 1 | **24 tonalidades (Key × Scale)** | não | quebra estado salvo (aceito) | ✅ nenhuma |
 | 2 | Remover Forca, adicionar mix seco/molhado | sim | teste de regressão a reescrever | ✅ nenhuma |
-| 3 | **Retune Speed** (polo sobre a correção) | sim | médio | ⚠️ `Glide` coexiste ou funde? |
-| 4 | **K1 · Natural Vibrato** | sim | 🟢 trivial | ✅ nenhuma — sai junto do item 3 |
+| 3 | **Retune Speed** (funde o `Glide`; polo sobre a correção) | sim | médio | ✅ nenhuma — fundir |
+| 4 | **K1 · Natural Vibrato** | sim | 🟢 trivial | ✅ **é o próprio `k`** da fusão |
 | 5 | **K2 · Humanize** | sim | 🟢 baixo | ✅ nenhuma — sai junto do item 3 |
 | 6 | **K3 · Create Vibrato** | sim | médio | ✅ nenhuma — parâmetros no manual |
 | 7 | **K4 · Amplitude Amount** | sim | 🟢 trivial | depende de K3 |
