@@ -11,6 +11,7 @@
 | **[comparacao-antares.md](comparacao-antares.md)** | Comparação controle a controle com o Auto-Tune Artist: o que o protótipo tem, o que falta e em que nível. Contém a análise dos **três eixos** (profundidade / limiar / tempo) e por que `Forca` não é Retune Speed. | Antes de mexer em qualquer parâmetro do plugin. |
 | **[modo-baixa-latencia.md](modo-baixa-latencia.md)** | Especificação do modo de baixa latência: cada mudança, o ganho, o custo, os números por preset de voz e **seis questões em aberto**. ⚠️ Nada implementado. | Antes de escrever a primeira linha do modo. |
 | **[pesquisa-bibliografica.md](pesquisa-bibliografica.md)** | Fundamentação das soluções: 5 artigos revisados por pares, a patente do Auto-Tune, manuais de fabricante. Cada afirmação com grau de evidência declarado. | Para citar qualquer coisa no texto do TCC. |
+| **[pesquisa-retune-speed-e-cor.md](pesquisa-retune-speed-e-cor.md)** | O que o Retune Speed é (manual oficial, verbatim), por que `Tolerancia` **não** é Flex-Tune, e a conclusão de que **formante não resolve "cor"**. Define os itens K1–K6. | Antes de implementar o Retune Speed ou qualquer controle de expressão. |
 
 ## Mapa rápido
 
@@ -21,7 +22,8 @@
    (raiz)         ├─ historico-e-decisoes.md ──── o que já foi tentado, decidido e corrigido
                   ├─ comparacao-antares.md ────── o que falta para ser um plugin completo
                   ├─ modo-baixa-latencia.md ───── o que o modo vai fazer (não implementado)
-                  └─ pesquisa-bibliografica.md ── as fontes de tudo acima
+                  ├─ pesquisa-bibliografica.md ── as fontes de tudo acima
+                  └─ pesquisa-retune-speed-e-cor.md ─ Retune Speed e a origem da "cor"
 ```
 
 ## ⚠️ Leia antes de citar a documentação técnica
@@ -60,5 +62,6 @@ lista **correções pendentes no texto do TCC 1** identificadas durante a revis�
 | Revisão bibliográfica | ✅ concluída |
 | Comparação com o estado da arte | ✅ concluída |
 | Redesenho de interface | 📋 decidido, não implementado |
+| Pesquisa sobre Retune Speed e "cor" | ✅ concluída — 1 decisão cancelada, 6 itens novos (K1–K6) |
 | Modo de baixa latência | ⏸️ especificado, implementação suspensa |
 | Correções de código (§8.3) | ⏳ não medidas |

@@ -29,6 +29,7 @@ Automática de Afinação Vocal*.
 | [`docs/comparacao-antares.md`](docs/comparacao-antares.md) | Comparação controle a controle com o Auto-Tune: o que falta para ser um plugin completo |
 | [`docs/modo-baixa-latencia.md`](docs/modo-baixa-latencia.md) | Especificação do modo de baixa latência — ⚠️ **nada implementado** |
 | [`docs/pesquisa-bibliografica.md`](docs/pesquisa-bibliografica.md) | As fontes: artigos, a patente do Auto-Tune, manuais |
+| [`docs/pesquisa-retune-speed-e-cor.md`](docs/pesquisa-retune-speed-e-cor.md) | O que é o Retune Speed, e por que **formante não dá "cor"** a um corretor |
 | [`tcc-texto/`](tcc-texto/) | O texto do TCC em LaTeX |
 
 > **Estado atual:** o pipeline funciona ponta a ponta e o plugin roda no Ableton, mas o teste

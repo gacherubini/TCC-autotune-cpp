@@ -31,13 +31,13 @@ Controles do Auto-Tune Artist (view ADVANCED) contra os do protótipo
 | **INPUT TYPE** (Soprano / Alto-Tenor / Low Male / Instrument / Bass Inst.) | `Voz` — 7 presets SATB | ✅ equivalente, e o protótipo é **mais granular** (7 contra 5) |
 | **KEY** (12 tônicas) + **SCALE** | `Escala` — 7 combos fixos | ⚠️ **lacuna** — ver §3 |
 | **RETUNE SPEED** (ms) | `Glide` (ms) | ⚠️ estrutura certa, sinal errado — ver §4 |
-| **FLEX-TUNE** (cents) | `Tolerancia` (cents) | ✅ equivalente, **nome divergente** |
+| **FLEX-TUNE** (cents) | `Tolerancia` (cents) | 🔴 **NÃO são equivalentes** — mecanismos opostos, ver nota abaixo |
 | **HUMANIZE** | — | ❌ ausente (é o item C1-b do backlog) |
 | **NATURAL VIBRATO** | — | ❌ ausente |
 | **TRACKING** | fixo no HMM | ❌ não exposto |
 | **TRANSPOSE** (semitons) | — | ❌ ausente (barato: o PSOLA já desloca altura) |
 | **DETUNE** (cents, afinação de referência) | — | ❌ ausente (A4 = 440 Hz cravado em `dsp.h:160`) |
-| **THROAT** (modelagem de trato) | — | 🔵 fora do escopo declarado |
+| **THROAT** (modelagem de trato) | — | 🔵 fora do escopo — e **comprovadamente inútil aqui** (ver pesquisa) |
 | **CLASSIC / FORMANT** | TD-PSOLA preserva formantes por construção | 🔵 fora do escopo declarado |
 | **HOLD** | — | 🔵 fora do escopo declarado |
 | **Teclado MIDI + edição por nota** (REMOVE / BYPASS, LATCH / MOMENTARY) | — | 🔵 `acceptsMidi() = false` (`PluginProcessor.h:48`) |
@@ -46,8 +46,16 @@ Controles do Auto-Tune Artist (view ADVANCED) contra os do protótipo
 | Mix seco/molhado | — | ❌ ausente (item C4 do backlog) |
 | — | `Forca` (0–1) | ➕ o Auto-Tune **não tem** equivalente — ver §4. ⚠️ **decidido remover** |
 
-Legenda: ✅ paridade · ⚠️ existe com ressalva · ❌ ausente e relevante · 🔵 ausente e fora do
-escopo · ➕ o protótipo tem e o Auto-Tune não.
+Legenda: ✅ paridade · ⚠️ existe com ressalva · 🔴 erro corrigido · ❌ ausente e relevante ·
+🔵 ausente e fora do escopo · ➕ o protótipo tem e o Auto-Tune não.
+
+> 🔴 **Correção de 2026-08-26 — `Tolerancia` ≠ Flex-Tune.**
+> A versão anterior desta tabela afirmava que os dois eram o mesmo controle com nomes
+> diferentes. **Está errado.** A leitura do manual oficial mostrou que são mecanismos
+> **opostos**: o `tol` não corrige *perto* da nota; o Flex-Tune não corrige *longe* dela.
+> Detalhes e citação verbatim em
+> [pesquisa-retune-speed-e-cor.md §2](pesquisa-retune-speed-e-cor.md).
+> A decisão de renomear foi **cancelada** por causa disso.
 
 ---
 
@@ -184,13 +192,15 @@ pesquisa bibliográfica.
 
 ### Nível 2 — esperado de um autotune, e já mapeado no backlog
 
-| Item | Referência no backlog |
-|---|---|
-| Retune Speed ao lado do Flex-Tune | C1 + C6 |
-| Humanize | C1-b |
-| Natural Vibrato | — |
-| Tracking exposto | — |
-| Transpose | barato: o PSOLA já desloca altura |
+| Item | Referência | Nota |
+|---|---|---|
+| **Retune Speed** | C1 | ✅ decidido. É a fundação da camada de expressão inteira |
+| **Natural Vibrato** | K1 | 🟢 **sai de graça com C1** — uma multiplicação |
+| **Humanize** | K2 | 🟢 **sai quase de graça com C1** — τ variável no tempo |
+| **Create Vibrato** | K3 | parâmetros já especificados pelo manual |
+| **Flex-Tune** (de verdade) | K5 | mecanismo novo, não renomeação |
+| Tracking exposto | — | hoje fixo no HMM |
+| Transpose | — | barato: o PSOLA já desloca altura |
 
 ### Nível 3 — fora do escopo, e a fronteira é defensável
 
@@ -198,10 +208,21 @@ Throat Length, Formant Correction, Hold, teclado MIDI e edição de nota por tec
 
 A [documentacao-tecnica.md §8.2](documentacao-tecnica.md#82-a-cor-por-que-soa-duro-e-estático)
 já argumenta que o protótipo é um **corretor**, não um **colorizador**. A pesquisa
-bibliográfica confirmou que a própria Antares trata Throat, Formant e Humanize como processos
-**adicionais**, documentados separadamente da correção de altura. A fronteira que o trabalho
-traça é a fronteira que o fabricante traça — isso é defensável na banca e **não deve ser
-apagado da narrativa**.
+bibliográfica confirmou que a própria Antares trata Throat e Formant como processos
+**adicionais**, documentados separadamente da correção de altura.
+
+> ✅ **Reforçado em 2026-08-26 por um resultado negativo com citação.**
+> Santacruz et al. (2016, *Applied Sciences* 6(11):368) mostram que a transformação de
+> envelope espectral só é perceptível em deslocamentos **da ordem de uma quinta** (~700 cents).
+> Correções de afinação movem dezenas de cents. **Processamento de formante não pode resolver
+> o problema de "cor" de um corretor** — a escala está errada por uma ordem de grandeza.
+>
+> Isso deixa de ser "escolha de escopo" e passa a ser **conclusão fundamentada**, o que é
+> muito mais forte na banca. Ver
+> [pesquisa-retune-speed-e-cor.md §3.1](pesquisa-retune-speed-e-cor.md).
+>
+> **Correção de rumo:** o *Humanize* sai do Nível 3. Ele não é timbre — é constante de tempo
+> variável, e vem quase de graça com o Retune Speed (item K2).
 
 ---
 

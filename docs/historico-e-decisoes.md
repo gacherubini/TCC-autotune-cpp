@@ -244,6 +244,28 @@ Adotar o nome do domínio elimina a ambiguidade no texto do TCC e na banca.
 **Nota de compatibilidade:** o `ParameterID` (`ids::tol`) **deve ser preservado** para não
 quebrar projetos de DAW já salvos. Muda o nome visível, não o identificador.
 
+> ❌ **CANCELADA em 2026-08-26**, após leitura do manual oficial do Auto-Tune Artist.
+> Ver [pesquisa-retune-speed-e-cor.md §2](pesquisa-retune-speed-e-cor.md).
+>
+> **A premissa estava errada.** O `tol` do protótipo e o Flex-Tune da Antares não são o mesmo
+> mecanismo com nomes diferentes — são **mecanismos opostos**. Verbatim do manual:
+>
+> > "When Flex-Tune is engaged, **it only applies correction as the performer approaches the
+> > target note**. As you move the control toward higher values, **the correction area around
+> > the scale note gets smaller**."
+>
+> | | `tol` do protótipo | Flex-Tune |
+> |---|---|---|
+> | Não corrige | **perto** da nota | **longe** da nota |
+> | Preserva | micro-variação *na* nota | macro-gesto *entre* notas |
+>
+> Adotar o nome criaria uma afirmação falsa de paridade que a banca pode conferir no manual.
+>
+> **Decisão revista: manter `Tolerância`.** O protótipo não perde nada — ele tem um mecanismo
+> diferente, que resolve um problema diferente. O texto do TCC deve **descrever corretamente o
+> que tem**, não reivindicar o que não tem. Implementar o Flex-Tune de verdade vira item novo
+> (**K5**), não renomeação.
+
 ### Decisão 3 — adicionar `Retune Speed`
 
 **O que muda:** parâmetro novo, em milissegundos, ao lado do Flex-Tune.
@@ -331,15 +353,32 @@ coloração**; só o v2, que exige mudança de arquitetura de detecção (CMNDF 
 | # | Item | Muda DSP? | Risco | Questões em aberto |
 |---|---|---|---|---|
 | 1 | **24 tonalidades (Key × Scale)** | não | quebra estado salvo (aceito) | ✅ nenhuma |
-| 2 | Renomear Tolerancia → Flex-Tune | não | nenhum | ✅ nenhuma |
-| 3 | Remover Forca, adicionar mix seco/molhado | sim | teste de regressão a reescrever | ✅ nenhuma |
-| 4 | Adicionar Retune Speed | sim (onde o polo age) | médio | ⚠️ `Glide` coexiste ou funde? |
-| 5 | Modo de baixa latência | v1 não, v2 sim | alto | ⏸️ 6 questões em aberto |
+| 2 | Remover Forca, adicionar mix seco/molhado | sim | teste de regressão a reescrever | ✅ nenhuma |
+| 3 | **Retune Speed** (polo sobre a correção) | sim | médio | ⚠️ `Glide` coexiste ou funde? |
+| 4 | **K1 · Natural Vibrato** | sim | 🟢 trivial | ✅ nenhuma — sai junto do item 3 |
+| 5 | **K2 · Humanize** | sim | 🟢 baixo | ✅ nenhuma — sai junto do item 3 |
+| 6 | **K3 · Create Vibrato** | sim | médio | ✅ nenhuma — parâmetros no manual |
+| 7 | **K4 · Amplitude Amount** | sim | 🟢 trivial | depende de K3 |
+| 8 | **K5 · Flex-Tune de verdade** | sim | médio | ⚠️ convive com `tol` como? |
+| 9 | **K6 · Targeting Ignores Vibrato** | sim | médio | ⚠️ mexe no Viterbi |
+| 10 | Modo de baixa latência | v1 não, v2 sim | alto | ⏸️ 6 questões em aberto |
+| — | ~~Renomear Tolerancia → Flex-Tune~~ | — | — | ❌ **cancelada** — premissa errada |
 
-**A ordem mudou em 2026-08-26.** As 24 tonalidades subiram para o primeiro lugar: é o único
-item com risco nulo, causa trivial e **evidência direta de uso real** (Achado 3 do teste de
-usuário). Os itens 1–3 não têm mais nenhuma questão em aberto e podem ser implementados
-imediatamente. O item 4 tem uma decisão de projeto pendente; o item 5 tem seis.
+**A ordem mudou duas vezes em 2026-08-26.**
+
+Primeiro, as 24 tonalidades subiram para o primeiro lugar: único item com risco nulo, causa
+trivial e **evidência direta de uso real** (Achado 3 do teste de usuário).
+
+Depois, a pesquisa sobre Retune Speed
+([pesquisa-retune-speed-e-cor.md](pesquisa-retune-speed-e-cor.md)) mostrou que o item 3
+**não é um controle — é a fundação da camada de expressão inteira**. Com o polo movido para a
+correção, a saída passa a ser `alvo + HP(real)`, e daí saem de graça:
+
+- **K1 (Natural Vibrato)** — um ganho `k` sobre o termo `HP(real)`. Uma multiplicação.
+- **K2 (Humanize)** — τ variável com o tempo desde o ataque. O `tinhaNota` já marca o ataque.
+
+Três controles expressivos pelo preço de um. Isso torna o item 3 o de melhor retorno da fila
+depois das tonalidades.
 
 ---
 
