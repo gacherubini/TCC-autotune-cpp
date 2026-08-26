@@ -1,0 +1,55 @@
+\documentclass[portuguese,oneside]{tcc}
+\usepackage{graphicx}
+\usepackage{multirow}
+\usepackage{nicefrac}
+\usepackage{algorithmic}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage[table]{xcolor}
+\usepackage{tabularx}
+\usepackage{tikz}
+
+
+\author{Gabriel Abreu Cherubini}
+
+\title{Desenvolvimento de um Protótipo Gratuito de Correção Automática de Afinação Vocal}
+      {Development of a Automatic Vocal Pitch Correction Prototype}
+
+
+\tipotrabalho{\ptci}       
+
+\curso{\cc} % Ciência da Computação
+
+\orientador{Dr. Marco Mangan}
+% \coorientador{Ciclano de Farias}
+
+\begin{document}
+
+\begin{resumo}{correção automática de afinação vocal, detecção de pitch, pYIN, SWIPE', TD-PSOLA, processamento digital de sinais}
+A correção automática de afinação vocal, também conhecida como autotune, é amplamente utilizada na produção musical, tanto para ajustes sutis de interpretação quanto para efeitos estéticos característicos. Em diversos contextos musicais, esse recurso tornou-se um elemento marcante da identidade sonora de determinados artistas. Nesse cenário, este trabalho apresenta o desenvolvimento de um protótipo gratuito de correção automática de afinação vocal, construído com apoio de bibliotecas de software livre e com foco na investigação e comparação de algoritmos de detecção de pitch. Inicialmente, foi realizado um levantamento de requisitos com um usuário experiente no uso de ferramentas de correção vocal, a fim de identificar expectativas e funcionalidades desejadas em uma solução desse tipo. Em seguida, foram estudados os fundamentos de áudio digital, frequência fundamental e detecção de pitch, e foram comparados, em Python, os algoritmos de autocorrelação, YIN, pYIN e SWIPE', avaliados sobre sinais sintéticos e sobre o conjunto de voz cantada Vocadito quanto a precisão, estabilidade temporal e custo computacional. Os resultados indicaram que, para a correção de afinação, a estabilidade temporal da trajetória de pitch --- e não apenas a precisão média --- é o critério decisivo, o que levou à escolha do pYIN como abordagem principal. Com base nessa escolha, o protótipo foi implementado em C++ com o framework JUCE, empregando a técnica TD-PSOLA para o deslocamento de pitch e um núcleo de processamento causal voltado à operação em tempo real, integrado como plugin de áudio. A avaliação qualitativa com usuários terá continuidade no próximo semestre, conforme o cronograma do trabalho.
+\end{resumo}
+
+
+%----------------------------------------------------------------
+% Abstract, com as palavras-chave passadas por parâmetro
+% (OBRIGATÓRIO, ao menos para teses e dissertações)
+%----------------------------------------------------------------
+
+
+%\listoffigures       % Lista de figuras      (OPCIONAL)
+%\listoftables        % Lista de tabelas      (OPCIONAL)
+%\listofalgorithms    % Lista de algoritmos   (OPCIONAL)
+% \listofacronyms      % Lista de siglas       (OPCIONAL)
+% \listofabbreviations % Lista de abreviaturas (OPCIONAL)
+% \listofsymbols       % Lista de símbolos     (OPCIONAL)
+\tableofcontents     % Sumário               (OBRIGATÓRIO)
+
+
+\include{tcc1-intro}
+\include{tcc1-sections}
+\input{apendice-formulas}
+
+\bibliographystyle{tcc-alpha}
+%\bibliographystyle{tcc-num}
+\bibliography{tcc}
+\end{document}

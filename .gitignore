@@ -24,8 +24,20 @@ textidote-report.*
 # exceção: o excerto usado nos exemplos do README fica versionado (Vocadito, CC-BY 4.0)
 !exemplo-antes.wav
 
-# ===== Texto do TCC (fica no Overleaf, não no repo de código) =====
-*.tex
+# ===== Texto do TCC =====
+# O LaTeX do trabalho é versionado em tcc-texto/ (fonte da verdade).
+# Aqui ficam de fora apenas os artefatos de compilação do LaTeX.
+*.aux
+*.bbl
+*.blg
+*.lof
+*.lot
+*.toc
+*.out
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+tcc-texto/*.pdf
 
 # ===== Config local de ferramentas =====
 .claude/
