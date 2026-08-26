@@ -21,6 +21,28 @@ O backlog priorizado está na Seção 10.
 
 ---
 
+## ⚠️ Errata — leia antes de citar este documento
+
+Este documento foi escrito **antes** da revisão bibliográfica de 2026-08-26. Oito afirmações
+dele foram corrigidas desde então, entre elas:
+
+- a §8.2 afirma que o protótipo implementou "o mecanismo errado" — **não implementou**;
+- a §9.2 apresenta o **C1** como contribuição original — ele está na patente do Auto-Tune de 1997;
+- a §9.1 descreve o mecanismo do **L6** como redução de janela — **erra o mecanismo**;
+- a §10 coloca o L6 no item 17 do backlog — ele deveria estar **no topo**;
+- a meta de latência do **RNF01** (≤ 20 ms) não tem respaldo revisado por pares.
+
+**O texto original foi mantido de propósito**, como registro do que se acreditava antes da
+revisão — apagá-lo destruiria o rastro que o TCC precisa mostrar.
+
+👉 **Lista completa, com o que mudou e por quê:**
+[historico-e-decisoes.md § Errata](historico-e-decisoes.md#errata--afirmações-corrigidas-pela-pesquisa-bibliográfica-2026-08-26)
+👉 **Fontes:** [pesquisa-bibliografica.md](pesquisa-bibliografica.md)
+👉 **Decisões tomadas depois:** [comparacao-antares.md](comparacao-antares.md) e
+[modo-baixa-latencia.md](modo-baixa-latencia.md)
+
+---
+
 ## Sumário
 
 1. [Os dois repositórios](#1-os-dois-repositórios)

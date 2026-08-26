@@ -22,6 +22,9 @@ que fundamentou a escolha do pYIN.
 | Saber o que fazer a seguir | §9 (soluções) e §10 (backlog priorizado) do doc técnico |
 | Mexer no motor de tempo real | [`docs/arquitetura-streaming.md`](docs/arquitetura-streaming.md) |
 | Saber se algo já foi tentado | [`docs/historico-e-decisoes.md`](docs/historico-e-decisoes.md) |
+| Mexer em **qualquer parâmetro do plugin** | [`docs/comparacao-antares.md`](docs/comparacao-antares.md) — as decisões já tomadas estão no histórico |
+| Trabalhar no **modo de baixa latência** | [`docs/modo-baixa-latencia.md`](docs/modo-baixa-latencia.md) — ⚠️ há 6 questões em aberto a resolver antes de codar |
+| Citar qualquer coisa no texto do TCC | [`docs/pesquisa-bibliografica.md`](docs/pesquisa-bibliografica.md) — e confira a [errata](docs/historico-e-decisoes.md#errata--afirmações-corrigidas-pela-pesquisa-bibliográfica-2026-08-26) antes de citar o doc técnico |
 
 **Não reimplemente nada antes de checar `historico-e-decisoes.md`** — vários bugs sutis
 (drift de fase do PSOLA, cliques, compressão temporal) já foram caçados e resolvidos, e as

@@ -25,13 +25,21 @@ Automática de Afinação Vocal*.
 | [`docs/documentacao-tecnica.md`](docs/documentacao-tecnica.md) | **Referência completa**: o sistema inteiro, diagnóstico dos problemas em aberto, soluções propostas e backlog priorizado |
 | [`docs/teste-de-usuario.md`](docs/teste-de-usuario.md) | O que o teste com usuário reprovou (latência e naturalidade) |
 | [`docs/arquitetura-streaming.md`](docs/arquitetura-streaming.md) | Como o motor de tempo real funciona |
-| [`docs/historico-e-decisoes.md`](docs/historico-e-decisoes.md) | Bugs caçados, decisões e varreduras experimentais |
+| [`docs/historico-e-decisoes.md`](docs/historico-e-decisoes.md) | Bugs caçados, decisões, varreduras experimentais e a **errata da revisão bibliográfica** |
+| [`docs/comparacao-antares.md`](docs/comparacao-antares.md) | Comparação controle a controle com o Auto-Tune: o que falta para ser um plugin completo |
+| [`docs/modo-baixa-latencia.md`](docs/modo-baixa-latencia.md) | Especificação do modo de baixa latência — ⚠️ **nada implementado** |
+| [`docs/pesquisa-bibliografica.md`](docs/pesquisa-bibliografica.md) | As fontes: artigos, a patente do Auto-Tune, manuais |
 | [`tcc-texto/`](tcc-texto/) | O texto do TCC em LaTeX |
 
 > **Estado atual:** o pipeline funciona ponta a ponta e o plugin roda no Ableton, mas o teste
-> de usuário reprovou dois requisitos — **latência de 57,9 ms** (meta: ≤ 20 ms) e
-> **naturalidade** ("duro, robótico"). O diagnóstico e o plano estão em
+> de usuário reprovou dois requisitos — **latência de 57,9 ms** e **naturalidade**
+> ("duro, robótico"). O diagnóstico está em
 > [`docs/documentacao-tecnica.md`](docs/documentacao-tecnica.md) §8 e §9.
+>
+> A revisão bibliográfica de 2026-08-26 **corrigiu oito afirmações** dessa documentação,
+> incluindo a própria meta de latência (os ≤ 20 ms não têm respaldo revisado por pares).
+> O texto original foi preservado; as correções estão na
+> [errata](docs/historico-e-decisoes.md#errata--afirmações-corrigidas-pela-pesquisa-bibliográfica-2026-08-26).
 
 ---
 
