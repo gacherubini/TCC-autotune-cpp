@@ -126,7 +126,8 @@ TccAutotuneEditor::TccAutotuneEditor(TccAutotuneProcessor& p)
     };
     configurarSlider(mixSlider, mixLabel, "Mix");
     configurarSlider(tolSlider,   tolLabel,   "Tolerancia");
-    configurarSlider(glideSlider, glideLabel, "Glide");
+    configurarSlider(retuneSlider, retuneLabel, "Retune Speed");
+    configurarSlider(vibratoSlider, vibratoLabel, "Natural Vibrato");
     configurarSlider(lookSlider,  lookLabel,  "Look-ahead");
 
     auto configurarCombo = [this](juce::ComboBox& c, juce::Label& l, const juce::String& texto,
@@ -145,7 +146,8 @@ TccAutotuneEditor::TccAutotuneEditor(TccAutotuneProcessor& p)
     auto& apvts = processorRef.apvts;
     mixAttach = std::make_unique<SliderAttachment>(apvts, "mix",   mixSlider);
     tolAttach   = std::make_unique<SliderAttachment>(apvts, "tol",   tolSlider);
-    glideAttach = std::make_unique<SliderAttachment>(apvts, "glide", glideSlider);
+    retuneAttach  = std::make_unique<SliderAttachment>(apvts, "retune",  retuneSlider);
+    vibratoAttach = std::make_unique<SliderAttachment>(apvts, "vibrato", vibratoSlider);
     lookAttach  = std::make_unique<SliderAttachment>(apvts, "look",  lookSlider);
     vozAttach    = std::make_unique<ComboAttachment>(apvts, "voz",    vozCombo);
     tonicaAttach = std::make_unique<ComboAttachment>(apvts, "tonica", tonicaCombo);
@@ -171,7 +173,8 @@ void TccAutotuneEditor::resized() {
     area.removeFromTop(10); // espaco entre o afinador e a faixa de controles
 
     // Etapa 1: 7 colunas — a Tonica entrou ao lado da Escala.
-    const int n = 7;
+    // Etapa 3: 8 — o Natural Vibrato entrou ao lado do Retune Speed.
+    const int n = 8;
     const int largura = area.getWidth() / n;
 
     auto montarCombo = [&](juce::ComboBox& ctrl, juce::Label& label) {
@@ -190,6 +193,7 @@ void TccAutotuneEditor::resized() {
     montarCombo(escalaCombo, escalaLabel);
     montarSlider(mixSlider, mixLabel);
     montarSlider(tolSlider,   tolLabel);
-    montarSlider(glideSlider, glideLabel);
+    montarSlider(retuneSlider, retuneLabel);
+    montarSlider(vibratoSlider, vibratoLabel);
     montarSlider(lookSlider,  lookLabel);
 }

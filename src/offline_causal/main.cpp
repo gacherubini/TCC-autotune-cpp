@@ -39,11 +39,13 @@ void suavizarVozeamento(std::vector<double>& tr, int minSeg, int maxGap) {
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::printf("Uso: %s <entrada.wav> [saida.wav] [mix 0..1] [escala] [tol=cents] [glide=ms]\n", argv[0]);
+        std::printf("Uso: %s <entrada.wav> [saida.wav] [mix 0..1] [escala] [tol=] [retune=] [vibrato=]\n", argv[0]);
         std::printf("  mix    : 0=so o sinal original, 1=so o corrigido (padrao 1). Negativo = modo copia.\n");
         std::printf("  escala: crom (padrao) | C, G, F#... (maior) | Am, C#m... (menor)\n");
         std::printf("  tol=   : zona morta em cents (nao corrige desvios menores) — natural. Padrao 0.\n");
-        std::printf("  glide= : suavizacao temporal da afinacao em ms (portamento). Padrao 0 (snap).\n");
+        std::printf("  retune=: Retune Speed em ms — tempo ate a nota. Padrao 0 (imediato). (alias: glide=)\n");
+        std::printf("  vibrato=: 0=remove o vibrato, 1=preserva (padrao), >1=exagera.\n");
+        std::printf("  legado=1: reproduz a Etapa 2 (nota nasce afinada). So para teste de nao-regressao.\n");
         std::printf("  Ex.: %s voz.wav out.wav 1.0 Am tol=15 glide=40   (preset natural)\n", argv[0]);
         return 1;
     }
@@ -63,14 +65,22 @@ int main(int argc, char** argv) {
     definirEscala(escalaTxt);
     // flags opcionais chave=valor (ordem livre, a partir do argv[2])
     double tolCents = 0.0;   // zona morta em cents (0 = corrige tudo)
-    double glideMs  = 0.0;   // glide/retune em ms  (0 = snap imediato)
+    double retuneMs = 0.0;   // Retune Speed em ms   (0 = correcao imediata)
+    double vibrato  = 1.0;   // k: 0 remove, 1 preserva, >1 exagera (Etapa 3)
+    bool   legado   = false; // reproduz a malha da Etapa 2 (so para teste)
     for (int i = 2; i < argc; ++i) {
         std::string a = argv[i];
-        if      (a.rfind("tol=", 0) == 0)   tolCents = std::atof(a.c_str() + 4);
-        else if (a.rfind("glide=", 0) == 0) glideMs  = std::atof(a.c_str() + 6);
+        if      (a.rfind("tol=", 0) == 0)     tolCents = std::atof(a.c_str() + 4);
+        // 'glide=' e' o nome ANTIGO do mesmo parametro; fica como apelido para
+        // que comandos e scripts anteriores continuem valendo. Ver Etapa 3.
+        else if (a.rfind("glide=", 0) == 0)   retuneMs = std::atof(a.c_str() + 6);
+        else if (a.rfind("retune=", 0) == 0)  retuneMs = std::atof(a.c_str() + 7);
+        else if (a.rfind("vibrato=", 0) == 0) vibrato  = std::atof(a.c_str() + 8);
+        else if (a.rfind("legado=", 0) == 0)  legado   = (std::atoi(a.c_str() + 7) != 0);
     }
     if (tolCents < 0) tolCents = 0;
-    if (glideMs  < 0) glideMs  = 0;
+    if (retuneMs < 0) retuneMs = 0;
+    if (vibrato  < 0) vibrato  = 0;
 
     // 1. Ler WAV -> mono
     unsigned int canais = 0, taxa = 0; drwav_uint64 n = 0;
@@ -97,7 +107,8 @@ int main(int argc, char** argv) {
         std::printf("Escala: %s  (notas alvo: ", escalaTxt);
         for (int i = 0; i < 12; ++i) if (g_permitida[i]) std::printf("%s ", pcn[i]);
         std::printf(")\n");
-        std::printf("Tolerancia: %.0f cents (zona morta) | Glide: %.0f ms\n", tolCents, glideMs);
+        std::printf("Tolerancia: %.0f cents (zona morta) | Retune: %.0f ms | Vibrato: %.2f%s\n",
+                    tolCents, retuneMs, vibrato, legado ? " | LEGADO (Etapa 2)" : "");
     }
 
     // 2. pYIN -> F0 por quadro
@@ -172,7 +183,8 @@ int main(int argc, char** argv) {
     {
         // Etapa 0 do plano: a malha (zona morta + glide + reset no ataque) mora
         // agora em dsp.h, compartilhada com o causal e com o streaming.
-        ParamsCorrecao pc; pc.tolCents = tolCents; pc.glideMs = glideMs;
+        ParamsCorrecao pc; pc.tolCents = tolCents; pc.retuneMs = retuneMs;
+        pc.vibrato = vibrato; pc.ataqueNoAlvo = legado;
         CorretorAltura corr; corr.prepare(fs);
         for (long long i = 0; i < N; ++i)
             foutSamp[i] = (float)corr.proxima(f0samp[i], pc);

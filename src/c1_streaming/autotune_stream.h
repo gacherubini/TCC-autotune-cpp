@@ -33,13 +33,15 @@
 // ----------------------------------------------------------------------------
 //  Parâmetros do streaming. Espelham as flags de linha de comando do
 //  autotune_rt (mix, escala já é global via definirEscala/g_permitida,
-//  tolCents, glideMs, look, frame/hop, fmin/fmax) para que o driver de teste
+//  tolCents, retuneMs, vibrato, look, frame/hop, fmin/fmax) para que o driver de teste
 //  possa repassar os mesmos argumentos usados nas versões offline/causal.
 // ----------------------------------------------------------------------------
 struct StreamParams {
     double mix      = 1.0;     // 0..1: seco/molhado (0 = só a entrada, 1 = só o corrigido)
     double tolCents = 0.0;     // zona morta (cents) ao redor da nota-alvo
-    double glideMs  = 0.0;     // tempo de "deslize" até a nota-alvo (1 polo)
+    double retuneMs = 0.0;     // Retune Speed: constante de tempo da correcao (ms)
+    double vibrato  = 1.0;     // k: 0 remove o vibrato, 1 preserva, >1 exagera
+    bool   ataqueNoAlvo = false; // flag interna: reproduz o ataque da Etapa 2
     int    look     = 4;       // look-ahead (em quadros) do Viterbi causal
     int    nFrame   = N_FRAME; // tamanho do quadro de análise de pitch
     int    nHop     = N_HOP;   // passo entre quadros de análise
@@ -117,13 +119,13 @@ public:
     // -------------------------------------------------------------------
     //  updateLiveParams() — CAMINHO C2 (plugin): atualiza, EM TEMPO REAL e
     //  sem realocar nada, os parâmetros que NÃO mudam as dimensões do motor
-    //  (mix seco/molhado, zona morta em cents, glide em ms). É seguro chamar dentro do
+    //  (mix seco/molhado, zona morta em cents, retune em ms, vibrato k). É seguro chamar dentro do
     //  process()/processBlock (RT-safe: só escreve escalares lidos depois por
     //  emitirAmostras). Já os parâmetros ESTRUTURAIS (look, fmin/fmax via voz,
     //  frame, hop) mudam ringbuffers/HMM/latência → exigem prepare() de novo.
     // -------------------------------------------------------------------
-    void updateLiveParams(double mix, double tolCents, double glideMs) {
-        p.mix = mix; p.tolCents = tolCents; p.glideMs = glideMs;
+    void updateLiveParams(double mix, double tolCents, double retuneMs, double vibrato) {
+        p.mix = mix; p.tolCents = tolCents; p.retuneMs = retuneMs; p.vibrato = vibrato;
     }
 
     // -------------------------------------------------------------------
@@ -443,7 +445,8 @@ private:
         // identica a usada pelo gold e pelo causal. O estado (glide + ataque)
         // vive em 'corretor', membro desta classe, e atravessa as chamadas de
         // process() como o resto do estado de streaming.
-        ParamsCorrecao pc; pc.tolCents = p.tolCents; pc.glideMs = p.glideMs;
+        ParamsCorrecao pc; pc.tolCents = p.tolCents; pc.retuneMs = p.retuneMs;
+        pc.vibrato = p.vibrato; pc.ataqueNoAlvo = p.ataqueNoAlvo;
         for (int k=0;k<p.nHop;++k) {
             f0samp.push_back((float)f0q);
             foutSamp.push_back((float)corretor.proxima(f0q, pc));

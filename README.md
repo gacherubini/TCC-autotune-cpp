@@ -75,7 +75,7 @@ Para o **plugin VST3**, veja [`plugin/README.md`](plugin/README.md) (exige MSVC)
 ## Como usar
 
 ```bat
-.\autotune.exe <entrada.wav> [saida.wav] [mix 0..1] [escala] [tol=cents] [glide=ms]
+.\autotune.exe <entrada.wav> [saida.wav] [mix 0..1] [escala] [tol=cents] [retune=ms] [vibrato=k]
 ```
 
 - **mix**: cruzamento seco/molhado. `0` = só o sinal original (bypass exato) · `0.5` = metade
@@ -83,8 +83,11 @@ Para o **plugin VST3**, veja [`plugin/README.md`](plugin/README.md) (exige MSVC)
 - **escala**: `crom` (padrão, cromática) · `C`, `G`, `F#`... (maior) · `Am`, `C#m`... (menor).
 - **tol=** (cents): zona morta — desvios menores que isso **não** são corrigidos, preservando
   vibrato e micro-afinação. Padrão `0`. Sugerido `10–20`.
-- **glide=** (ms): suavização temporal da afinação (portamento). Padrão `0` (snap imediato).
-  Sugerido `30–60`.
+- **retune=** (ms): **Retune Speed** — quanto tempo a correção leva para chegar à nota.
+  Padrão `0` (imediato, efeito "duro"). O manual da Antares recomenda `10–50` para som
+  natural. *(`glide=` continua valendo como apelido do nome antigo.)*
+- **vibrato=** (k): quanto do vibrato do cantor sobrevive. `0` = removido (comportamento até a
+  Etapa 2) · `1` = preservado (padrão) · `>1` = exagerado.
 - **mix negativo** (`-1`) = modo cópia (só converte pra mono, sem processar — diagnóstico).
 
 > ⚠️ **Mudou na Etapa 2 (26/08/2026).** O 3º argumento posicional era `forca` (0–1, fração do
@@ -102,7 +105,7 @@ Para o **plugin VST3**, veja [`plugin/README.md`](plugin/README.md) (exige MSVC)
 .\autotune.exe exemplo-antes.wav corrigido.wav 1.0 crom tol=600           REM PSOLA em beta=1
 ```
 
-**Preset natural recomendado:** `mix 1.0  tol=15  glide=40`.
+**Preset natural recomendado:** `mix 1.0  tol=15  retune=25  vibrato=1`.
 
 > `tol=600` (última linha do exemplo) é um caso de **teste**, não de uso: uma tolerância maior
 > que meio semitom faz o alvo coincidir com o pitch detectado, então o TD-PSOLA roda inteiro
@@ -114,7 +117,7 @@ Mesmo áudio, mas com detecção de pitch **causal** (Viterbi de lag fixo) e rel
 **latência (ms)** e **fator de tempo real (xRT)**:
 
 ```bat
-.\autotune_rt.exe <in.wav> [out.wav] [mix] [escala] [tol=] [glide=] [look=L] [block=N] [frame=] [hop=] [voz=] [fmin=] [fmax=] [dumpf0=]
+.\autotune_rt.exe <in.wav> [out.wav] [mix] [escala] [tol=] [retune=] [vibrato=] [look=L] [block=N] [frame=] [hop=] [voz=] [fmin=] [fmax=] [dumpf0=]
 ```
 
 - **look=** : quadros de look-ahead do Viterbi causal. `0` = guloso (menor latência, menor
@@ -145,8 +148,10 @@ Mesmo áudio, mas com detecção de pitch **causal** (Viterbi de lag fixo) e rel
 3. **Suavização do vozeamento**: tampa buracos curtos e remove ilhas curtas *(só no offline —
    é não-causal)*.
 4. **Nota-alvo**: encosta na nota mais próxima da escala, com **zona morta** `tol`.
-5. **Trajetória com glide**: a afinação-alvo é suavizada no tempo (filtro de 1 polo, com
-   reset no ataque de cada nota).
+5. **Trajetória (Retune Speed + Natural Vibrato)**: dois filtros de 1 polo, um sobre o alvo e
+   outro sobre a altura real, combinados como `LP(alvo) + k·(real − LP(real))`. O filtro age
+   sobre a **correção**, não sobre o alvo — é o que separa a deriva lenta de afinação (a
+   corrigir) do vibrato (a preservar). No ataque a nota nasce na altura real do cantor.
 6. **Correção (TD-PSOLA)**: marcas de análise por período (alinhadas por correlação), síntese
    por overlap-add no novo período, reconstrução por cobertura. Como copia grãos no tempo e
    só muda o espaçamento, **preserva os formantes** (timbre).

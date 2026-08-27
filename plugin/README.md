@@ -103,7 +103,8 @@ senão realimenta). É o jeito mais rápido de ver a GUI e ouvir o efeito.
 |---|---|---|---|
 | **Mix** | 0–1 | ao vivo | seco/molhado: 0 = só a entrada, 1 = só o corrigido (padrão 1) |
 | **Tolerancia** | 0–50 cents | ao vivo | zona morta (preserva vibrato) |
-| **Glide** | 0–200 ms | ao vivo | portamento até a nota-alvo |
+| **Retune Speed** | 0–200 ms | ao vivo | tempo até a nota. Padrão 25 ms (Antares: 10–50 é típico); 0 = efeito "duro" |
+| **Natural Vibrato** | 0–2 | ao vivo | 0 = remove o vibrato, 1 = preserva (padrão), 2 = dobra |
 | **Look-ahead** | 0–16 quadros | estrutural | latência × qualidade do Viterbi (re-prepara) |
 | **Voz** | preset | estrutural | tessitura → `fmin/fmax` (re-prepara, muda a latência) |
 | **Tonica** | 12 opções | estrutural | tônica da escala (Etapa 1) |

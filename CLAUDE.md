@@ -87,9 +87,15 @@ python python\bench_latencia.py  REM latência × qualidade × xRT, e contagem d
    usada). Os dois devolvem áudio bit-idêntico à entrada, e **um diferir do outro é erro de
    fase no PSOLA**. Até a Etapa 2 esse papel era da `forca = 0`, que fazia as duas coisas ao
    mesmo tempo; ao removê-la, o teste foi desdobrado em dois para não perder cobertura.
-2. Correlação do streaming com o gold ≥ **0,995** (hoje: 0,997).
-3. Contagem de "pipoco" (descontinuidades > 30× a mediana) = **0**.
-4. A saída é **idêntica para qualquer tamanho de bloco** do host (64, 128, 256, 512).
+2. Correlação do streaming com o **causal** (`autotune_rt`) ≥ **0,995** (medido: 0,9996).
+   ⚠️ **Cuidado com o nome:** o `bench_stream.py` chama `autotune_rt` de `_gold.wav`. Ele
+   verifica *streaming ≡ causal*, **não** *streaming ≡ offline*. Contra o offline a correlação
+   é ~0,78. Ver `docs/execucao-do-plano.md`, "Achados de medição".
+3. Contagem de "pipoco" (descontinuidades > 30× a mediana) = **0**. ⚠️ Não se reproduz: com
+   voz real a própria **entrada** pontua ~2900 por esse critério. O limiar relativo mede
+   conteúdo de alta frequência, não clique. Ver "Achados de medição".
+4. A saída é idêntica para blocos **até 384**. ⚠️ **Falha de 512 em diante** — e a falha
+   cresce: em 1024 a diferença de pico chega a 0,17 (~−15 dB, audível). Achado em aberto.
 
 ## Armadilhas conhecidas
 
@@ -131,6 +137,6 @@ Diagnóstico completo em §8 do doc técnico; soluções em §9; ordem de ataque
   **inglês**.
 - **Comentários:** o código é didático por decisão de projeto (é um TCC) — comentários longos
   explicando o *porquê* são a norma, não ruído. Mantenha o estilo ao editar.
-- **Nomes:** identificadores em português (`notaAlvo`, `marcas`, `misturar`, `tinhaNota`).
+- **Nomes:** identificadores em português (`notaAlvo`, `misturar`, `lpAlvo`, `tinhaNota`).
 - **Sem dependências novas** sem necessidade: hoje são só `dr_wav.h` (header-only) e o JUCE
   (só no plugin, via FetchContent).

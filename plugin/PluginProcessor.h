@@ -61,7 +61,7 @@ public:
     void getStateInformation(juce::MemoryBlock&) override;
     void setStateInformation(const void*, int) override;
 
-    // Árvore de parâmetros exposta ao host (mix/tol/glide/look/voz/tonica/escala).
+    // Árvore de parâmetros exposta ao host (mix/tol/retune/vibrato/look/voz/tonica/escala).
     juce::AudioProcessorValueTreeState apvts;
 
     // Snapshot "ao vivo" do pitch atual (Hz; 0 = sem voz), escrito no fim de
@@ -97,7 +97,8 @@ private:
     // Ponteiros "crus" (lock-free) para ler os parâmetros no áudio sem custo.
     std::atomic<float>* pMix  = nullptr;
     std::atomic<float>* pTol    = nullptr;
-    std::atomic<float>* pGlide  = nullptr;
+    std::atomic<float>* pRetune  = nullptr;
+    std::atomic<float>* pVibrato = nullptr;
     std::atomic<float>* pLook   = nullptr;
     std::atomic<float>* pVoz    = nullptr;
     std::atomic<float>* pEscala = nullptr;

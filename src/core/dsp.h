@@ -235,40 +235,115 @@ inline float misturar(float seco, float molhado, double mix) {
 //  divergencia entre as copias quebraria essa comparacao EM SILENCIO -- o teste
 //  passaria a comparar coisas diferentes sem acusar erro.
 //
-//  Comportamento (INALTERADO nesta etapa -- a Etapa 3 e que muda a matematica):
-//    - alvo   = notaAlvo(f0, tol), a nota da escala com zona morta;
-//    - estado = filtro de 1 polo sobre o ALVO, em cents ("glide");
-//    - no ataque de nota o estado nasce no proprio alvo, sem trajeto ate ela.
+//  ETAPA 3 -- a matematica mudou aqui. Ate a Etapa 2 a malha era:
+//
+//      estado = alpha*estado + (1-alpha)*alvoCents          (filtro sobre o ALVO)
+//
+//  Dois defeitos, ambos diagnosticados na documentacao tecnica (secao 8.2):
+//
+//   1) O filtro agia sobre o ALVO, que e' quase CONSTANTE dentro de uma nota --
+//      ele converge em ~tau e depois nao faz mais nada. Consequencia: o vibrato
+//      do cantor era destruido, porque o alvo nao vibra e a saida seguia o alvo.
+//   2) O reset de ataque era para o ALVO: a nota nascia exatamente afinada, sem
+//      trajeto. E' o "duro, estatico" que o teste de usuario reprovou.
+//
+//  A cadeia nova mantem DOIS estados de filtro, um sobre o alvo e outro sobre a
+//  altura REAL do cantor, e combina assim:
+//
+//      outCents = LP(alvo) + k*(real - LP(real))
+//               = LP(alvo) + k*HP(real)
+//
+//  Escrevendo HP(x) = x - LP(x) para o complementar do passa-baixa, o que essa
+//  forma faz e' separar o que o cantor faz DEVAGAR (deriva de afinacao, que deve
+//  ser corrigida) do que ele faz DEPRESSA (vibrato, que deve ser preservado). O
+//  filtro deixa de agir sobre o alvo e passa a agir sobre a CORRECAO.
+//
+//  Por que isso funde o Glide no Retune Speed, em vez de trocar um pelo outro:
+//
+//   k = 0  ->  outCents = LP(alvo). E' LITERALMENTE a linha da Etapa 2. O
+//              comportamento antigo nao se perde: vira um caso particular.
+//   k = 1  ->  outCents = LP(alvo) + real - LP(real) = real + LP(alvo - real)
+//                       = real + LP(correcao). E' a formulacao da patente de
+//              Hildebrand (US 5.973.252): o filtro sobre a correcao, nao sobre
+//              o alvo. Vibrato preservado.
+//   k > 1  ->  com o alvo constante dentro da nota, LP(alvo) -> alvo e a saida
+//              vira alvo + k*vibrato: vibrato EXAGERADO (o "Natural Vibrato"
+//              positivo da Antares).
+//
+//  Resposta do passa-altas a um vibrato de frequencia f_v, com frequencia de
+//  corte f_c = 1/(2*pi*tau):   G(f_v) = f_v / sqrt(f_v^2 + f_c^2).
+//  Vibrato de cantor fica em ~5-7 Hz; com tau = 25 ms, f_c ~ 6,4 Hz, o que
+//  atenua o vibrato a ~0,7. Nao e' descuido: tau curto corrige rapido E come
+//  vibrato -- e' o compromisso central deste controle, nao um defeito dele.
+//
+//  RESSALVA (registrada no plano, secao 11.1): k = 0 reproduz o REGIME antigo,
+//  nao o ATAQUE. A Etapa 2 iniciava o estado em alvoCents (nota nasce afinada);
+//  a cadeia nova inicia em realCents (nota nasce onde o cantor cantou). Para
+//  reproduzir a Etapa 2 EXATAMENTE sao precisos DOIS valores neutros: k = 0 e
+//  a flag 'ataqueNoAlvo'. Ela existe so para o teste de nao-regressao e NAO e'
+//  parametro de plugin -- o deslize de entrada e' comportamento fixo do produto.
 // ---------------------------------------------------------------------------
 struct ParamsCorrecao {
     // Etapa 2: 'forca' saiu daqui. Ela nao era um parametro da MALHA (nao tem
     // dimensao de tempo, nem decide o alvo) -- era uma dosagem de efeito, e
     // dosagem de efeito e' mix, aplicado depois do PSOLA. Ver misturar().
     double tolCents = 0.0;   // zona morta (cents) ao redor da nota-alvo
-    double glideMs  = 0.0;   // constante de tempo do deslize ate o alvo
+    double retuneMs = 0.0;   // Retune Speed: constante de tempo da correcao (ms)
+    double vibrato  = 1.0;   // k: 0 = sem vibrato, 1 = preservado, >1 = exagerado
+
+    // Flag INTERNA (nao e' parametro de usuario): restaura o reset de ataque da
+    // Etapa 2, em que a nota nascia no alvo. Com ataqueNoAlvo=true E vibrato=0,
+    // a saida e' identica a da Etapa 2 amostra a amostra -- e' o que torna a
+    // Etapa 3 verificavel por nao-regressao. Ver test_retune.cpp, secao 1.
+    bool   ataqueNoAlvo = false;
 };
 
 class CorretorAltura {
 public:
     void prepare(double fsHz) { fs = fsHz; reset(); }
-    void reset() { estado = 0.0; tinhaNota = false; }
+    void reset() { lpAlvo = 0.0; lpReal = 0.0; tinhaNota = false; }
 
     // Devolve o pitch-alvo em Hz para uma amostra cujo F0 detectado e f0Hz.
     // f0Hz <= 0 marca trecho nao-vozeado: devolve 0 e rearma o ataque.
     double proxima(double f0Hz, const ParamsCorrecao& p) {
         if (f0Hz <= 0.0) { tinhaNota = false; return 0.0; }
-        const double alvoHz    = notaAlvo(f0Hz, p.tolCents);
-        const double alvoCents = 1200.0 * std::log2(alvoHz / FMIN);
-        const double tau       = p.glideMs / 1000.0;
+
+        const double realCents = 1200.0 * std::log2(f0Hz / FMIN);
+        const double alvoCents = 1200.0 * std::log2(notaAlvo(f0Hz, p.tolCents) / FMIN);
+        const double tau       = p.retuneMs / 1000.0;
         const double alpha     = (tau > 0.0) ? std::exp(-1.0 / (tau * fs)) : 0.0;
-        estado    = tinhaNota ? (alpha * estado + (1.0 - alpha) * alvoCents) : alvoCents;
-        tinhaNota = true;
-        return FMIN * std::pow(2.0, estado / 1200.0);
+
+        if (!tinhaNota) {
+            // ATAQUE. Os dois estados nascem na altura REAL do cantor, e por
+            // isso a saida do primeiro instante e' exatamente ela:
+            //     out = lpAlvo + k*(real - lpReal) = real + k*0 = real
+            // qualquer que seja k. A nota nasce onde o cantor a colocou e
+            // desliza dali ate o alvo em ~tau. (Com ataqueNoAlvo, lpAlvo nasce
+            // no alvo e o gesto de entrada desaparece -- comportamento da Etapa 2.)
+            //
+            // PRECO, que precisa ficar no texto: um ataque errado fica audivel
+            // por ~tau. Com tau = 100 ms e o cantor entrando 200 cents fora, da
+            // para ouvir. E' o custo direto da naturalidade.
+            lpAlvo = p.ataqueNoAlvo ? alvoCents : realCents;
+            lpReal = realCents;
+            tinhaNota = true;
+        } else {
+            // Regime. Mesmo alpha nos dois: sao o mesmo filtro, aplicado a dois
+            // sinais. Usar constantes de tempo diferentes quebraria a identidade
+            // LP(alvo) + real - LP(real) = real + LP(alvo - real) que sustenta
+            // a interpretacao de "filtro sobre a correcao".
+            lpAlvo = alpha * lpAlvo + (1.0 - alpha) * alvoCents;
+            lpReal = alpha * lpReal + (1.0 - alpha) * realCents;
+        }
+
+        const double outCents = lpAlvo + p.vibrato * (realCents - lpReal);
+        return FMIN * std::pow(2.0, outCents / 1200.0);
     }
 
 private:
     double fs        = 44100.0;
-    double estado    = 0.0;    // pitch-alvo suavizado, em cents acima de FMIN
+    double lpAlvo    = 0.0;    // passa-baixa do ALVO, em cents acima de FMIN
+    double lpReal    = 0.0;    // passa-baixa da altura REAL, mesma unidade
     bool   tinhaNota = false;  // false = proxima amostra vozeada e um ataque
 };
 

@@ -99,6 +99,13 @@ echo "== rodando casos =="
   rodar st_block64       "$BIN/stream_test" "$WAV" st_block64.wav       1.0 crom block=64
   rodar st_block512      "$BIN/stream_test" "$WAV" st_block512.wav      1.0 crom block=512
   rodar st_cmaior        "$BIN/stream_test" "$WAV" st_cmaior.wav        1.0 C
+
+  # Etapa 3: os controles novos. retune25 e' o padrao do plugin; vibrato0 e
+  # vibrato2 sao os extremos do Natural Vibrato.
+  rodar st_retune25      "$BIN/stream_test" "$WAV" st_retune25.wav      1.0 crom retune=25
+  rodar st_vibrato0      "$BIN/stream_test" "$WAV" st_vibrato0.wav      1.0 crom retune=25 vibrato=0
+  rodar st_vibrato2      "$BIN/stream_test" "$WAV" st_vibrato2.wav      1.0 crom retune=25 vibrato=2
+  rodar gold_retune25    "$BIN/autotune"    "$WAV" gold_retune25.wav    1.0 crom retune=25
 } | tee "$TMP/resumo.txt"
 
 # ---------------------------------------------------------------------------
@@ -116,6 +123,62 @@ INVAR_FALHOU=0
 par "PSOLA em identidade (beta=1) == bypass  [offline]"   gold_tol600.wav gold_mix0.wav
 par "PSOLA em identidade (beta=1) == bypass  [streaming]" st_tol600.wav   st_mix0.wav
 
+# ---------------------------------------------------------------------------
+#  Nao-regressao da ETAPA 3 contra a ETAPA 2.
+#
+#  A Etapa 3 trocou a malha de correcao por outra, mais geral:
+#      outCents = LP(alvo) + k*(real - LP(real))
+#  A afirmacao que sustenta a mudanca e' que ela NAO perde o comportamento
+#  antigo -- ele vira o caso particular k=0 (mais a flag de ataque). Aqui essa
+#  afirmacao deixa de ser afirmacao e vira teste: cada caso roda de novo com
+#  'legado=1 vibrato=0' e tem de bater com o hash da Etapa 2, gravado em
+#  baseline/etapa2-legado.sha256 e NUNCA regravado.
+#
+#  Isso e' diferente do resumo.txt: aquele e' uma fotografia do estado atual e
+#  muda a cada etapa. Este e' um marco fixo no passado. Se as etapas 4 e 5
+#  quebrarem a generalizacao, e' aqui que aparece.
+# ---------------------------------------------------------------------------
+LEG="$REF/etapa2-legado.sha256"
+if [[ -f "$LEG" ]]; then
+    echo
+    echo "== nao-regressao: legado=1 vibrato=0 reproduz a Etapa 2 =="
+    L=(legado=1 vibrato=0)
+    ( cd "$TMP"
+      "$BIN/autotune"    "$WAV" g_gold_mix1.wav      1.0 "${L[@]}"
+      "$BIN/autotune"    "$WAV" g_gold_mix0.wav      0.0 "${L[@]}"
+      "$BIN/autotune"    "$WAV" g_gold_tol600.wav    1.0 crom tol=600 "${L[@]}"
+      "$BIN/autotune"    "$WAV" g_gold_tol30.wav     1.0 crom tol=30 "${L[@]}"
+      "$BIN/autotune"    "$WAV" g_gold_glide120.wav  1.0 crom glide=120 "${L[@]}"
+      "$BIN/autotune"    "$WAV" g_gold_cmaior.wav    1.0 C "${L[@]}"
+      "$BIN/autotune"    "$WAV" g_gold_aminor.wav    1.0 Am "${L[@]}"
+      "$BIN/autotune_rt" "$WAV" g_rt_look4.wav       1.0 crom look=4 "${L[@]}"
+      "$BIN/autotune_rt" "$WAV" g_rt_look0.wav       1.0 crom look=0 "${L[@]}"
+      "$BIN/autotune_rt" "$WAV" g_rt_glide0.wav      1.0 crom glide=0 "${L[@]}"
+      "$BIN/autotune_rt" "$WAV" g_rt_tol0.wav        1.0 crom tol=0 "${L[@]}"
+      "$BIN/stream_test" "$WAV" g_st_mix1.wav        1.0 "${L[@]}"
+      "$BIN/stream_test" "$WAV" g_st_mix0.wav        0.0 "${L[@]}"
+      "$BIN/stream_test" "$WAV" g_st_tol600.wav      1.0 crom tol=600 "${L[@]}"
+      "$BIN/stream_test" "$WAV" g_st_glide40.wav     1.0 crom glide=40 "${L[@]}"
+      "$BIN/stream_test" "$WAV" g_st_tol15.wav       1.0 crom tol=15 "${L[@]}"
+      "$BIN/stream_test" "$WAV" g_st_block64.wav     1.0 crom block=64 "${L[@]}"
+      "$BIN/stream_test" "$WAV" g_st_block512.wav    1.0 crom block=512 "${L[@]}"
+      "$BIN/stream_test" "$WAV" g_st_cmaior.wav      1.0 C "${L[@]}"
+    ) > /dev/null 2>&1
+    nLeg=0; nBad=0
+    while read -r h nome; do
+        [[ "$h" == \#* || -z "$h" ]] && continue
+        got=$(shasum -a 256 "$TMP/g_$nome.wav" 2>/dev/null | cut -d\  -f1)
+        nLeg=$((nLeg+1))
+        if [[ "$got" != "$h" ]]; then
+            echo "  FALHA $nome  (esperado ${h:0:16}, obtido ${got:0:16})"
+            nBad=$((nBad+1)); INVAR_FALHOU=1
+        fi
+    done < "$LEG"
+    [[ $nBad -eq 0 ]] && echo "  ok    $nLeg casos reproduzem a Etapa 2 bit a bit"
+else
+    echo; echo "  AVISO: sem $LEG — nao-regressao da Etapa 3 nao verificada."
+fi
+
 # Invariante quebrada e' defeito, nao mudanca de comportamento: para aqui, antes
 # de gravar uma referencia nova por cima de um resultado errado.
 if [[ "$INVAR_FALHOU" == "1" ]]; then
@@ -127,7 +190,9 @@ fi
 if [[ "$ACAO" == "gravar" ]]; then
     mkdir -p "$REF"
     cp "$TMP/resumo.txt" "$REF/resumo.txt"
-    cp "$TMP"/*.wav "$REF/" 2>/dev/null
+    # Os g_*.wav sao do teste de nao-regressao (comparados contra a tabela
+    # congelada, nao contra a referencia) — nao entram no baseline gravado.
+    for w in "$TMP"/*.wav; do [[ "$(basename "$w")" == g_* ]] || cp "$w" "$REF/"; done
     echo; echo "REFERENCIA GRAVADA em baseline/ ($(ls "$REF"/*.wav 2>/dev/null | wc -l | tr -d ' ') wavs)"
 elif [[ "$ACAO" == "conferir" ]]; then
     [[ -f "$REF/resumo.txt" ]] || { echo; echo "ERRO: sem referencia. Rode './baseline.sh gravar' primeiro."; exit 1; }

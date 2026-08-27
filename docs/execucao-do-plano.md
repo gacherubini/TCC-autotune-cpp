@@ -474,3 +474,149 @@ cd plugin && ./build.sh
   `mix = 1` e produz o mesmo áudio de antes; só o comentário sobre `forca=0` foi corrigido. Mas
   ele roda no venv do repositório irmão, em Windows, e **não foi executado nesta máquina**: os
   números de correlação com o gold citados no README continuam sendo os da medição anterior.
+
+---
+
+## Etapa 3 — Retune Speed, e a fusão do Glide
+
+**Data:** 26/08/2026 · **Plano:** §3 a §5, §11.1 · **Fundamentação:**
+[pesquisa-retune-speed-e-cor.md](pesquisa-retune-speed-e-cor.md)
+
+Esta é a etapa que muda o som. As anteriores reorganizaram controles; esta troca a matemática
+da correção.
+
+### O que estava errado na malha antiga
+
+```
+estado = alpha*estado + (1-alpha)*alvoCents        (filtro sobre o ALVO)
+```
+
+Dois defeitos, ambos já diagnosticados na [documentação técnica](documentacao-tecnica.md) §8.2:
+
+1. **O filtro agia sobre o alvo**, que é quase constante dentro de uma nota. Ele converge em
+   ~τ e depois **não faz mais nada**. Como o alvo não vibra e a saída segue o alvo, o vibrato
+   do cantor era destruído.
+2. **O reset de ataque era para o alvo**: a nota nascia exatamente afinada, sem trajeto. É o
+   "duro, estático, robótico" que o teste de usuário reprovou.
+
+### A cadeia nova
+
+```
+outCents = LP(alvo) + k·(real − LP(real))  =  LP(alvo) + k·HP(real)
+```
+
+Dois estados de filtro em vez de um. O que essa forma faz é **separar o que o cantor faz
+devagar** (deriva de afinação — corrigir) **do que ele faz depressa** (vibrato — preservar).
+
+| `k` | Saída | Equivalente |
+|---:|---|---|
+| 0 | `LP(alvo)` — **literalmente a linha antiga** | o Glide de antes |
+| 1 | `real + LP(alvo − real)` — filtro sobre a **correção** | Retune Speed puro (Hildebrand, US 5.973.252) |
+| >1 | `alvo + k·vibrato` | Natural Vibrato positivo |
+
+**Por isso é fusão e não troca:** o Glide não foi removido, virou o caso `k = 0`.
+
+### A ressalva do plano estava certa
+
+O plano (§11.1) já tinha corrigido a si mesmo: `k = 0` reproduz o **regime**, não o **ataque**.
+A malha antiga iniciava o estado em `alvoCents`; a nova inicia em `realCents`. Reproduzir a
+Etapa 2 **exatamente** exige **dois** valores neutros — `k = 0` **e** a flag `ataqueNoAlvo`.
+
+Ela entrou como campo de `ParamsCorrecao` e flag de CLI (`legado=1`), **não** como parâmetro de
+plugin: o deslize de entrada é comportamento fixo do produto, não uma escolha do usuário.
+
+### Verificação — a parte que dá o chão
+
+**1. Não-regressão, 19 casos, bit a bit.** Cada caso do baseline roda de novo com
+`legado=1 vibrato=0` e é comparado com a impressão digital da Etapa 2:
+
+```
+== nao-regressao: legado=1 vibrato=0 reproduz a Etapa 2 ==
+  ok    19 casos reproduzem a Etapa 2 bit a bit
+```
+
+Isso não é um checksum gravado que o próximo `gravar` sobrescreve. As hashes ficam em
+**`baseline/etapa2-legado.sha256`**, marcado como *nunca regravar*: é um **marco fixo no
+passado**. Se as Etapas 4 ou 5 quebrarem a generalização, é aqui que aparece.
+
+**2. `test_retune.cpp`**, que prova o que checksum não alcança:
+
+| Seção | O que prova |
+|---|---|
+| 1 · Equivalência | `k=0` + `ataqueNoAlvo` == a malha da Etapa 2, **bit a bit**, para glide 0/15/40/120 ms |
+| 2 · Ataque | a 1ª amostra da nota é a altura **real** do cantor, para k = 0, 1 e 2 |
+| 3 · Álgebra | `LP(alvo)+real−LP(real)` == `real+LP(alvo−real)` (divergência máx. **6,2·10⁻¹¹ Hz**) |
+| 4 · Vibrato | o ganho segue `G(f_v) = f_v/√(f_v²+f_c²)` — medido vs. teoria: **erro ≤ 0,1 %** |
+
+A Seção 1 usa um **oráculo congelado**: a malha da Etapa 2 reimplementada dentro do próprio
+teste, copiada do commit `63ee0f0`. Não é duplicação descuidada — é contra aquele texto que a
+não-regressão é medida, e ele tem de ficar imóvel mesmo que o `dsp.h` evolua.
+
+A Seção 4 transforma em número o compromisso central deste controle: **corrigir rápido come
+vibrato**. Com τ = 25 ms, f_c ≈ 6,4 Hz, e um vibrato de 5,5 Hz sai com 65 % da amplitude. Não é
+defeito do filtro, é o que um passa-altas de 1 polo faz — e agora está quantificado, não
+suposto.
+
+### Um erro meu no caminho, que vale registrar
+
+A primeira conferência da não-regressão acusou divergência em **exatamente** os casos com
+`glide ≠ 0`. Passei um tempo procurando erro na malha antes de medir: instrumentei uma cópia
+rodando as duas malhas lado a lado sobre a trilha de F0 real, e ela acusou **zero** divergências
+em `fout`.
+
+A causa era do shell, não do código: eu tinha posto `legado=1 vibrato=0` numa variável e usado
+sem aspas. **`zsh` não faz word-splitting** de expansão de variável (o `bash` faz), então os dois
+foram um argumento só — `legado=1` casou, `vibrato=` nunca foi lido e ficou em 1. E com
+`glide=0` o termo `k·HP(real)` é nulo, o que explica por que **só** os casos com glide≠0
+divergiam.
+
+Fica anotado porque o sintoma era enganosamente coerente com um bug real de DSP: "falha só
+quando o filtro está ativo" é exatamente o que um erro na fusão produziria.
+
+### Parâmetros
+
+| | Antes | Agora |
+|---|---|---|
+| `Glide` | 0–200 ms, padrão 40 | ➡️ **`Retune Speed`**, 0–200 ms, **padrão 25** |
+| — | — | ➕ **`Natural Vibrato`** (k), 0–2, **padrão 1,0** |
+
+O padrão 25 ms vem do manual da Antares: *"A setting between 10 and 50 is typical for more
+natural sounding pitch correction"*. O **zero continua alcançável** — é ele que dá o efeito
+"duro" deliberado.
+
+Nos CLIs, `glide=` continua valendo como **apelido** de `retune=`, para que comandos e scripts
+anteriores não quebrem em silêncio. No plugin o id `"glide"` foi **aposentado** em favor de
+`"retune"`: a unidade não mudou, mas o significado sim (o filtro age sobre outra coisa) e o
+padrão foi de 40 para 25 — pela mesma regra aplicada ao `mix` na Etapa 2.
+
+### Estado da árvore
+
+| Arquivo | Mudança |
+|---|---|
+| `src/core/dsp.h` | `CorretorAltura` com dois estados; `ParamsCorrecao` ganha `retuneMs`, `vibrato`, `ataqueNoAlvo` |
+| os 3 CLIs | flags `retune=`, `vibrato=`, `legado=`; `glide=` vira apelido |
+| `src/c1_streaming/autotune_stream.h` | `StreamParams` acompanha; `updateLiveParams` ganha o k |
+| `plugin/` | `Retune Speed` + `Natural Vibrato`; a faixa foi de 7 para 8 colunas |
+| `src/tests/test_retune.cpp` | **novo** |
+| `baseline/etapa2-legado.sha256` | **novo** — o marco congelado |
+| `baseline.sh` | 4 casos novos + o bloco de não-regressão |
+
+### Verificação final
+
+```
+./baseline.sh conferir
+→ ok  test_escalas / test_mix / test_retune
+→ ok  PSOLA em identidade (beta=1) == bypass  [offline] [streaming]
+→ ok  19 casos reproduzem a Etapa 2 bit a bit
+→ IDENTICO — nada mudou.
+
+cd plugin && ./build.sh   → compila limpo · pluginval nível 10 → SUCCESS
+```
+
+### O que esta etapa NÃO resolve
+
+**A escuta.** Nenhum número aqui diz se `k = 1` soa melhor que `k = 1,2`, nem se 25 ms é o τ
+certo para esta voz, nem se o ataque na altura real incomoda quando o cantor entra errado. O
+plano (§9.3) já dizia que isso é teste de escuta, com o mesmo usuário do teste anterior.
+**Continua não feito, e é agora o item mais importante do trabalho** — a Etapa 3 é a que
+promete resolver a reprovação de naturalidade, e essa promessa só se verifica ouvindo.

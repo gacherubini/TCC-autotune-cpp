@@ -12,7 +12,7 @@
 //  a saída deve ser BIT-A-BIT (a menos de quantização 16-bit) igual à entrada,
 //  para qualquer 'block' — isso é o que valida o pipeline de build + I/O.
 //
-//  Uso: stream_test.exe <in.wav> [out.wav] [mix] [escala] [tol=] [glide=] [look=]
+//  Uso: stream_test.exe <in.wav> [out.wav] [mix] [escala] [tol=] [retune=] [vibrato=] [look=]
 //                       [frame=] [hop=] [voz=] [fmin=] [fmax=] [block=B] [dumpf0=arq]
 // ============================================================================
 #define DR_WAV_IMPLEMENTATION
@@ -40,7 +40,11 @@ int main(int argc, char** argv) {
     for (int i = 2; i < argc; ++i) {
         std::string a = argv[i];
         if      (a.rfind("tol=",0)==0)   p.tolCents = std::atof(a.c_str()+4);
-        else if (a.rfind("glide=",0)==0) p.glideMs  = std::atof(a.c_str()+6);
+        // "glide=" e' o nome antigo de "retune="; apelido mantido (Etapa 3).
+        else if (a.rfind("glide=",0)==0)   p.retuneMs = std::atof(a.c_str()+6);
+        else if (a.rfind("retune=",0)==0)  p.retuneMs = std::atof(a.c_str()+7);
+        else if (a.rfind("vibrato=",0)==0) p.vibrato  = std::atof(a.c_str()+8);
+        else if (a.rfind("legado=",0)==0)  p.ataqueNoAlvo = (std::atoi(a.c_str()+7)!=0);
         else if (a.rfind("look=",0)==0)  p.look     = std::atoi(a.c_str()+5);
         else if (a.rfind("frame=",0)==0) p.nFrame   = std::atoi(a.c_str()+6);
         else if (a.rfind("hop=",0)==0)   p.nHop     = std::atoi(a.c_str()+4);

@@ -12,7 +12,7 @@
 // ----------------------------------------------------------------------------
 //  IDs estáveis dos parâmetros (não mudar: o host salva por esse nome).
 //  Estruturais (mudam dimensões/latência -> re-prepare): look, voz, escala.
-//  "Ao vivo" (sem realocar): mix, tol, glide.
+//  "Ao vivo" (sem realocar): mix, tol, retune, vibrato.
 // ----------------------------------------------------------------------------
 namespace ids {
     // Etapa 2 do plano: o id "forca" foi APOSENTADO e o parametro que ocupa o
@@ -22,7 +22,13 @@ namespace ids {
     // nova, calado. Com id novo, o projeto salvo simplesmente cai no padrao.
     static constexpr const char* mix    = "mix";
     static constexpr const char* tol    = "tol";
-    static constexpr const char* glide  = "glide";
+    // Etapa 3: o id "glide" foi APOSENTADO. O parametro nao mudou de unidade
+    // (continua ms), mas mudou de SIGNIFICADO: o filtro deixou de agir sobre o
+    // alvo e passou a agir sobre a correcao, e o padrao foi de 40 para 25 ms
+    // (faixa recomendada pelo manual da Antares). Um valor salvo de 40 ms nao
+    // soa mais igual, entao id novo -- mesma regra aplicada ao "mix".
+    static constexpr const char* retune  = "retune";
+    static constexpr const char* vibrato = "vibrato";
     static constexpr const char* look   = "look";
     static constexpr const char* voz    = "voz";
     static constexpr const char* escala = "escala";
@@ -72,9 +78,16 @@ TccAutotuneProcessor::criarParametros() {
     // tol 0..50 cents — zona morta (preserva vibrato/microafinacao).
     layout.add(std::make_unique<AudioParameterFloat>(
         ParameterID{ ids::tol, 1 }, "Tolerancia (cents)", NormalisableRange<float>(0.0f, 50.0f), 15.0f));
-    // glide 0..200 ms — portamento ate a nota-alvo (tira o "robo").
+    // retune 0..200 ms — Retune Speed: quanto tempo a correcao leva para chegar
+    // a nota. Padrao 25 ms; o manual da Antares diz que "a setting between 10
+    // and 50 is typical for more natural sounding pitch correction". O ZERO
+    // precisa continuar alcancavel: e' ele que da o efeito "duro" deliberado.
     layout.add(std::make_unique<AudioParameterFloat>(
-        ParameterID{ ids::glide, 1 }, "Glide (ms)", NormalisableRange<float>(0.0f, 200.0f), 40.0f));
+        ParameterID{ ids::retune, 1 }, "Retune Speed (ms)", NormalisableRange<float>(0.0f, 200.0f), 25.0f));
+    // vibrato 0..2 — quanto do vibrato do cantor sobrevive a correcao.
+    //   0 = removido (o comportamento ate a Etapa 2), 1 = preservado, 2 = dobrado.
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID{ ids::vibrato, 1 }, "Natural Vibrato", NormalisableRange<float>(0.0f, 2.0f), 1.0f));
     // look 0..16 quadros — look-ahead do Viterbi (latencia x qualidade). ESTRUTURAL.
     layout.add(std::make_unique<AudioParameterInt>(
         ParameterID{ ids::look, 1 }, "Look-ahead (quadros)", 0, 16, 4));
@@ -103,13 +116,14 @@ TccAutotuneProcessor::TccAutotuneProcessor()
 {
     pMix    = apvts.getRawParameterValue(ids::mix);
     pTol    = apvts.getRawParameterValue(ids::tol);
-    pGlide  = apvts.getRawParameterValue(ids::glide);
+    pRetune  = apvts.getRawParameterValue(ids::retune);
+    pVibrato = apvts.getRawParameterValue(ids::vibrato);
     pLook   = apvts.getRawParameterValue(ids::look);
     pVoz    = apvts.getRawParameterValue(ids::voz);
     pEscala = apvts.getRawParameterValue(ids::escala);
     pTonica = apvts.getRawParameterValue(ids::tonica);
 
-    // Só os estruturais disparam re-prepare (mix/tol/glide são "ao vivo").
+    // Só os estruturais disparam re-prepare (mix/tol/retune/vibrato são "ao vivo").
     apvts.addParameterListener(ids::look,   this);
     apvts.addParameterListener(ids::voz,    this);
     apvts.addParameterListener(ids::escala, this);
@@ -138,7 +152,8 @@ void TccAutotuneProcessor::aplicarParametros() {
     StreamParams p;
     p.mix      = pMix    ? pMix->load()    : 1.0;
     p.tolCents = pTol    ? pTol->load()    : 0.0;
-    p.glideMs  = pGlide  ? pGlide->load()  : 0.0;
+    p.retuneMs = pRetune  ? pRetune->load()  : 0.0;
+    p.vibrato  = pVibrato ? pVibrato->load() : 1.0;
     p.look     = pLook   ? (int) pLook->load() : 4;
 
     // Preset de tessitura -> fmin/fmax (a grade de pitch do núcleo).
@@ -198,8 +213,8 @@ void TccAutotuneProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         updateHostDisplay();   // pede ao host p/ reler a latência
     }
 
-    // (2) Parâmetros "ao vivo" (sem realocar): mix/tol/glide.
-    core.updateLiveParams(pMix->load(), pTol->load(), pGlide->load());
+    // (2) Parâmetros "ao vivo" (sem realocar): mix/tol/retune/vibrato.
+    core.updateLiveParams(pMix->load(), pTol->load(), pRetune->load(), pVibrato->load());
 
     // Segurança: se o host mandar um bloco maior que o previsto, cresce os
     // scratch buffers (não deveria ocorrer; JUCE garante n <= samplesPerBlock).
