@@ -105,6 +105,11 @@ senão realimenta). É o jeito mais rápido de ver a GUI e ouvir o efeito.
 | **Tolerancia** | 0–50 cents | ao vivo | zona morta (preserva vibrato) |
 | **Retune Speed** | 0–200 ms | ao vivo | tempo até a nota. Padrão 25 ms (Antares: 10–50 é típico); 0 = efeito "duro" |
 | **Natural Vibrato** | 0–2 | ao vivo | 0 = remove o vibrato, 1 = preserva (padrão), 2 = dobra |
+| **Humanize** | 0–1 | ao vivo | afrouxa o Retune Speed na sustentação da nota (padrão 0) |
+| **Create Vibrato** | off/sen/tri/qua | ao vivo | **gera** vibrato (≠ Natural Vibrato, que preserva) |
+| **Vibrato Rate** | 0,1–10 Hz | ao vivo | taxa do vibrato gerado (padrão 5,5) |
+| **Vibrato Depth** | 0–100 ct | ao vivo | profundidade do vibrato gerado (padrão 0 = desligado) |
+| **Amplitude Amount** | 0–1 | ao vivo | modulação de amplitude em sincronia (±3 dB em 1) |
 | **Look-ahead** | 0–16 quadros | estrutural | latência × qualidade do Viterbi (re-prepara) |
 | **Voz** | preset | estrutural | tessitura → `fmin/fmax` (re-prepara, muda a latência) |
 | **Tonica** | 12 opções | estrutural | tônica da escala (Etapa 1) |

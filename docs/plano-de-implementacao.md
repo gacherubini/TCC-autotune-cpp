@@ -1,7 +1,7 @@
 # Plano de implementação — camada de correção e expressão
 
 > **Data:** 2026-08-26
-> **Status:** 🔨 **EM EXECUÇÃO.** Etapas 0, 1 e 2 feitas e verificadas; 3, 4 e 5 pendentes.
+> **Status:** ✅ **EXECUTADO.** As cinco etapas (0 a 5) estão feitas e verificadas.
 > O que já foi executado, e o que se aprendeu executando, está em
 > [`execucao-do-plano.md`](execucao-do-plano.md). **Este documento continua sendo o plano tal
 > como foi concebido** — não é reescrito conforme a execução, para que dê para comparar

@@ -105,7 +105,7 @@ Para o **plugin VST3**, veja [`plugin/README.md`](plugin/README.md) (exige MSVC)
 .\autotune.exe exemplo-antes.wav corrigido.wav 1.0 crom tol=600           REM PSOLA em beta=1
 ```
 
-**Preset natural recomendado:** `mix 1.0  tol=15  retune=25  vibrato=1`.
+**Preset natural recomendado:** `mix 1.0  tol=15  retune=25  vibrato=1  humanize=0.5`.
 
 > `tol=600` (última linha do exemplo) é um caso de **teste**, não de uso: uma tolerância maior
 > que meio semitom faz o alvo coincidir com o pitch detectado, então o TD-PSOLA roda inteiro
