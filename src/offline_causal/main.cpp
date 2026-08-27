@@ -44,7 +44,10 @@ int main(int argc, char** argv) {
         std::printf("  escala: crom (padrao) | C, G, F#... (maior) | Am, C#m... (menor)\n");
         std::printf("  tol=   : zona morta em cents (nao corrige desvios menores) — natural. Padrao 0.\n");
         std::printf("  retune=: Retune Speed em ms — tempo ate a nota. Padrao 0 (imediato). (alias: glide=)\n");
-        std::printf("  vibrato=: 0=remove o vibrato, 1=preserva (padrao), >1=exagera.\n");
+        std::printf("  vibrato=: 0=remove o vibrato do cantor, 1=preserva (padrao), >1=exagera.\n");
+        std::printf("  humanize=: 0..1 — afrouxa o Retune Speed na sustentacao da nota. Padrao 0.\n");
+        std::printf("  vibforma=: Create Vibrato — 0=off 1=senoide 2=triangular 3=quadrada. vibtaxa=Hz\n");
+        std::printf("             vibprof=cents  vibamp=0..1 (modulacao de amplitude junto).\n");
         std::printf("  legado=1: reproduz a Etapa 2 (nota nasce afinada). So para teste de nao-regressao.\n");
         std::printf("  Ex.: %s voz.wav out.wav 1.0 Am tol=15 glide=40   (preset natural)\n", argv[0]);
         return 1;
@@ -64,23 +67,11 @@ int main(int argc, char** argv) {
     const char* escalaTxt = (!a4.empty() && a4.find('=') == std::string::npos) ? argv[4] : "crom";
     definirEscala(escalaTxt);
     // flags opcionais chave=valor (ordem livre, a partir do argv[2])
-    double tolCents = 0.0;   // zona morta em cents (0 = corrige tudo)
-    double retuneMs = 0.0;   // Retune Speed em ms   (0 = correcao imediata)
-    double vibrato  = 1.0;   // k: 0 remove, 1 preserva, >1 exagera (Etapa 3)
-    bool   legado   = false; // reproduz a malha da Etapa 2 (so para teste)
-    for (int i = 2; i < argc; ++i) {
-        std::string a = argv[i];
-        if      (a.rfind("tol=", 0) == 0)     tolCents = std::atof(a.c_str() + 4);
-        // 'glide=' e' o nome ANTIGO do mesmo parametro; fica como apelido para
-        // que comandos e scripts anteriores continuem valendo. Ver Etapa 3.
-        else if (a.rfind("glide=", 0) == 0)   retuneMs = std::atof(a.c_str() + 6);
-        else if (a.rfind("retune=", 0) == 0)  retuneMs = std::atof(a.c_str() + 7);
-        else if (a.rfind("vibrato=", 0) == 0) vibrato  = std::atof(a.c_str() + 8);
-        else if (a.rfind("legado=", 0) == 0)  legado   = (std::atoi(a.c_str() + 7) != 0);
-    }
-    if (tolCents < 0) tolCents = 0;
-    if (retuneMs < 0) retuneMs = 0;
-    if (vibrato  < 0) vibrato  = 0;
+    // Etapa 5: as flags da malha sao lidas por lerFlagCorrecao() (dsp.h), num
+    // lugar so para os tres CLIs. Ver o comentario la sobre por que.
+    ParamsCorrecao pc;
+    for (int i = 2; i < argc; ++i) lerFlagCorrecao(argv[i], pc);
+    sanearCorrecao(pc);
 
     // 1. Ler WAV -> mono
     unsigned int canais = 0, taxa = 0; drwav_uint64 n = 0;
@@ -107,8 +98,7 @@ int main(int argc, char** argv) {
         std::printf("Escala: %s  (notas alvo: ", escalaTxt);
         for (int i = 0; i < 12; ++i) if (g_permitida[i]) std::printf("%s ", pcn[i]);
         std::printf(")\n");
-        std::printf("Tolerancia: %.0f cents (zona morta) | Retune: %.0f ms | Vibrato: %.2f%s\n",
-                    tolCents, retuneMs, vibrato, legado ? " | LEGADO (Etapa 2)" : "");
+        std::printf("%s\n", resumoCorrecao(pc).c_str());
     }
 
     // 2. pYIN -> F0 por quadro
@@ -180,14 +170,15 @@ int main(int argc, char** argv) {
     // de cada nota (não desliza a partir do silêncio). glide=0 -> alvo instantâneo.
     // É isto que tira o efeito "robô": a correção desliza entre notas (portamento).
     std::vector<float> foutSamp(N, 0.0f);
+    std::vector<float> ganhoSamp(N, 1.0f);   // Etapa 5
     {
         // Etapa 0 do plano: a malha (zona morta + glide + reset no ataque) mora
         // agora em dsp.h, compartilhada com o causal e com o streaming.
-        ParamsCorrecao pc; pc.tolCents = tolCents; pc.retuneMs = retuneMs;
-        pc.vibrato = vibrato; pc.ataqueNoAlvo = legado;
         CorretorAltura corr; corr.prepare(fs);
-        for (long long i = 0; i < N; ++i)
-            foutSamp[i] = (float)corr.proxima(f0samp[i], pc);
+        for (long long i = 0; i < N; ++i) {
+            foutSamp[i]  = (float)corr.proxima(f0samp[i], pc);
+            ganhoSamp[i] = (float)corr.ultimoGanho();   // Etapa 5: Amplitude Amount
+        }
     }
 
     // 4. PASSO 5 — prévia da correção (1 leitura por segundo)
@@ -196,7 +187,7 @@ int main(int argc, char** argv) {
     for (long long q = 0; q < numQ; q += passo) {
         double t = (double)(q * N_HOP) / fs, f = trackF0[q];
         if (f > 0) {
-            double ft = notaAlvo(f, tolCents);
+            double ft = notaAlvo(f, pc.tolCents);
             double dc = 1200.0 * std::log2(ft / f); // cents de correção aplicados
             std::printf("  t=%5.1fs  %6.1f Hz -> %-4s (%6.1f Hz)  correcao %+5.0f ct\n",
                         t, f, hzParaNota(ft).c_str(), ft, dc);
@@ -208,6 +199,10 @@ int main(int argc, char** argv) {
     // 5/6. TD-PSOLA (marcas + reamostragem com preservação de duração + cobertura).
     // Função compartilhada em dsp.h — a mesma usada pelo motor causal (autotune_rt).
     std::vector<float> out = psolaSintetiza(x, N, f0samp, foutSamp, fs);
+
+    // 5a. ETAPA 5 — modulacao de amplitude do Create Vibrato, em sincronia com a
+    // altura. Vem DEPOIS do PSOLA: o PSOLA move altura, nao amplitude.
+    if (pc.vibAmp > 0.0) for (long long i = 0; i < N; ++i) out[i] *= ganhoSamp[i];
 
     // 5b. ETAPA 2 — mistura seco/molhado. Aqui o alinhamento e' trivial: o PSOLA
     // preserva a duracao, entao out[i] e x[i] sao a MESMA posicao no tempo. (No

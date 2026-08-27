@@ -25,6 +25,7 @@
 extern const juce::StringArray kVozes;
 extern const juce::StringArray kTonicas;
 extern const juce::StringArray kEscalas;
+extern const juce::StringArray kFormasVib;   // Etapa 5
 
 class TccAutotuneProcessor : public juce::AudioProcessor,
                              private juce::AudioProcessorValueTreeState::Listener
@@ -76,6 +77,7 @@ private:
     // (Re)configura o núcleo a partir dos valores ATUAIS dos parâmetros e
     // reporta a latência ao host. Aloca (prepare) → chamar fora do hot-path
     // de tempo real, ou no boot de um bloco quando um parâmetro ESTRUTURAL mudou.
+    ParamsCorrecao lerCorrecao() const;
     void aplicarParametros();
 
     // Listener da APVTS: marca 'precisaReprepare' quando um parâmetro ESTRUTURAL
@@ -99,6 +101,11 @@ private:
     std::atomic<float>* pTol    = nullptr;
     std::atomic<float>* pRetune  = nullptr;
     std::atomic<float>* pVibrato = nullptr;
+    std::atomic<float>* pHumanize = nullptr;
+    std::atomic<float>* pVibForma = nullptr;
+    std::atomic<float>* pVibTaxa  = nullptr;
+    std::atomic<float>* pVibProf  = nullptr;
+    std::atomic<float>* pVibAmp   = nullptr;
     std::atomic<float>* pLook   = nullptr;
     std::atomic<float>* pVoz    = nullptr;
     std::atomic<float>* pEscala = nullptr;

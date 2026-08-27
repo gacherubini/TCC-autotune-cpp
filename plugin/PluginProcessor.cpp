@@ -28,7 +28,13 @@ namespace ids {
     // (faixa recomendada pelo manual da Antares). Um valor salvo de 40 ms nao
     // soa mais igual, entao id novo -- mesma regra aplicada ao "mix".
     static constexpr const char* retune  = "retune";
-    static constexpr const char* vibrato = "vibrato";
+    static constexpr const char* vibrato  = "vibrato";
+    // Etapa 4/5
+    static constexpr const char* humanize = "humanize";
+    static constexpr const char* vibForma = "vibforma";
+    static constexpr const char* vibTaxa  = "vibtaxa";
+    static constexpr const char* vibProf  = "vibprof";
+    static constexpr const char* vibAmp   = "vibamp";
     static constexpr const char* look   = "look";
     static constexpr const char* voz    = "voz";
     static constexpr const char* escala = "escala";
@@ -49,6 +55,9 @@ const juce::StringArray kTonicas {
     "C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab", "A", "A#/Bb", "B" };
 const juce::StringArray kEscalas {
     "Cromatica", "Maior", "Menor natural" };
+// Etapa 5: formas de onda do Create Vibrato. A ordem tem de bater com o enum
+// FormaVibrato de dsp.h -- o indice do combo e' convertido direto.
+const juce::StringArray kFormasVib { "Off", "Senoide", "Triangular", "Quadrada" };
 
 const char* TccAutotuneProcessor::nomeVoz(int idx) {
     switch (idx) {
@@ -88,6 +97,21 @@ TccAutotuneProcessor::criarParametros() {
     //   0 = removido (o comportamento ate a Etapa 2), 1 = preservado, 2 = dobrado.
     layout.add(std::make_unique<AudioParameterFloat>(
         ParameterID{ ids::vibrato, 1 }, "Natural Vibrato", NormalisableRange<float>(0.0f, 2.0f), 1.0f));
+    // humanize 0..1 (Etapa 4) — afrouxa o Retune Speed na sustentacao da nota.
+    // Padrao 0 para que a instalacao nova soe exatamente como a Etapa 3.
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID{ ids::humanize, 1 }, "Humanize", NormalisableRange<float>(0.0f, 1.0f), 0.0f));
+    // Create Vibrato (Etapa 5) — GERA vibrato, ao contrario do Natural Vibrato,
+    // que apenas preserva o do cantor. Desligado por padrao.
+    layout.add(std::make_unique<AudioParameterChoice>(
+        ParameterID{ ids::vibForma, 1 }, "Create Vibrato",
+        kFormasVib, 0));
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID{ ids::vibTaxa, 1 }, "Vibrato Rate (Hz)", NormalisableRange<float>(0.1f, 10.0f), 5.5f));
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID{ ids::vibProf, 1 }, "Vibrato Depth (ct)", NormalisableRange<float>(0.0f, 100.0f), 0.0f));
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID{ ids::vibAmp, 1 }, "Amplitude Amount", NormalisableRange<float>(0.0f, 1.0f), 0.0f));
     // look 0..16 quadros — look-ahead do Viterbi (latencia x qualidade). ESTRUTURAL.
     layout.add(std::make_unique<AudioParameterInt>(
         ParameterID{ ids::look, 1 }, "Look-ahead (quadros)", 0, 16, 4));
@@ -118,6 +142,11 @@ TccAutotuneProcessor::TccAutotuneProcessor()
     pTol    = apvts.getRawParameterValue(ids::tol);
     pRetune  = apvts.getRawParameterValue(ids::retune);
     pVibrato = apvts.getRawParameterValue(ids::vibrato);
+    pHumanize = apvts.getRawParameterValue(ids::humanize);
+    pVibForma = apvts.getRawParameterValue(ids::vibForma);
+    pVibTaxa  = apvts.getRawParameterValue(ids::vibTaxa);
+    pVibProf  = apvts.getRawParameterValue(ids::vibProf);
+    pVibAmp   = apvts.getRawParameterValue(ids::vibAmp);
     pLook   = apvts.getRawParameterValue(ids::look);
     pVoz    = apvts.getRawParameterValue(ids::voz);
     pEscala = apvts.getRawParameterValue(ids::escala);
@@ -148,12 +177,30 @@ void TccAutotuneProcessor::parameterChanged(const juce::String&, float) {
 //  Aloca (core.prepare) — chamar no prepareToPlay ou no boot de um bloco quando
 //  um parâmetro estrutural mudou (não a cada bloco).
 // ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+//  Monta a malha de correcao a partir do APVTS. Existe como funcao porque e'
+//  chamada de DOIS lugares -- aplicarParametros() (no re-prepare) e a cada
+//  bloco em processBlock() -- e uma divergencia entre as duas copias produziria
+//  um plugin que soa diferente logo depois de mexer num controle estrutural.
+// ----------------------------------------------------------------------------
+ParamsCorrecao TccAutotuneProcessor::lerCorrecao() const {
+    ParamsCorrecao c;
+    c.tolCents = pTol      ? pTol->load()      : 0.0;
+    c.retuneMs = pRetune   ? pRetune->load()   : 0.0;
+    c.vibrato  = pVibrato  ? pVibrato->load()  : 1.0;
+    c.humanize = pHumanize ? pHumanize->load() : 0.0;
+    c.vibForma = (FormaVibrato)(pVibForma ? (int)pVibForma->load() : 0);
+    c.vibTaxa  = pVibTaxa  ? pVibTaxa->load()  : 5.5;
+    c.vibProf  = pVibProf  ? pVibProf->load()  : 0.0;
+    c.vibAmp   = pVibAmp   ? pVibAmp->load()   : 0.0;
+    sanearCorrecao(c);
+    return c;
+}
+
 void TccAutotuneProcessor::aplicarParametros() {
     StreamParams p;
     p.mix      = pMix    ? pMix->load()    : 1.0;
-    p.tolCents = pTol    ? pTol->load()    : 0.0;
-    p.retuneMs = pRetune  ? pRetune->load()  : 0.0;
-    p.vibrato  = pVibrato ? pVibrato->load() : 1.0;
+    p.corr = lerCorrecao();
     p.look     = pLook   ? (int) pLook->load() : 4;
 
     // Preset de tessitura -> fmin/fmax (a grade de pitch do núcleo).
@@ -213,8 +260,8 @@ void TccAutotuneProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         updateHostDisplay();   // pede ao host p/ reler a latência
     }
 
-    // (2) Parâmetros "ao vivo" (sem realocar): mix/tol/retune/vibrato.
-    core.updateLiveParams(pMix->load(), pTol->load(), pRetune->load(), pVibrato->load());
+    // (2) Parâmetros "ao vivo" (sem realocar): toda a malha de correcao + mix.
+    core.updateLiveParams(lerCorrecao(), pMix->load());
 
     // Segurança: se o host mandar um bloco maior que o previsto, cresce os
     // scratch buffers (não deveria ocorrer; JUCE garante n <= samplesPerBlock).

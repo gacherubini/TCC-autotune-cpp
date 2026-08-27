@@ -755,3 +755,135 @@ Gravada **antes** da Etapa 3, como o plano §9.2 exigia. Reprodutível com
 > **Limitação do levantamento:** não há trilha de F0 do offline para comparar, porque
 > `src/offline_causal/main.cpp` não aceita `dumpf0=` — ele só parseia `tol=` e `glide=` e
 > **ignora em silêncio** o resto (`look=` inclusive). A referência de F0 acima é o causal.
+
+---
+
+## Etapas 4 e 5 — Humanize e Create Vibrato
+
+**Data:** 26/08/2026 · **Plano:** §7, itens K2, K3 e K4 da pesquisa
+
+As duas foram feitas juntas porque compartilham a mesma máquina: o contador `desdeAtaque`, que
+a Etapa 4 introduziu para saber há quanto tempo a nota está soando, é o mesmo que a Etapa 5 usa
+para o atraso de entrada do vibrato.
+
+### Etapa 4 — Humanize
+
+Do manual da Antares: *"applies a slower Retune Speed only during the sustained portion of
+longer notes"*.
+
+O problema que ele resolve é **efeito colateral direto da Etapa 3**. Um τ único serve a dois
+momentos que querem coisas opostas:
+
+| momento | quer | por quê |
+|---|---|---|
+| **ataque** | τ **curto** | a nota nasce onde o cantor a colocou; precisa chegar à afinação rápido, senão a entrada soa desafinada |
+| **sustentação** | τ **longo** | é onde vive a expressão; corrigir depressa ali achata tudo |
+
+```
+tauEff = tau · (1 + humanize · HUM_FATOR · rampa(t))
+rampa(t) = 1 − exp(−t / HUM_SUSTENTACAO)
+```
+
+A rampa é **suave de propósito**. Um limiar duro ("depois de X ms troque o τ") poria um degrau
+na constante de tempo no meio da nota, e degrau em filtro é transitório audível.
+
+`HUM_SUSTENTACAO = 200 ms` e `HUM_FATOR = 3` são **constantes**, não controles: elas definem o
+que "sustentação" *quer dizer*, e isso é decisão de desenho — a intensidade o usuário já escolhe
+pelo próprio Humanize. Ficam nomeadas em `dsp.h` para poderem ser discutidas no texto.
+
+**Efeito medido:** com vibrato de 5,5 Hz e τ = 25 ms, a sustentação preserva **19,6 → 28,8
+cents** (×1,47) ao ligar o Humanize em 1.
+
+### Etapa 5 — Create Vibrato
+
+Aqui o plugin deixa de só **corrigir** e passa a **gerar**. Quatro controles: forma (off /
+senoide / triangular / quadrada), taxa (Hz), profundidade (cents) e **Amplitude Amount**, que
+modula a amplitude em sincronia com a altura.
+
+> **Não confundir com o `Natural Vibrato` (k) da Etapa 3 — são opostos.** `k` **preserva** o
+> vibrato que o cantor fez; Create Vibrato **inventa** um que ele não fez. Convivem: dá para
+> preservar o do cantor e somar outro por cima. Soam mal juntos em profundidade alta, e isso é
+> escolha do usuário, não defeito.
+
+**Atraso de entrada.** Vibrato que começa junto com a nota soa sintético — cantor nenhum entra
+vibrando. A rampa de entrada (`VIB_ONSET = 300 ms`) reusa o `desdeAtaque` da Etapa 4. Medido:
+nos primeiros 50 ms a excursão é **2,9 cents** contra **40,0** em regime.
+
+**Onde a amplitude entra.** O `proxima()` devolve **altura**, e altura e amplitude entram no
+sinal em pontos diferentes: a altura vai para o TD-PSOLA, o ganho é aplicado **depois** dele —
+o PSOLA move altura, não amplitude. Por isso o ganho sai por um caminho separado
+(`ultimoGanho()`), e no streaming ele viaja num vetor indexado pela **mesma amostra absoluta**
+que o seco e o molhado, chegando alinhado ao ponto de saída.
+
+O ganho multiplica **só o molhado**: o seco tem de continuar sendo a entrada intocada para que
+`mix = 0` siga sendo bypass exato.
+
+### Verificação
+
+Ambas seguem o padrão do plano — **valor neutro reproduz a etapa anterior bit a bit**:
+
+```
+ok    humanize=0 == retune25 puro
+ok    Create Vibrato off == retune25 puro
+ok    19 casos reproduzem a Etapa 2 bit a bit
+IDENTICO — nada mudou.
+```
+
+**Nenhuma hash de áudio mudou** ao acrescentar as duas etapas — só as de log, porque os CLIs
+passaram a imprimir o resumo dos parâmetros novos.
+
+`test_expressao.cpp` cobre o que checksum não alcança: as três formas de "desligado" que
+precisam ser **exatas**, o crescimento do τ, as quatro formas de onda dentro de [−1,1], a
+profundidade e a taxa geradas, o atraso de entrada, e o Amplitude Amount em dB.
+
+### Dois erros meus no teste, que valem registro
+
+O código passou de primeira; **o teste falhou duas vezes por premissa errada minha**, e as duas
+são instrutivas:
+
+1. **"Humanize não toca o ataque."** Falso. A rampa é `1 − exp(−t/0,2)`, que em 1,5 ms já vale
+   ~0,0075 — ela começa a agir **imediatamente**, só que com peso desprezível. A afirmação
+   verificável é sobre **magnitude** (medido: 0,022 cent, ~200× abaixo do limiar de percepção),
+   não sobre igualdade exata.
+2. **"Com Humanize o desvio cresce e em 1 s é grande."** Também falso, e mais interessante: com
+   F0 **constante** os dois filtros convergem para o mesmo alvo qualquer que seja o τ, então o
+   desvio **volta a zero** em regime. O Humanize muda o **transitório**, não o ponto de chegada.
+   Ele só muda o regime quando a entrada **se move** — que é exatamente o caso do vibrato, e é
+   por isso que a medida de "quanto vibrato sobrevive" é a que mostra o efeito.
+
+Ficam anotados porque os dois enunciados errados são o tipo de coisa que se escreve num texto
+de TCC sem pensar duas vezes.
+
+### Faxina que veio junto
+
+Com 10 parâmetros na malha, os três CLIs liam as **mesmas** flags com três cópias do
+`if/else-if`. Isso virou `lerFlagCorrecao()` em `dsp.h`, junto com `sanearCorrecao()` e
+`resumoCorrecao()`. Mesmo motivo da Etapa 0: um CLI aceitando `vibprof=` e outro **ignorando em
+silêncio** é um bug que nenhum teste pega, porque flag ignorada não reclama.
+
+Na mesma linha, o `StreamParams` deixou de copiar campo a campo os parâmetros da malha e passou
+a **conter** um `ParamsCorrecao`. O `updateLiveParams()` foi de quatro `double` soltos para
+`(const ParamsCorrecao&, double mix)` — com 10 parâmetros, a lista de argumentos já não cabia.
+
+### Dívida de interface, registrada
+
+A faixa de controles do plugin foi de 8 para **13 colunas**. Treze numa faixa única é demais, e
+a GUI genérica não escala mais. A organização certa é em grupos (**Escala | Correção |
+Expressão**), mas isso é trabalho de **desenho de interface**, não de DSP — não entra numa etapa
+cujo critério de aceite é "não mudou o áudio". Fica como item explícito de backlog.
+
+### O plano acabou. O que ele não entrega.
+
+As cinco etapas estão feitas e verificadas. Vale ser exato sobre o que isso significa:
+
+| O que está provado | O que **não** está |
+|---|---|
+| cada etapa reproduz a anterior no valor neutro, bit a bit | que os padrões escolhidos soem bem |
+| o filtro faz o que a matemática diz (ganho de vibrato dentro de 0,1 % da teoria) | que 25 ms seja o τ certo **para esta voz** |
+| o plugin carrega, automatiza e sobrevive a fuzzing no `pluginval` | que a interface de 13 colunas seja usável |
+| a saída não depende do tamanho do bloco do host | que a latência de 71 ms seja aceitável ao vivo |
+
+**A reprovação que originou tudo isto foi de escuta** ("duro, estático, robótico"), e escuta é a
+única coisa que nenhuma destas verificações substitui. O teste com o mesmo usuário, agora com
+Retune Speed, Humanize e Natural Vibrato disponíveis, é o próximo passo do trabalho — e é dele
+que sai a resposta sobre se o plano funcionou.

@@ -37,11 +37,13 @@
 //  possa repassar os mesmos argumentos usados nas versões offline/causal.
 // ----------------------------------------------------------------------------
 struct StreamParams {
+    // Etapa 5: os parametros da MALHA de correcao (tol, retune, vibrato,
+    // humanize, Create Vibrato, legado) vivem numa struct so, a mesma que os
+    // CLIs e o plugin montam -- em vez de copiados campo a campo aqui. Foi o
+    // que a Etapa 0 fez com o laco de correcao, pela mesma razao: com 10
+    // parametros, campos duplicados divergem em silencio.
+    ParamsCorrecao corr;
     double mix      = 1.0;     // 0..1: seco/molhado (0 = só a entrada, 1 = só o corrigido)
-    double tolCents = 0.0;     // zona morta (cents) ao redor da nota-alvo
-    double retuneMs = 0.0;     // Retune Speed: constante de tempo da correcao (ms)
-    double vibrato  = 1.0;     // k: 0 remove o vibrato, 1 preserva, >1 exagera
-    bool   ataqueNoAlvo = false; // flag interna: reproduz o ataque da Etapa 2
     int    look     = 4;       // look-ahead (em quadros) do Viterbi causal
     int    nFrame   = N_FRAME; // tamanho do quadro de análise de pitch
     int    nHop     = N_HOP;   // passo entre quadros de análise
@@ -124,8 +126,8 @@ public:
     //  emitirAmostras). Já os parâmetros ESTRUTURAIS (look, fmin/fmax via voz,
     //  frame, hop) mudam ringbuffers/HMM/latência → exigem prepare() de novo.
     // -------------------------------------------------------------------
-    void updateLiveParams(double mix, double tolCents, double retuneMs, double vibrato) {
-        p.mix = mix; p.tolCents = tolCents; p.retuneMs = retuneMs; p.vibrato = vibrato;
+    void updateLiveParams(const ParamsCorrecao& c, double mix) {
+        p.corr = c; p.mix = mix;
     }
 
     // -------------------------------------------------------------------
@@ -204,7 +206,7 @@ public:
         //   corretor: estado da malha de correcao (glide + reset no ataque),
         //             compartilhada com o gold e o causal via dsp.h.
         // -----------------------------------------------------------------
-        xAll.clear(); f0samp.clear(); foutSamp.clear();
+        xAll.clear(); f0samp.clear(); foutSamp.clear(); ganhoSamp.clear();
         corretor.prepare(fs);
 
         // -----------------------------------------------------------------
@@ -294,7 +296,12 @@ public:
         // que ele nao pode compensar e' um atraso que aparece e some.
         for (int i = 0; i < n; ++i) {
             long long src = lida - (long long)latSamples;
-            const float molhado = (src >= 0 && src < synthFront) ? outBuf[(size_t)src] : 0.0f;
+            float molhado = (src >= 0 && src < synthFront) ? outBuf[(size_t)src] : 0.0f;
+            // Etapa 5: o ganho so multiplica o MOLHADO -- e' parte do efeito, e
+            // o seco tem de continuar sendo a entrada intocada para que mix=0
+            // siga sendo bypass exato.
+            if (p.corr.vibAmp > 0.0 && src >= 0 && src < (long long)ganhoSamp.size())
+                molhado *= ganhoSamp[(size_t)src];
             const float seco    = (src >= 0 && src < (long long)xAll.size()) ? xAll[(size_t)src] : 0.0f;
             out[i] = misturar(seco, molhado, p.mix);
             ++lida;
@@ -445,11 +452,14 @@ private:
         // identica a usada pelo gold e pelo causal. O estado (glide + ataque)
         // vive em 'corretor', membro desta classe, e atravessa as chamadas de
         // process() como o resto do estado de streaming.
-        ParamsCorrecao pc; pc.tolCents = p.tolCents; pc.retuneMs = p.retuneMs;
-        pc.vibrato = p.vibrato; pc.ataqueNoAlvo = p.ataqueNoAlvo;
+
         for (int k=0;k<p.nHop;++k) {
             f0samp.push_back((float)f0q);
-            foutSamp.push_back((float)corretor.proxima(f0q, pc));
+            foutSamp.push_back((float)corretor.proxima(f0q, p.corr));
+            // Etapa 5: o ganho de amplitude do Create Vibrato acompanha a altura,
+            // indexado pela MESMA amostra absoluta -- e' assim que ele chega
+            // alinhado ao ponto de saida, junto com o seco e o molhado.
+            ganhoSamp.push_back((float)corretor.ultimoGanho());
         }
     }
 
@@ -583,6 +593,7 @@ private:
     CorretorAltura corretor;       // malha de correcao (dsp.h) — glide + reset no ataque
 
     // ---- TAREFA 5: síntese incremental (re-síntese em janela + overlap-save) ----
+    std::vector<float> ganhoSamp;  // ganho de amplitude por amostra (Etapa 5)
     std::vector<float> outBuf;     // saída finalizada, indexada por amostra absoluta (C2 trocará por anel limitado)
     long long synthFront = 0;      // nº de amostras de saída já finalizadas
     long long lida = 0;            // nº de amostras já entregues ao host via process()

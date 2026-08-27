@@ -128,6 +128,10 @@ TccAutotuneEditor::TccAutotuneEditor(TccAutotuneProcessor& p)
     configurarSlider(tolSlider,   tolLabel,   "Tolerancia");
     configurarSlider(retuneSlider, retuneLabel, "Retune Speed");
     configurarSlider(vibratoSlider, vibratoLabel, "Natural Vibrato");
+    configurarSlider(humanizeSlider, humanizeLabel, "Humanize");
+    configurarSlider(vibTaxaSlider,  vibTaxaLabel,  "Vib Rate");
+    configurarSlider(vibProfSlider,  vibProfLabel,  "Vib Depth");
+    configurarSlider(vibAmpSlider,   vibAmpLabel,   "Vib Amp");
     configurarSlider(lookSlider,  lookLabel,  "Look-ahead");
 
     auto configurarCombo = [this](juce::ComboBox& c, juce::Label& l, const juce::String& texto,
@@ -142,12 +146,18 @@ TccAutotuneEditor::TccAutotuneEditor(TccAutotuneProcessor& p)
     configurarCombo(vozCombo,    vozLabel,    "Voz",    kVozes);
     configurarCombo(tonicaCombo, tonicaLabel, "Tonica", kTonicas);
     configurarCombo(escalaCombo, escalaLabel, "Escala", kEscalas);
+    configurarCombo(vibFormaCombo, vibFormaLabel, "Create Vib", kFormasVib);
 
     auto& apvts = processorRef.apvts;
     mixAttach = std::make_unique<SliderAttachment>(apvts, "mix",   mixSlider);
     tolAttach   = std::make_unique<SliderAttachment>(apvts, "tol",   tolSlider);
     retuneAttach  = std::make_unique<SliderAttachment>(apvts, "retune",  retuneSlider);
-    vibratoAttach = std::make_unique<SliderAttachment>(apvts, "vibrato", vibratoSlider);
+    vibratoAttach  = std::make_unique<SliderAttachment>(apvts, "vibrato",  vibratoSlider);
+    humanizeAttach = std::make_unique<SliderAttachment>(apvts, "humanize", humanizeSlider);
+    vibTaxaAttach  = std::make_unique<SliderAttachment>(apvts, "vibtaxa",  vibTaxaSlider);
+    vibProfAttach  = std::make_unique<SliderAttachment>(apvts, "vibprof",  vibProfSlider);
+    vibAmpAttach   = std::make_unique<SliderAttachment>(apvts, "vibamp",   vibAmpSlider);
+    vibFormaAttach = std::make_unique<ComboAttachment>(apvts, "vibforma", vibFormaCombo);
     lookAttach  = std::make_unique<SliderAttachment>(apvts, "look",  lookSlider);
     vozAttach    = std::make_unique<ComboAttachment>(apvts, "voz",    vozCombo);
     tonicaAttach = std::make_unique<ComboAttachment>(apvts, "tonica", tonicaCombo);
@@ -174,7 +184,14 @@ void TccAutotuneEditor::resized() {
 
     // Etapa 1: 7 colunas — a Tonica entrou ao lado da Escala.
     // Etapa 3: 8 — o Natural Vibrato entrou ao lado do Retune Speed.
-    const int n = 8;
+    // Etapas 4/5: 13 — Humanize e os quatro do Create Vibrato.
+    //
+    // Treze colunas numa faixa e' MUITO, e fica anotado como divida de
+    // interface: a GUI generica em faixa unica nao escala mais. A organizacao
+    // certa e' em grupos (Escala | Correcao | Expressao), e isso e' trabalho de
+    // desenho, nao de DSP -- nao entra numa etapa cujo criterio de aceite e'
+    // "nao mudou o audio". Ver docs/execucao-do-plano.md, Etapa 5.
+    const int n = 13;
     const int largura = area.getWidth() / n;
 
     auto montarCombo = [&](juce::ComboBox& ctrl, juce::Label& label) {
@@ -195,5 +212,10 @@ void TccAutotuneEditor::resized() {
     montarSlider(tolSlider,   tolLabel);
     montarSlider(retuneSlider, retuneLabel);
     montarSlider(vibratoSlider, vibratoLabel);
+    montarSlider(humanizeSlider, humanizeLabel);
+    montarCombo(vibFormaCombo, vibFormaLabel);
+    montarSlider(vibTaxaSlider, vibTaxaLabel);
+    montarSlider(vibProfSlider, vibProfLabel);
+    montarSlider(vibAmpSlider,  vibAmpLabel);
     montarSlider(lookSlider,  lookLabel);
 }

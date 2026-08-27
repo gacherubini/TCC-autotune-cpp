@@ -12,7 +12,7 @@
 //  a saída deve ser BIT-A-BIT (a menos de quantização 16-bit) igual à entrada,
 //  para qualquer 'block' — isso é o que valida o pipeline de build + I/O.
 //
-//  Uso: stream_test.exe <in.wav> [out.wav] [mix] [escala] [tol=] [retune=] [vibrato=] [look=]
+//  Uso: stream_test.exe <in.wav> [out.wav] [mix] [escala] [tol=] [retune=] [vibrato=] [humanize=] [vib*=] [look=]
 //                       [frame=] [hop=] [voz=] [fmin=] [fmax=] [block=B] [dumpf0=arq]
 // ============================================================================
 #define DR_WAV_IMPLEMENTATION
@@ -39,12 +39,7 @@ int main(int argc, char** argv) {
     int block = 128; std::string vozNome, dumpF0Path, dumpFramesPath; bool fminExpl=false, fmaxExpl=false;
     for (int i = 2; i < argc; ++i) {
         std::string a = argv[i];
-        if      (a.rfind("tol=",0)==0)   p.tolCents = std::atof(a.c_str()+4);
-        // "glide=" e' o nome antigo de "retune="; apelido mantido (Etapa 3).
-        else if (a.rfind("glide=",0)==0)   p.retuneMs = std::atof(a.c_str()+6);
-        else if (a.rfind("retune=",0)==0)  p.retuneMs = std::atof(a.c_str()+7);
-        else if (a.rfind("vibrato=",0)==0) p.vibrato  = std::atof(a.c_str()+8);
-        else if (a.rfind("legado=",0)==0)  p.ataqueNoAlvo = (std::atoi(a.c_str()+7)!=0);
+        if      (lerFlagCorrecao(a, p.corr)) { /* flag da malha (dsp.h) */ }
         else if (a.rfind("look=",0)==0)  p.look     = std::atoi(a.c_str()+5);
         else if (a.rfind("frame=",0)==0) p.nFrame   = std::atoi(a.c_str()+6);
         else if (a.rfind("hop=",0)==0)   p.nHop     = std::atoi(a.c_str()+4);
@@ -58,6 +53,7 @@ int main(int argc, char** argv) {
     // Preset de tessitura (igual ao autotune_rt): fmin=/fmax= explícitos vencem.
     if (!vozNome.empty()) { double pf,px; if (presetVoz(vozNome,pf,px)) { if(!fminExpl)p.fmin=pf; if(!fmaxExpl)p.fmax=px; } }
     // Sanitização básica dos parâmetros (mesmos limites do autotune_rt).
+    sanearCorrecao(p.corr);
     if (p.look<0) p.look=0; if (p.nFrame<128) p.nFrame=128; if (p.nHop<1) p.nHop=1;
     if (p.nHop>p.nFrame) p.nHop=p.nFrame; if (block<1) block=1;
 

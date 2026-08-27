@@ -63,15 +63,18 @@ private:
     TccLookAndFeel lookAndFeel;
     TunerDisplay tuner;
 
-    juce::ComboBox vozCombo, tonicaCombo, escalaCombo;
-    juce::Slider   mixSlider, tolSlider, retuneSlider, vibratoSlider, lookSlider;
+    juce::ComboBox vozCombo, tonicaCombo, escalaCombo, vibFormaCombo;
+    juce::Slider   mixSlider, tolSlider, retuneSlider, vibratoSlider, lookSlider,
+               humanizeSlider, vibTaxaSlider, vibProfSlider, vibAmpSlider;
     juce::Label    vozLabel, tonicaLabel, escalaLabel, mixLabel, tolLabel, retuneLabel,
-                   vibratoLabel, lookLabel;
+                   vibratoLabel, lookLabel, humanizeLabel, vibFormaLabel,
+                   vibTaxaLabel, vibProfLabel, vibAmpLabel;
 
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ComboAttachment  = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
-    std::unique_ptr<SliderAttachment> mixAttach, tolAttach, retuneAttach, vibratoAttach, lookAttach;
-    std::unique_ptr<ComboAttachment>  vozAttach, tonicaAttach, escalaAttach;
+    std::unique_ptr<SliderAttachment> mixAttach, tolAttach, retuneAttach, vibratoAttach, lookAttach,
+                                      humanizeAttach, vibTaxaAttach, vibProfAttach, vibAmpAttach;
+    std::unique_ptr<ComboAttachment>  vozAttach, tonicaAttach, escalaAttach, vibFormaAttach;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TccAutotuneEditor)
 };

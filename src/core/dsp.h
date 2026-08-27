@@ -283,6 +283,66 @@ inline float misturar(float seco, float molhado, double mix) {
 //  a flag 'ataqueNoAlvo'. Ela existe so para o teste de nao-regressao e NAO e'
 //  parametro de plugin -- o deslize de entrada e' comportamento fixo do produto.
 // ---------------------------------------------------------------------------
+//  ETAPA 4 -- Humanize. Do manual da Antares, literalmente: "applies a slower
+//  Retune Speed only during the sustained portion of longer notes".
+//
+//  O problema que ele resolve e' um efeito colateral direto da Etapa 3. Um tau
+//  unico serve a dois momentos que querem coisas opostas:
+//
+//    - no ATAQUE quer-se tau CURTO: a nota nasce onde o cantor a colocou e
+//      precisa chegar a afinacao rapido, senao a entrada soa desafinada;
+//    - na SUSTENTACAO quer-se tau LONGO: e' onde vive a expressao (vibrato,
+//      deriva intencional), e corrigir depressa ali achata tudo.
+//
+//  Humanize desacopla os dois: o tau efetivo cresce conforme a nota se sustenta.
+//
+//      tauEff = tau * (1 + humanize * HUM_FATOR * rampa(t))
+//      rampa(t) = 1 - exp(-t / HUM_SUSTENTACAO)      t = tempo desde o ataque
+//
+//  A rampa e' suave de proposito. Um limiar duro ("depois de X ms, troque o
+//  tau") produziria um degrau na constante de tempo no meio da nota, e degrau
+//  em filtro e' transitorio audivel. A exponencial da a mesma ideia sem a
+//  descontinuidade -- e usa a mesma primitiva que o resto da malha.
+//
+//  Por que sao CONSTANTES e nao controles: o projeto ja tem 8 parametros. Estes
+//  dois definem o que "sustentacao" QUER DIZER, e essa e' uma decisao de
+//  desenho, nao um gosto do usuario -- que ja escolhe a intensidade pelo
+//  proprio Humanize. Ficam nomeados aqui para poderem ser discutidos no texto.
+inline constexpr double HUM_SUSTENTACAO = 0.200;  // s: constante da rampa ataque->sustentacao
+inline constexpr double HUM_FATOR       = 3.0;    // humanize=1 -> tau ate 4x na sustentacao
+
+//  ETAPA 5 -- Create Vibrato. Aqui o plugin deixa de so CORRIGIR e passa a
+//  GERAR: um vibrato sintetico somado a altura de saida, com forma, taxa e
+//  profundidade proprias, mais uma modulacao de amplitude em sincronia.
+//
+//  Nao confundir com o 'vibrato' (k) da Etapa 3, que sao coisas opostas:
+//    - k preserva o vibrato que o CANTOR fez (nao inventa nada);
+//    - Create Vibrato inventa um que o cantor NAO fez.
+//  Os dois convivem: da para preservar o do cantor e somar um por cima. Soam
+//  mal juntos em profundidade alta, e isso e' escolha do usuario, nao defeito.
+//
+//  ATRASO DE ENTRADA (onset). Vibrato que comeca junto com a nota soa
+//  sintetico -- cantor nenhum entra vibrando. A Antares expoe isso como "Onset
+//  Delay"/"Onset Rate"; aqui e' uma rampa fixa com a mesma forma da do Humanize,
+//  reusando o contador 'desdeAtaque' que a Etapa 4 ja mantem. Sem controle
+//  proprio, pelo mesmo motivo: define o que "entrada da nota" quer dizer.
+inline constexpr double VIB_ONSET = 0.300;   // s: constante da rampa de entrada do vibrato
+inline constexpr double VIB_AMP_DB = 3.0;    // dB de modulacao de amplitude em vibAmp=1
+
+// Formas de onda do Create Vibrato. Valor em [-1,1] para uma fase em [0,1).
+enum class FormaVibrato { Nenhuma = 0, Senoide = 1, Triangular = 2, Quadrada = 3 };
+
+inline double formaVibrato(FormaVibrato f, double fase) {
+    switch (f) {
+        case FormaVibrato::Senoide:    return std::sin(2.0 * M_PI * fase);
+        // Triangular: sobe de -1 a 1 na primeira metade, desce na segunda.
+        case FormaVibrato::Triangular: return (fase < 0.5) ? (4.0 * fase - 1.0)
+                                                           : (3.0 - 4.0 * fase);
+        case FormaVibrato::Quadrada:   return (fase < 0.5) ? 1.0 : -1.0;
+        default:                       return 0.0;
+    }
+}
+
 struct ParamsCorrecao {
     // Etapa 2: 'forca' saiu daqui. Ela nao era um parametro da MALHA (nao tem
     // dimensao de tempo, nem decide o alvo) -- era uma dosagem de efeito, e
@@ -290,6 +350,13 @@ struct ParamsCorrecao {
     double tolCents = 0.0;   // zona morta (cents) ao redor da nota-alvo
     double retuneMs = 0.0;   // Retune Speed: constante de tempo da correcao (ms)
     double vibrato  = 1.0;   // k: 0 = sem vibrato, 1 = preservado, >1 = exagerado
+    double humanize = 0.0;   // 0..1: quanto o Retune Speed AFROUXA na sustentacao
+
+    // Etapa 5 -- Create Vibrato (gerado, nao preservado; ver 'vibrato' acima).
+    FormaVibrato vibForma = FormaVibrato::Nenhuma; // Nenhuma = desligado
+    double vibTaxa  = 5.5;   // Hz
+    double vibProf  = 0.0;   // cents de profundidade (0 = desligado)
+    double vibAmp   = 0.0;   // 0..1: modulacao de amplitude em sincronia
 
     // Flag INTERNA (nao e' parametro de usuario): restaura o reset de ataque da
     // Etapa 2, em que a nota nascia no alvo. Com ataqueNoAlvo=true E vibrato=0,
@@ -301,16 +368,31 @@ struct ParamsCorrecao {
 class CorretorAltura {
 public:
     void prepare(double fsHz) { fs = fsHz; reset(); }
-    void reset() { lpAlvo = 0.0; lpReal = 0.0; tinhaNota = false; }
+    void reset() { lpAlvo = 0.0; lpReal = 0.0; tinhaNota = false; desdeAtaque = 0;
+                   fase = 0.0; ganho = 1.0; }
+
+    // Ganho de amplitude da ULTIMA amostra calculada por proxima() (Etapa 5).
+    // Fica separado do retorno porque proxima() devolve ALTURA, e altura e
+    // amplitude entram no sinal em pontos diferentes do pipeline: a altura
+    // vai para o PSOLA, o ganho e aplicado depois dele.
+    double ultimoGanho() const { return ganho; }
 
     // Devolve o pitch-alvo em Hz para uma amostra cujo F0 detectado e f0Hz.
     // f0Hz <= 0 marca trecho nao-vozeado: devolve 0 e rearma o ataque.
     double proxima(double f0Hz, const ParamsCorrecao& p) {
-        if (f0Hz <= 0.0) { tinhaNota = false; return 0.0; }
+        if (f0Hz <= 0.0) { tinhaNota = false; ganho = 1.0; return 0.0; }
 
         const double realCents = 1200.0 * std::log2(f0Hz / FMIN);
         const double alvoCents = 1200.0 * std::log2(notaAlvo(f0Hz, p.tolCents) / FMIN);
-        const double tau       = p.retuneMs / 1000.0;
+        // Etapa 4: o tau EFETIVO cresce com o tempo desde o ataque, se Humanize
+        // estiver ligado. O ramo humanize==0 e' exato de proposito: ele tem de
+        // devolver a Etapa 3 bit a bit, e nao "praticamente igual".
+        double tau = p.retuneMs / 1000.0;
+        if (p.humanize > 0.0 && tau > 0.0) {
+            const double t     = (double)desdeAtaque / fs;
+            const double rampa = 1.0 - std::exp(-t / HUM_SUSTENTACAO);
+            tau *= 1.0 + p.humanize * HUM_FATOR * rampa;
+        }
         const double alpha     = (tau > 0.0) ? std::exp(-1.0 / (tau * fs)) : 0.0;
 
         if (!tinhaNota) {
@@ -327,7 +409,10 @@ public:
             lpAlvo = p.ataqueNoAlvo ? alvoCents : realCents;
             lpReal = realCents;
             tinhaNota = true;
+            desdeAtaque = 0;
+            fase = 0.0;
         } else {
+            ++desdeAtaque;
             // Regime. Mesmo alpha nos dois: sao o mesmo filtro, aplicado a dois
             // sinais. Usar constantes de tempo diferentes quebraria a identidade
             // LP(alvo) + real - LP(real) = real + LP(alvo - real) que sustenta
@@ -336,7 +421,29 @@ public:
             lpReal = alpha * lpReal + (1.0 - alpha) * realCents;
         }
 
-        const double outCents = lpAlvo + p.vibrato * (realCents - lpReal);
+        double outCents = lpAlvo + p.vibrato * (realCents - lpReal);
+
+        // Etapa 5: Create Vibrato. Os dois ramos de desligado (forma Nenhuma e
+        // profundidade zero) sao saidas exatas -- nao pode sobrar aritmetica no
+        // caminho, senao a etapa deixa de reproduzir a Etapa 4 bit a bit.
+        ganho = 1.0;
+        if (p.vibForma != FormaVibrato::Nenhuma && (p.vibProf > 0.0 || p.vibAmp > 0.0)) {
+            // A fase avanca com a nota, e zera no ataque: o vibrato gerado
+            // comeca sempre do mesmo ponto da forma de onda, em vez de pegar o
+            // LFO onde ele estivesse. Sem isso, notas iguais soariam diferentes
+            // conforme o instante em que comecassem.
+            fase += p.vibTaxa / fs;
+            if (fase >= 1.0) fase -= std::floor(fase);
+            const double t     = (double)desdeAtaque / fs;
+            const double onset = 1.0 - std::exp(-t / VIB_ONSET);
+            const double lfo   = formaVibrato(p.vibForma, fase) * onset;
+            outCents += p.vibProf * lfo;
+            // Amplitude em sincronia com a altura: e' o que a Antares chama de
+            // "Amplitude Amount". Em voz real as duas andam juntas, e vibrato
+            // so de altura soa mecanico.
+            if (p.vibAmp > 0.0)
+                ganho = std::pow(10.0, (p.vibAmp * VIB_AMP_DB * lfo) / 20.0);
+        }
         return FMIN * std::pow(2.0, outCents / 1200.0);
     }
 
@@ -345,7 +452,72 @@ private:
     double lpAlvo    = 0.0;    // passa-baixa do ALVO, em cents acima de FMIN
     double lpReal    = 0.0;    // passa-baixa da altura REAL, mesma unidade
     bool   tinhaNota = false;  // false = proxima amostra vozeada e um ataque
+    long long desdeAtaque = 0; // amostras desde o ataque da nota atual (Etapa 4)
+    double fase   = 0.0;       // fase do LFO do Create Vibrato, em [0,1) (Etapa 5)
+    double ganho  = 1.0;       // ganho de amplitude da ultima amostra (Etapa 5)
 };
+
+// ---------------------------------------------------------------------------
+//  Parsing das flags "chave=valor" da malha de correcao, num lugar so.
+//
+//  Existe pela mesma razao que CorretorAltura existe (Etapa 0): os tres CLIs
+//  liam as MESMAS flags, cada um com sua copia do if/else-if. Com 4 parametros
+//  isso era chato; com 10 (Etapas 3-5) vira fonte garantida de divergencia --
+//  um CLI aceitando 'vibprof=' e outro ignorando em silencio e' exatamente o
+//  tipo de bug que nao aparece em teste nenhum, porque a flag ignorada nao
+//  reclama.
+//
+//  Devolve true se a string foi reconhecida como flag desta malha.
+// ---------------------------------------------------------------------------
+inline bool lerFlagCorrecao(const std::string& a, ParamsCorrecao& p) {
+    auto num = [&](size_t n) { return std::atof(a.c_str() + n); };
+    if      (a.rfind("tol=",      0) == 0) p.tolCents = num(4);
+    // 'glide=' e' o nome que 'retune=' tinha ate a Etapa 3; fica como apelido
+    // para que comandos e scripts anteriores nao quebrem em silencio.
+    else if (a.rfind("glide=",    0) == 0) p.retuneMs = num(6);
+    else if (a.rfind("retune=",   0) == 0) p.retuneMs = num(7);
+    else if (a.rfind("vibrato=",  0) == 0) p.vibrato  = num(8);
+    else if (a.rfind("humanize=", 0) == 0) p.humanize = num(9);
+    else if (a.rfind("vibtaxa=",  0) == 0) p.vibTaxa  = num(8);
+    else if (a.rfind("vibprof=",  0) == 0) p.vibProf  = num(8);
+    else if (a.rfind("vibamp=",   0) == 0) p.vibAmp   = num(7);
+    else if (a.rfind("vibforma=", 0) == 0) {
+        const int v = std::atoi(a.c_str() + 9);
+        p.vibForma = (v >= 0 && v <= 3) ? (FormaVibrato)v : FormaVibrato::Nenhuma;
+    }
+    // Flag INTERNA de teste (ver ParamsCorrecao::ataqueNoAlvo). Fica aqui, e nao
+    // escondida, porque o baseline.sh precisa dela nos tres CLIs.
+    else if (a.rfind("legado=",   0) == 0) p.ataqueNoAlvo = (std::atoi(a.c_str() + 7) != 0);
+    else return false;
+    return true;
+}
+
+// Limites dos parametros da malha. Separado do parsing porque quem monta
+// ParamsCorrecao sem passar por linha de comando (o plugin) tambem precisa.
+inline void sanearCorrecao(ParamsCorrecao& p) {
+    if (p.tolCents < 0.0) p.tolCents = 0.0;
+    if (p.retuneMs < 0.0) p.retuneMs = 0.0;
+    if (p.vibrato  < 0.0) p.vibrato  = 0.0;
+    if (p.humanize < 0.0) p.humanize = 0.0;
+    if (p.humanize > 1.0) p.humanize = 1.0;
+    if (p.vibTaxa  < 0.1) p.vibTaxa  = 0.1;
+    if (p.vibProf  < 0.0) p.vibProf  = 0.0;
+    if (p.vibAmp   < 0.0) p.vibAmp   = 0.0;
+    if (p.vibAmp   > 1.0) p.vibAmp   = 1.0;
+}
+
+// Resumo de uma linha dos parametros da malha, para o log dos CLIs.
+inline std::string resumoCorrecao(const ParamsCorrecao& p) {
+    char buf[256];
+    std::snprintf(buf, sizeof(buf),
+        "tol=%.0f ct | retune=%.0f ms | vibrato=%.2f | humanize=%.2f | createvib=%s%s",
+        p.tolCents, p.retuneMs, p.vibrato, p.humanize,
+        p.vibForma == FormaVibrato::Nenhuma ? "off" :
+        p.vibForma == FormaVibrato::Senoide ? "sen" :
+        p.vibForma == FormaVibrato::Triangular ? "tri" : "qua",
+        p.ataqueNoAlvo ? " | LEGADO" : "");
+    return std::string(buf);
+}
 
 // Grava um WAV mono em 16-bit PCM (formato universal, sem glitch de player).
 inline bool gravarWav16(const char* caminho, const std::vector<float>& s, unsigned taxa) {

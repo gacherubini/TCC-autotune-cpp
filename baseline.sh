@@ -107,6 +107,15 @@ echo "== rodando casos =="
   rodar st_vibrato2      "$BIN/stream_test" "$WAV" st_vibrato2.wav      1.0 crom retune=25 vibrato=2
   rodar gold_retune25    "$BIN/autotune"    "$WAV" gold_retune25.wav    1.0 crom retune=25
   rodar st_block1024     "$BIN/stream_test" "$WAV" st_block1024.wav     1.0 crom block=1024
+
+  # Etapas 4 e 5: Humanize e Create Vibrato. Os casos "off" existem para provar
+  # que o caminho neutro nao mexe em nada; os "on" fixam o comportamento novo.
+  rodar st_humanize0     "$BIN/stream_test" "$WAV" st_humanize0.wav     1.0 crom retune=25 humanize=0
+  rodar st_humanize1     "$BIN/stream_test" "$WAV" st_humanize1.wav     1.0 crom retune=25 humanize=1
+  rodar st_createvib_off "$BIN/stream_test" "$WAV" st_createvib_off.wav 1.0 crom retune=25 vibforma=0 vibprof=30
+  rodar st_createvib_sen "$BIN/stream_test" "$WAV" st_createvib_sen.wav 1.0 crom retune=25 vibforma=1 vibtaxa=5.5 vibprof=30
+  rodar st_createvib_amp "$BIN/stream_test" "$WAV" st_createvib_amp.wav 1.0 crom retune=25 vibforma=1 vibtaxa=5.5 vibprof=30 vibamp=1
+  rodar gold_humanize1   "$BIN/autotune"    "$WAV" gold_humanize1.wav   1.0 crom retune=25 humanize=1
 } | tee "$TMP/resumo.txt"
 
 # ---------------------------------------------------------------------------
@@ -128,6 +137,11 @@ par "PSOLA em identidade (beta=1) == bypass  [streaming]" st_tol600.wav   st_mix
 # verificado, e de fato estava QUEBRADO (corrigido em 26/08/2026).
 par "invariancia ao tamanho de bloco: 64 == 512"        st_block64.wav  st_block512.wav
 par "invariancia ao tamanho de bloco: 64 == 1024"       st_block64.wav  st_block1024.wav
+# Etapa 5: "Create Vibrato desligado" nao pode ser "quase desligado". Com
+# vibforma=0 a profundidade pedida tem de ser simplesmente ignorada.
+par "Create Vibrato off == retune25 puro"               st_createvib_off.wav st_retune25.wav
+# Etapa 4: humanize=0 tem de ser exatamente a Etapa 3.
+par "humanize=0 == retune25 puro"                       st_humanize0.wav     st_retune25.wav
 
 # ---------------------------------------------------------------------------
 #  Nao-regressao da ETAPA 3 contra a ETAPA 2.

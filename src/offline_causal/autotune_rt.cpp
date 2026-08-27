@@ -9,7 +9,7 @@
 //  O resto do pipeline (marcas + PSOLA com preservação de duração + cobertura) é
 //  LOCAL (look-ahead ~1 período) e reaproveitado de dsp.h — o mesmo do offline.
 //
-//  Uso: autotune_rt.exe <in.wav> [out.wav] [mix] [escala] [tol=] [retune=] [vibrato=] [look=L] [block=N]
+//  Uso: autotune_rt.exe <in.wav> [out.wav] [mix] [escala] [tol=] [retune=] [vibrato=] [humanize=] [vib*=] [look=L] [block=N]
 // ============================================================================
 #define DR_WAV_IMPLEMENTATION
 #include "../core/dsp.h"
@@ -17,7 +17,7 @@
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::printf("Uso: %s <in.wav> [out.wav] [mix] [escala] [tol=] [retune=] [vibrato=] [look=] [block=] [frame=] [hop=] [voz=] [fmin=] [fmax=] [dumpf0=]\n", argv[0]);
+        std::printf("Uso: %s <in.wav> [out.wav] [mix] [escala] [tol=] [retune=] [vibrato=] [humanize=] [vibforma=] [vibtaxa=] [vibprof=] [vibamp=] [look=] [block=] [frame=] [hop=] [voz=] [fmin=] [fmax=] [dumpf0=]\n", argv[0]);
         std::printf("  look=  : quadros de look-ahead do Viterbi causal (0=guloso, +qualidade c/ +latencia). Padrao 4.\n");
         std::printf("  block= : tamanho do bloco de audio (afeta latencia). Padrao %d.\n", N_HOP);
         std::printf("  frame= : tamanho do quadro de analise (menor=menos latencia, mas detecta menos graves). Padrao %d.\n", N_FRAME);
@@ -36,20 +36,15 @@ int main(int argc, char** argv) {
     std::string a4 = (argc >= 5) ? argv[4] : "";
     const char* escalaTxt = (!a4.empty() && a4.find('=') == std::string::npos) ? argv[4] : "crom";
     definirEscala(escalaTxt);
-    double tolCents = 0.0, retuneMs = 0.0, vibrato = 1.0;
-    bool   legado   = false;   // Etapa 3: reproduz a malha da Etapa 2 (so p/ teste)
+    // Etapa 5: flags da malha lidas por lerFlagCorrecao() (dsp.h), num lugar so.
+    ParamsCorrecao pc;
     int look = 4, block = N_HOP, nFrame = N_FRAME, nHop = N_HOP;
     double fminFlag = FMIN, fmaxFlag = FMAX;   // padrão = constantes do dsp.h
     std::string dumpF0Path, vozNome;
     bool fminExpl = false, fmaxExpl = false;   // fmin=/fmax= explícitos vencem o preset voz=
     for (int i = 2; i < argc; ++i) {
         std::string a = argv[i];
-        if      (a.rfind("tol=", 0)    == 0) tolCents = std::atof(a.c_str() + 4);
-        // "glide=" e' o nome antigo de "retune="; mantido como apelido (Etapa 3).
-        else if (a.rfind("glide=", 0)   == 0) retuneMs = std::atof(a.c_str() + 6);
-        else if (a.rfind("retune=", 0)  == 0) retuneMs = std::atof(a.c_str() + 7);
-        else if (a.rfind("vibrato=", 0) == 0) vibrato  = std::atof(a.c_str() + 8);
-        else if (a.rfind("legado=", 0)  == 0) legado   = (std::atoi(a.c_str() + 7) != 0);
+        if      (lerFlagCorrecao(a, pc)) { /* flag da malha (dsp.h) */ }
         else if (a.rfind("look=", 0)   == 0) look     = std::atoi(a.c_str() + 5);
         else if (a.rfind("block=", 0)  == 0) block    = std::atoi(a.c_str() + 6);
         else if (a.rfind("frame=", 0)  == 0) nFrame   = std::atoi(a.c_str() + 6);
@@ -69,9 +64,7 @@ int main(int argc, char** argv) {
             std::printf("AVISO: voz='%s' desconhecida (baixo/baritono/tenor/contralto/mezzo/soprano | lowmale/altotenor | instrumento). Ignorando.\n", vozNome.c_str());
         }
     }
-    if (tolCents < 0) tolCents = 0;
-    if (retuneMs < 0) retuneMs = 0;
-    if (vibrato  < 0) vibrato  = 0;
+    sanearCorrecao(pc);
     if (look < 0) look = 0;
     if (block < 1) block = 1;
     if (nFrame < 128) nFrame = 128;        // mínimo p/ o YIN cobrir até FMAX (tauMax>=fs/FMAX)
@@ -111,8 +104,7 @@ int main(int argc, char** argv) {
         static const char* pcn[12] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
         std::printf("Escala: %s (", escalaTxt);
         for (int i = 0; i < 12; ++i) if (g_permitida[i]) std::printf("%s ", pcn[i]);
-        std::printf(") | tol=%.0f ct | retune=%.0f ms | vibrato=%.2f%s\n",
-                    tolCents, retuneMs, vibrato, legado ? " | LEGADO" : "");
+        std::printf(") | %s\n", resumoCorrecao(pc).c_str());
     }
 
     auto t_ini = std::chrono::high_resolution_clock::now();
@@ -203,17 +195,21 @@ int main(int argc, char** argv) {
 
     // 3b. Pitch-ALVO por amostra (Etapa 3: LP(alvo) + k*HP(real), reset no ataque)
     std::vector<float> foutSamp(N, 0.0f);
+    std::vector<float> ganhoSamp(N, 1.0f);   // Etapa 5
     {
         // Etapa 0 do plano: malha compartilhada (ver dsp.h / CorretorAltura).
-        ParamsCorrecao pc; pc.tolCents = tolCents; pc.retuneMs = retuneMs;
-        pc.vibrato = vibrato; pc.ataqueNoAlvo = legado;
         CorretorAltura corr; corr.prepare(fs);
-        for (long long i = 0; i < N; ++i)
-            foutSamp[i] = (float)corr.proxima(f0samp[i], pc);
+        for (long long i = 0; i < N; ++i) {
+            foutSamp[i]  = (float)corr.proxima(f0samp[i], pc);
+            ganhoSamp[i] = (float)corr.ultimoGanho();   // Etapa 5
+        }
     }
 
     // 4. TD-PSOLA (compartilhado com o offline; local -> causal)
     std::vector<float> out = psolaSintetiza(x, N, f0samp, foutSamp, fs);
+
+    // 4a. ETAPA 5 — modulacao de amplitude do Create Vibrato (depois do PSOLA).
+    if (pc.vibAmp > 0.0) for (long long i = 0; i < N; ++i) out[i] *= ganhoSamp[i];
 
     // 4b. ETAPA 2 — mistura seco/molhado. Fica DENTRO da regiao cronometrada de
     // proposito: e' custo de processamento real, e omiti-lo inflaria o xRT a
