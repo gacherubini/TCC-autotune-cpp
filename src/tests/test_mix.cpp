@@ -121,9 +121,11 @@ int main() {
         //
         // ATENCAO ao que esta secao NAO prova: com mix=0 o caminho MOLHADO nem
         // e' lido, entao isto verifica a invariancia do caminho SECO apenas. A
-        // invariancia do molhado e' outra questao -- e ha um achado aberto de
-        // que ela falha em block=512 (ver docs/execucao-do-plano.md, Etapa 0).
-        // Nao tomar este "ok" como prova de que aquele problema sumiu.
+        // invariancia do molhado e' outra questao, e era um achado EM ABERTO ate
+        // 26/08/2026 (falhava acima de block=nHop). Foi corrigido em
+        // avancarPsola(); quem verifica isso agora e' o baseline.sh, comparando
+        // st_block64 com st_block512 e st_block1024. Este "ok" aqui continua
+        // NAO sendo prova daquilo.
         std::vector<float> ref = rodar(x, fs, 0.0, 64);
         for (int b : {32, 128, 256, 512, 1024}) {
             std::vector<float> y = rodar(x, fs, 0.0, b);

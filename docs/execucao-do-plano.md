@@ -620,3 +620,138 @@ certo para esta voz, nem se o ataque na altura real incomoda quando o cantor ent
 plano (§9.3) já dizia que isso é teste de escuta, com o mesmo usuário do teste anterior.
 **Continua não feito, e é agora o item mais importante do trabalho** — a Etapa 3 é a que
 promete resolver a reprovação de naturalidade, e essa promessa só se verifica ouvindo.
+
+---
+
+## Achados de medição — três afirmações do projeto que não se sustentam
+
+**Data:** 26/08/2026. Levantados ao gravar a linha de base de **qualidade** que o plano (§9.2)
+exigia antes da Etapa 3, e ao diagnosticar a invariância ao tamanho de bloco. Os dois trabalhos
+correram **em paralelo** com a implementação da Etapa 3.
+
+Nada aqui foi causado pelas Etapas 0–3: são defeitos **pré-existentes**, e dois deles estavam
+documentados como *verificados*.
+
+### Achado A — o "gold" do teste de correlação não é o gold
+
+`CLAUDE.md` lista como invariante: *"Correlação do streaming com o gold ≥ 0,995 (hoje: 0,997)"*.
+A arquitetura chama de **gold** o caminho **offline** (`autotune`, Viterbi global). Mas o script
+que mede isso, `python/bench_stream.py`, faz na linha 15:
+
+```python
+run("./autotune_rt.exe","_gold.wav",[])   # <- o "gold" é o CAUSAL
+```
+
+Ele compara o streaming com o **causal**, não com o offline. Medido:
+
+| comparação | correlação |
+|---|---|
+| streaming × causal | **0,9996** |
+| streaming × offline | **0,78** |
+| causal × offline | **0,78** |
+
+**O que isso significa, com cuidado:** o número que o script produz é *verdadeiro e valioso* —
+o streaming reproduz o causal quase perfeitamente, e essa era a pergunta de engenharia difícil
+(transformar um algoritmo de lote em motor causal de blocos). O que **nunca foi medido** é
+streaming ≡ offline. A lacuna real está entre **causal e offline**, e é esperada em espécie: o
+offline usa Viterbi global e `suavizarVozeamento()`, que é não-causal por construção.
+
+O que não é esperado é o **tamanho**. A divergência não está distribuída: concentra-se em
+poucas janelas, com correlação **negativa** (t ≈ 3,3–3,6 s e t ≈ 0,4 s), o que é assinatura de
+**escorregão de fase**, não de decisão de pitch diferente. Fica como item de backlog.
+
+> **Para o texto do TCC:** a frase "correlação com o gold" precisa dizer *com qual* caminho. Do
+> jeito que está, promete mais do que mede.
+
+### Achado B — "pipoco = 0" não se reproduz
+
+O critério documentado é "descontinuidades amostra-a-amostra maiores que 30× a mediana". Com voz
+real a 44,1 kHz, a mediana de |Δ| fica em ~2,2·10⁻³ e picos legítimos passam de 0,27 — então
+"30× a mediana" cai por volta do percentil 97 do sinal normal. O detector conta **conteúdo de
+alta frequência**, não clique.
+
+| sinal | contagem |
+|---|---|
+| **entrada intocada** | 2916 |
+| offline | 2272 |
+| causal | 2566 |
+| streaming | 2655 |
+
+O resultado que importa continua bom, e é o que a afirmação *queria* dizer: **os três caminhos
+ficam abaixo da entrada** — nenhum introduz descontinuidade. Mas "= 0" é um artefato do limiar,
+não uma medida. Com limiar absoluto (|Δ| > 0,25) dá 13/13/12, que é uma medida defensável.
+
+### Achado C — a invariância ao tamanho de bloco estava quebrada (e foi corrigida)
+
+Documentada como verificada em `README.md` e `CLAUDE.md`; **nunca foi testada**. O `baseline.sh`
+rodava `block=64` e `block=512` mas não comparava um com o outro.
+
+**Causa raiz.** `avancarPsola()` cometia `[synthFront, alvoFinal)` de uma vez, e roda uma vez por
+`process()`. Um bloco do host maior que `nHop` (256) cabe **duas** emissões de quadro numa
+chamada, então `synthFront` pulava `2·nHop` e **saía da grade** `k·nHop − guarda` que os blocos
+pequenos percorriam. Como a janela re-sintetizada é derivada de `synthFront`, a janela passava a
+ser outra.
+
+Isso importa por causa de um detalhe em `dsp.h`: a busca por correlação que refina as marcas do
+PSOLA descarta candidatos com `m − Wc < 0`, ou seja, **mede contra o início da janela**. Para a
+primeira marca de uma região vozeada, uma janela que começa em cima da região não avalia
+candidato nenhum e a marca seguinte cai no *fallback*; alguns milissegundos a mais de contexto à
+esquerda mudam a marca em 1–7 amostras, e o desvio propaga pela cadeia toda.
+
+| região | block ≤ 256 | block = 512 |
+|---|---|---|
+| `[13234,13490)` | ws=12032 → **0 candidatos** → 2ª marca 12210 | ws=11954 → 67 candidatos → 12212 |
+| `[196018,196274)` | ws=194994 → **0 candidatos** → 195302 | ws=194738 → 113 candidatos → 195309 |
+
+**É só síntese, não análise:** `dumpframes` e `dumpf0` são bit-idênticos entre 64 e 512 (858
+quadros, 854 F0). Mesma decisão de pitch, reconstrução diferente.
+
+**Descartada por medição** a hipótese que estava documentada (§8.3 Achado 3, normalização por
+pico): ela dispara **0 de 850** chamadas neste material.
+
+**Correção aplicada:** cometer em passos de no máximo `nHop` e derivar `winEnd` de `alvo` em vez
+de `decis`. Cada chamada a `psolaSintetiza()` vira **função exclusiva de `synthFront`**, e a
+invariância deixa de ser empírica e passa a ser **estrutural**. Verificado em 16 tamanhos de
+bloco de 1 a 4096: **uma única impressão digital**. Nenhuma outra saída mudou — o único caso do
+baseline afetado foi o `st_block512`, que passou a ser igual ao `st_block64`.
+
+O `baseline.sh` agora **compara** `block=64` com 512 e 1024, e o `block=1024` entrou como caso.
+
+> **Uma consequência incômoda, registrada.** A tabela congelada `etapa2-legado.sha256` guardava,
+> para o `st_block512`, a saída **com o bug**. A referência estava congelando um defeito. Foi a
+> única linha alterada, e a alteração está anotada no próprio arquivo. É um lembrete de que uma
+> linha de base protege contra mudança inadvertida, **não** atesta correção.
+
+**Custo:** blocos grandes perdem um desconto de CPU que só existia porque o motor estava errado
+(512: 0,87 s → 1,50 s; 1024: 0,54 s → 1,48 s, sobre 5 s de áudio). O custo fica **uniforme e
+igual ao do pior caso já suportado** (block=64, 1,47 s) — que é o caso que o plugin tem de
+aguentar de qualquer jeito.
+
+**Alternativa registrada, não aplicada.** Limitar a busca por correlação à própria região
+vozeada (em `dsp.h`) também dá invariância, a custo zero de CPU, e é argumentavelmente o DSP
+**mais correto** — correlacionar através de uma fronteira vozeada/não-vozeada não significa
+nada. Mas mexe nos **quatro** caminhos: muda 1,75 % das amostras (correlação 0,999995, todas em
+ataques de nota) e exigiria regravar todas as referências. Fica no backlog, com o registro de
+que a escolha foi **preservar a linha de base**, não afirmar que a solução aplicada é a melhor.
+
+### Linha de base de qualidade da Etapa 2, para comparação futura
+
+Gravada **antes** da Etapa 3, como o plano §9.2 exigia. Reprodutível com
+`python/medir_qualidade.py` (novo, roda em macOS/Linux sem depender do venv do repositório irmão).
+
+| Métrica | Etapa 2 |
+|---|---|
+| Latência do `stream_test` (a que o plugin reporta) | 71,4 ms (3150 amostras) |
+| xRT do caminho causal | 0,042 |
+| corr. streaming × causal (global / vozeada) | 0,9981 / 0,9979 |
+| corr. streaming × offline (global / vozeada) | 0,5695 / 0,5123 |
+| F0 streaming × causal | 100,00 %, erro máx. 0,0000 Hz |
+
+> ⚠️ **Sobre latência, uma armadilha de citação:** os 57,9 ms citados em vários lugares são com
+> `voz=contralto` (FMIN = 175 Hz). Com o padrão FMIN = 80 Hz a guarda do PSOLA dobra e dá
+> 71,4 ms. **Latência sempre tem de ser citada junto com o FMIN**, senão o número não quer dizer
+> nada.
+
+> **Limitação do levantamento:** não há trilha de F0 do offline para comparar, porque
+> `src/offline_causal/main.cpp` não aceita `dumpf0=` — ele só parseia `tol=` e `glide=` e
+> **ignora em silêncio** o resto (`look=` inclusive). A referência de F0 acima é o causal.

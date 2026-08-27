@@ -206,7 +206,7 @@ amostra a amostra.
 | Identidade em `mix = 0` (bypass) | `baseline.sh`, `test_mix` | **bit-perfect** |
 | Identidade em `tol = 600` (PSOLA com β = 1) | `baseline.sh` | **bit-perfect** |
 | Correlação com o gold, `mix = 1` | `bench_stream.py` | **0,997** (>0,999 por região) |
-| Invariância ao tamanho de bloco (64–512) | `bench_stream.py` | **confirmada** |
+| Invariância ao tamanho de bloco (1–4096) | `baseline.sh` | **confirmada** (estava quebrada acima de 256 até 26/08/2026) |
 | Trilha de F0 vs. gold | `bench_pitch.py` | **100 %** |
 | Disparo de quadros | `bench_frames.py` | **confirmado** |
 | Cliques ("pipoco") | `bench_latencia.py` | **0** |

@@ -474,8 +474,42 @@ private:
         long long decis = std::min<long long>((long long)f0samp.size(), (long long)xAll.size());
         // Deixa ~1 período de folga (look-ahead do PSOLA) antes de finalizar.
         long long guarda = psolaGuard;                   // mesma folga do latSamples
-        long long alvo = decis - guarda;                 // até onde podemos finalizar agora
-        if (alvo <= synthFront) return;                  // nada novo a finalizar
+        long long alvoFinal = decis - guarda;            // até onde podemos finalizar agora
+        if (alvoFinal <= synthFront) return;             // nada novo a finalizar
+
+        // -----------------------------------------------------------------
+        //  INVARIANCIA AO TAMANHO DE BLOCO (correcao de 26/08/2026).
+        //
+        //  Antes, esta funcao cometia [synthFront, alvoFinal) de uma vez so.
+        //  Como ela roda uma vez por process(), um bloco do host maior que
+        //  nHop cabia DUAS emissoes de quadro numa chamada -- e entao
+        //  synthFront pulava 2*nHop de uma vez, saindo da grade k*nHop-guarda
+        //  que os blocos pequenos percorriam. Como 'winStart' e' derivado de
+        //  synthFront, a JANELA re-sintetizada passava a ser outra.
+        //
+        //  Isso importa porque a busca por correlacao que refina as marcas do
+        //  PSOLA (dsp.h) descarta candidatos com 'm - Wc < 0', ou seja, mede
+        //  contra o inicio da JANELA. Para a primeira marca de uma regiao
+        //  vozeada, uma janela que comeca em cima da regiao nao avalia
+        //  candidato nenhum e a marca seguinte cai no fallback; alguns
+        //  milissegundos a mais de contexto a esquerda mudam a marca em 1-7
+        //  amostras, e o desvio propaga pela cadeia inteira. Resultado: forma
+        //  de onda diferente (nao ganho diferente) em algumas regioes.
+        //
+        //  A correcao e' cometer em passos de no maximo nHop e derivar winEnd
+        //  de 'alvo', nao de 'decis'. Assim cada chamada a psolaSintetiza()
+        //  vira FUNCAO EXCLUSIVA de synthFront, e synthFront percorre sempre a
+        //  mesma grade -- a invariancia deixa de ser empirica e passa a ser
+        //  estrutural. Nao muda uma amostra do audio de block <= 256, que era
+        //  o que ja estava certo.
+        //
+        //  Preco: blocos grandes perdem um desconto de CPU que so existia
+        //  porque o motor estava errado. O custo fica uniforme e igual ao do
+        //  pior caso ja suportado (block=64) -- que e' o caso que o plugin tem
+        //  de aguentar de qualquer jeito.
+        // -----------------------------------------------------------------
+        while (synthFront < alvoFinal) {
+        long long alvo = std::min(alvoFinal, synthFront + (long long)p.nHop);
 
         // Janela re-sintetizada: começa 'margem' antes do que já foi
         // finalizado, para dar contexto às marcas de período; termina na
@@ -495,7 +529,7 @@ private:
         // mesma âncora — overlap-save consistente.
         while (winStart > 0 && f0samp[winStart - 1] > 0.0f) --winStart;
 
-        long long winEnd   = decis;
+        long long winEnd   = std::min(decis, alvo + guarda);
         long long len = winEnd - winStart;
 
         std::vector<float> xv(xAll.begin()+winStart,     xAll.begin()+winEnd);
@@ -507,6 +541,7 @@ private:
         if ((long long)outBuf.size() < alvo) outBuf.resize(alvo, 0.0f);
         for (long long i = synthFront; i < alvo; ++i) outBuf[i] = y[i - winStart];
         synthFront = alvo;
+        }   // while
     }
 
     // ---- estado configurado por prepare() ----

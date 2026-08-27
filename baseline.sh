@@ -106,6 +106,7 @@ echo "== rodando casos =="
   rodar st_vibrato0      "$BIN/stream_test" "$WAV" st_vibrato0.wav      1.0 crom retune=25 vibrato=0
   rodar st_vibrato2      "$BIN/stream_test" "$WAV" st_vibrato2.wav      1.0 crom retune=25 vibrato=2
   rodar gold_retune25    "$BIN/autotune"    "$WAV" gold_retune25.wav    1.0 crom retune=25
+  rodar st_block1024     "$BIN/stream_test" "$WAV" st_block1024.wav     1.0 crom block=1024
 } | tee "$TMP/resumo.txt"
 
 # ---------------------------------------------------------------------------
@@ -122,6 +123,11 @@ par() {  # $1 = descricao, $2/$3 = arquivos que devem ser identicos
 INVAR_FALHOU=0
 par "PSOLA em identidade (beta=1) == bypass  [offline]"   gold_tol600.wav gold_mix0.wav
 par "PSOLA em identidade (beta=1) == bypass  [streaming]" st_tol600.wav   st_mix0.wav
+# Invariancia ao tamanho de bloco. O script sempre rodou os dois casos, mas
+# nunca comparou um com o outro -- o invariante estava documentado e nunca
+# verificado, e de fato estava QUEBRADO (corrigido em 26/08/2026).
+par "invariancia ao tamanho de bloco: 64 == 512"        st_block64.wav  st_block512.wav
+par "invariancia ao tamanho de bloco: 64 == 1024"       st_block64.wav  st_block1024.wav
 
 # ---------------------------------------------------------------------------
 #  Nao-regressao da ETAPA 3 contra a ETAPA 2.

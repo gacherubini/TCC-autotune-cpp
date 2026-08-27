@@ -94,8 +94,10 @@ python python\bench_latencia.py  REM latência × qualidade × xRT, e contagem d
 3. Contagem de "pipoco" (descontinuidades > 30× a mediana) = **0**. ⚠️ Não se reproduz: com
    voz real a própria **entrada** pontua ~2900 por esse critério. O limiar relativo mede
    conteúdo de alta frequência, não clique. Ver "Achados de medição".
-4. A saída é idêntica para blocos **até 384**. ⚠️ **Falha de 512 em diante** — e a falha
-   cresce: em 1024 a diferença de pico chega a 0,17 (~−15 dB, audível). Achado em aberto.
+4. A saída é **idêntica para qualquer tamanho de bloco** do host. Estava **quebrada** acima de
+   `nHop` (256) até 26/08/2026 — e a afirmação nunca tinha sido testada, porque o `baseline.sh`
+   rodava `block=64` e `block=512` mas não comparava um com o outro. Hoje compara, e a
+   invariância é estrutural (ver `avancarPsola()`), não empírica. Verificada de 1 a 4096.
 
 ## Armadilhas conhecidas
 

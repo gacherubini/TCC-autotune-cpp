@@ -15,9 +15,10 @@ st_tol600                    wav=373037487675431e log=b817370a591bdbe6
 st_glide40                   wav=d8bee84d1f4ca3f4 log=9f57842d648e3886
 st_tol15                     wav=42e8ad70d2356180 log=e7804306260335ae
 st_block64                   wav=522ffaf32a3d6e47 log=1bbcbec832efb725
-st_block512                  wav=270c22c19308a2e4 log=1570d2ada93f2d9e
+st_block512                  wav=522ffaf32a3d6e47 log=1570d2ada93f2d9e
 st_cmaior                    wav=44af6aebec7600ce log=8356144abf1c114e
 st_retune25                  wav=0fb713c720bed299 log=232d8bbd27b0e52e
 st_vibrato0                  wav=b69b1c501f8dbf04 log=136f7da3f44f05bd
 st_vibrato2                  wav=e75cc8c63777a370 log=005b01f30ab5cffc
 gold_retune25                wav=7b73c605f1f068ef log=633d2169af8fb739
+st_block1024                 wav=522ffaf32a3d6e47 log=eb5777d479ce723a
