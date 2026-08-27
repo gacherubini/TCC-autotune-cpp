@@ -26,7 +26,7 @@ Automática de Afinação Vocal*.
 | [`docs/teste-de-usuario.md`](docs/teste-de-usuario.md) | O que o teste com usuário reprovou (latência e naturalidade) |
 | [`docs/arquitetura-streaming.md`](docs/arquitetura-streaming.md) | Como o motor de tempo real funciona |
 | [`docs/historico-e-decisoes.md`](docs/historico-e-decisoes.md) | Bugs caçados, decisões e varreduras experimentais |
-| [`tcc-texto/`](tcc-texto/) | O texto do TCC em LaTeX |
+| [`gacherubini/TCC-TEXT`](https://github.com/gacherubini/TCC-TEXT) | O texto do TCC em LaTeX — **repositório separado** |
 
 > **Estado atual:** o pipeline funciona ponta a ponta e o plugin roda no Ableton, mas o teste
 > de usuário reprovou dois requisitos — **latência de 57,9 ms** (meta: ≤ 20 ms) e
@@ -141,7 +141,6 @@ compilar.bat                        build rápido com g++ (compila os 3 exes)
 exemplo-antes.wav                   excerto de voz cantada (Vocadito, CC-BY 4.0)
 
 docs/                               DOCUMENTAÇÃO — comece por docs/README.md
-tcc-texto/                          texto do TCC em LaTeX (classe EP-TCC / PUCRS)
 
 python/formantes.py                 verifica preservação dos formantes (entrada vs saída)
 python/bench_stream.py              valida o streaming vs. o gold, e a invariância ao bloco
