@@ -158,6 +158,21 @@ public:
     float getF0Atual()   const { return f0samp.empty()   ? 0.0f : f0samp.back();   }
     float getFoutAtual() const { return foutSamp.empty() ? 0.0f : foutSamp.back(); }
 
+    // -------------------------------------------------------------------
+    //  ANÁLISE (offline, fora do caminho de áudio): as trilhas inteiras de
+    //  f0 detectado e de pitch-alvo, por amostra. A razão entre elas é o
+    //  fator de deslocamento β que o PSOLA aplica — que é exatamente o que
+    //  um motor de reamostragem (ponteiro móvel) aplicaria ao espectro
+    //  INTEIRO, formantes inclusive. Medir a distribuição de β é o que
+    //  decide se a arquitetura do v3 é viável neste material; ver
+    //  docs/pesquisa-latencia-antares.md §7, questão 2.
+    //
+    //  São getters const puros, usados só pelo stream_test (dumpbeta=). Não
+    //  há caminho de áudio passando por aqui, e nada no motor os consulta.
+    // -------------------------------------------------------------------
+    const std::vector<float>& getF0Samp()   const { return f0samp;   }
+    const std::vector<float>& getFoutSamp() const { return foutSamp; }
+
     // Limpa/realoca o estado interno: buffer circular de entrada (ringIn),
     // buffer de trabalho (work) e todos os contadores do "relógio" de
     // disparo de quadros. Chamado por prepare() e pode ser chamado de novo

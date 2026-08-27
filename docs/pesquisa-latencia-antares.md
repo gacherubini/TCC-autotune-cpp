@@ -274,9 +274,10 @@ Nenhuma destas perguntas foi resolvida por esta pesquisa, e todas afetam a decis
    *loopback* no próprio Auto-Tune (clique → gravar entrada e saída → correlacionar), que é a
    questão 5 já aberta na [especificação §8](modo-baixa-latencia.md). **Vale fazer:** confirma
    ou derruba a tese central deste documento, e dá um número medido pelo autor em vez de citado.
-2. **Quanto de formante o ponteiro móvel desloca, na faixa de correção real deste projeto?**
-   Mensurável hoje, sem implementar nada: basta reamostrar um trecho vozeado por ±100 cents e
-   rodar `formantes.py`. **É o teste mais barato de todos e destrava a decisão do v3.**
+2. ~~**Quanto de formante o ponteiro móvel desloca, na faixa de correção real deste projeto?**~~
+   ✅ **RESPONDIDA em 2026-08-27 — ver §10.** O deslocamento não é impedimento: fica abaixo do
+   limiar mais conservador da literatura em 95 % do material, e tem um **teto estrutural de
+   2,93 % em escala cromática** que vale para qualquer entrada.
 3. **O erro de ataque do v3 é aceitável?** A correção chega ~2 períodos atrasada. Só a escuta
    responde — e é a mesma escuta que as Etapas 3 a 5 já estão esperando.
 4. **O v2 sozinho basta?** Se a resposta da escuta for que 12,5 ms já serve para monitoração
@@ -320,3 +321,123 @@ Nenhuma destas perguntas foi resolvida por esta pesquisa, e todas afetam a decis
    que é `fs/FMIN` — **12,5 ms com FMIN de 80 Hz**, e isso não é ajustável.
 5. Chegar a ~1 ms exige trocar o motor de síntese (v3). Antes de decidir, medir o deslocamento
    de formante da reamostragem — é uma tarde de trabalho e pode encerrar a questão.
+
+---
+
+## 10. Medição — o deslocamento de formante da reamostragem (2026-08-27)
+
+A questão 2 da §7 era a que decidia a viabilidade do v3, e era mensurável **sem implementar
+nada**. Foi medida. Ferramenta:
+[`python/medir_formante_resample.py`](../python/medir_formante_resample.py), reprodutível com
+
+```sh
+./.venv/bin/python python/medir_formante_resample.py
+```
+
+### 10.1 Como β foi obtido — sem reimplementar a malha
+
+O fator de deslocamento é `β = fout/f0`, e as duas trilhas já existiam dentro do
+`AutotuneStream` (`f0samp` e `foutSamp`). Foram expostas por dois **getters const** e uma flag
+`dumpbeta=` no `stream_test`. Nenhuma linha de DSP mudou, e o `baseline.sh` confirma:
+`IDENTICO — nada mudou`, 19 casos e 6 invariantes.
+
+Mesmo motivo da Etapa 0: reimplementar a malha em Python para calcular β daria um número que
+descreve *o script*, não o motor.
+
+### 10.2 A distribuição real, sobre `exemplo-antes.wav`
+
+700 quadros vozeados, preset `tol=15 glide=40 look=4` em cromática.
+
+| Percentil da correção | Correção | Deslocamento de formante (`\|β−1\|`) | F1 (700 Hz) | F3 (2600 Hz) |
+|---|---:|---:|---:|---:|
+| p50 | 4,0 ct | **0,23 %** | 1,6 Hz | 6,1 Hz |
+| p90 | 14,2 ct | **0,82 %** | 5,7 Hz | 21,3 Hz |
+| p95 | 16,8 ct | **0,98 %** | 6,8 Hz | 25,4 Hz |
+| p99 | 22,9 ct | **1,33 %** | 9,3 Hz | 34,6 Hz |
+| máx | 25,6 ct | **1,49 %** | 10,4 Hz | 38,8 Hz |
+
+Contra os limiares de discriminação de formante (razão de Weber `ΔF/F`) da literatura — 1 % é o
+extremo conservador, 5 % o típico:
+
+| Limiar | Em cents | Fração do material acima |
+|---|---:|---:|
+| conservador, 1 % | 17,2 ct | **4,1 %** dos quadros |
+| típico, 5 % | 84,5 ct | **0,0 %** dos quadros |
+
+### 10.3 O resultado que não depende deste cantor
+
+A tabela acima é de **um** cantor, razoavelmente afinado. Sozinha, ela não decide nada — outro
+material desloca a distribuição. Mas existe um teto que **nenhum material atravessa**:
+
+> A correção leva a nota ao alvo **mais próximo** da escala. Logo o desvio corrigido nunca passa
+> de **metade do maior intervalo entre notas permitidas** — e isso limita β por construção.
+
+| Escala | Maior salto | Correção máx. | Deslocamento máx. | Veredito |
+|---|---|---:|---:|---|
+| **cromática (12 notas)** — padrão do plugin | 1 semitom | 50 ct | **2,93 %** | abaixo do limiar típico, **sempre** |
+| maior / menor natural (7 notas) | 2 semitons | 100 ct | **5,95 %** | entra na faixa audível |
+| pentatônica (5 notas) | 3 semitons | 150 ct | 9,05 % | claramente audível |
+
+**Em cromática, reamostrar não pode deslocar formante mais que 2,93 %, aconteça o que acontecer
+na entrada.** Este é o resultado que sustenta a decisão, porque é aritmético e não amostral.
+
+### 10.4 Verificação no sinal, e o piso de ruído do próprio medidor
+
+Para não ficar só na conta, o script reamostra de fato um trecho vozeado sustentado
+(t ≈ 0,28 s, 60 ms, formantes em 888 / 2234 / 3182 Hz) e mede o deslocamento dos picos do
+envelope cepstral.
+
+| Correção | Motor | Deslocamento médio medido |
+|---|---|---:|
+| p50 · 4,0 ct | reamostragem | 1,8 Hz |
+| p95 · 16,8 ct | reamostragem | 44,9 Hz |
+| p99 · 22,9 ct | reamostragem | 61,0 Hz |
+| (real) | **TD-PSOLA** | **19,7 Hz** |
+
+> ⚠️ **A última linha é o controle, e ela desqualifica os valores absolutos das outras.** O
+> TD-PSOLA preserva formantes por construção — deveria dar ~0 Hz. Dá 19,7 Hz. Esses 19,7 Hz são
+> o erro do **medidor** (resolução do envelope cepstral, janela de 60 ms, escolha de picos), não
+> do motor.
+>
+> Portanto: a §10.4 serve para mostrar que o efeito **existe e cresce com β** — a reamostragem
+> sai de 1,8 Hz no p50 para 61 Hz no p99, enquanto o PSOLA fica em 19,7 —, e **não** para citar
+> quantos hertz o formante andou. **O número citável é o da §10.2, que é analítico**: `ΔF/F` é
+> exatamente `|β − 1|`, por definição de reamostragem.
+>
+> Registrar isso importa porque é o mesmo erro do Achado B ("pipoco = 0"): um medidor sem
+> controle produz números que parecem medição e não são.
+
+### 10.5 Veredito
+
+**A preservação de formantes não é impedimento ao v3.** Nem no material medido (95 % abaixo do
+limiar mais conservador) nem no pior caso concebível em cromática (2,93 %, abaixo do típico).
+
+Isso **não** aprova o v3 — apenas remove a objeção que parecia decisiva. Continuam em aberto:
+
+- **O artefato de emenda.** O ponteiro móvel insere ou descarta um ciclo inteiro; a literatura
+  registra que a falha típica é **modulação de amplitude**, não clique. Nada aqui mede isso, e
+  só a implementação mede.
+- **O erro de ataque.** A correção chega ~2 períodos atrasada (§4). Só a escuta responde.
+- **A escala diatônica.** Com teto de 5,95 %, o v3 em maior/menor pode precisar de correção de
+  formante — o que anularia parte da simplicidade que o motiva.
+- **A linha de base.** O v3 tem de ser um **motor paralelo**, selecionável, não uma
+  substituição (§6.2).
+
+> ### 📌 Uma consequência colateral que vale registrar
+> A escala **cromática ser a mais segura** para o v3 é o inverso da intuição: quanto mais notas
+> permitidas, menor a correção máxima, menor o deslocamento de formante. Se o v3 for adiante, a
+> restrição natural é **oferecer o modo de baixa latência só em cromática** — o que, aliás, é
+> coerente com o que a Antares faz ao amputar recursos do Classic Mode (§5).
+
+### 10.6 Fonte dos limiares perceptuais
+
+| Fonte | O que sustenta |
+|---|---|
+| Flanagan (1955), via [*Formant-frequency discrimination for isolated English vowels*](https://www.academia.edu/14409062/Formant_frequency_discrimination_for_isolated_English_vowels) | 1 % a 5 % para F2; 12–17 Hz para F1 em 300 Hz |
+| Mermelstein (1978), *idem* | 6,8 %; 50 Hz para F1 em 350 Hz |
+| [*Predictions of formant-frequency discrimination in noise*](https://ncbi.nlm.nih.gov/pmc/articles/PMC2572872) (PMC) | estudos recentes reportam 1 % a 2 %; limiar em % maior para F1 que para F2 |
+
+> ⚠️ **Grau de evidência.** Os limiares são de **vogais sintéticas isoladas em escuta atenta**.
+> Canto real, com vibrato e em contexto musical, quase certamente tolera mais. O critério usado
+> aqui é portanto um **limite superior do problema**: "abaixo do limiar" é conclusão forte;
+> "acima" seria só um alerta a confirmar por escuta.

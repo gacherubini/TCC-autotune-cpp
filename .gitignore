@@ -50,3 +50,6 @@ Thumbs.db
 
 # Referencia de saida gravada por baseline.sh (WAVs grandes; o resumo.txt basta)
 baseline/*.wav
+
+# Ambiente Python local (numpy/soundfile para os scripts de medicao em python/).
+.venv/

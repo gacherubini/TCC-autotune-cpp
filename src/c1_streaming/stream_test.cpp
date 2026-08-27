@@ -13,7 +13,7 @@
 //  para qualquer 'block' — isso é o que valida o pipeline de build + I/O.
 //
 //  Uso: stream_test.exe <in.wav> [out.wav] [mix] [escala] [tol=] [retune=] [vibrato=] [humanize=] [vib*=] [look=]
-//                       [frame=] [hop=] [voz=] [fmin=] [fmax=] [block=B] [dumpf0=arq]
+//                       [frame=] [hop=] [voz=] [fmin=] [fmax=] [block=B] [dumpf0=arq] [dumpbeta=arq]
 // ============================================================================
 #define DR_WAV_IMPLEMENTATION
 #include "../core/dsp.h"
@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
     std::string a4 = (argc >= 5) ? argv[4] : "";
     const char* escalaTxt = (!a4.empty() && a4.find('=') == std::string::npos) ? argv[4] : "crom";
     definirEscala(escalaTxt);
-    int block = 128; std::string vozNome, dumpF0Path, dumpFramesPath; bool fminExpl=false, fmaxExpl=false;
+    int block = 128; std::string vozNome, dumpF0Path, dumpFramesPath, dumpBetaPath; bool fminExpl=false, fmaxExpl=false;
     for (int i = 2; i < argc; ++i) {
         std::string a = argv[i];
         if      (lerFlagCorrecao(a, p.corr)) { /* flag da malha (dsp.h) */ }
@@ -49,6 +49,7 @@ int main(int argc, char** argv) {
         else if (a.rfind("block=",0)==0) block      = std::atoi(a.c_str()+6);
         else if (a.rfind("dumpf0=",0)==0)dumpF0Path = a.c_str()+7;
         else if (a.rfind("dumpframes=",0)==0) dumpFramesPath = a.c_str()+11;
+        else if (a.rfind("dumpbeta=",0)==0)   dumpBetaPath   = a.c_str()+9;
     }
     // Preset de tessitura (igual ao autotune_rt): fmin=/fmax= explícitos vencem.
     if (!vozNome.empty()) { double pf,px; if (presetVoz(vozNome,pf,px)) { if(!fminExpl)p.fmin=pf; if(!fmaxExpl)p.fmax=px; } }
@@ -105,6 +106,34 @@ int main(int argc, char** argv) {
         for (double f : eng.getTrilhaF0()) std::fprintf(fp, "%.4f\n", f);
         std::fclose(fp);
         std::printf("F0 streaming: %zu quadros\n", eng.getTrilhaF0().size());
+    }
+
+    // ------------------------------------------------------------------
+    // 3d. (ANALISE) Despeja o par (f0 detectado, pitch-alvo) por amostra em
+    //     'dumpBetaPath'. A razao fout/f0 e' o fator de deslocamento beta
+    //     que o PSOLA aplica — e e' exatamente o fator pelo qual um motor de
+    //     reamostragem (ponteiro movel) deslocaria o espectro INTEIRO,
+    //     formantes inclusive. Serve para medir a distribuicao de beta no
+    //     material real, que e' o que decide a viabilidade do v3.
+    //     Ver docs/pesquisa-latencia-antares.md §7, questao 2.
+    //
+    //     Decimado por 'hop' porque a trilha e' constante dentro do hop (ela
+    //     e' preenchida por quadro): gravar por amostra so' multiplicaria o
+    //     arquivo por 256 sem acrescentar informacao.
+    // ------------------------------------------------------------------
+    if (!dumpBetaPath.empty()) {
+        const std::vector<float>& f0s = eng.getF0Samp();
+        const std::vector<float>& fos = eng.getFoutSamp();
+        FILE* fp = std::fopen(dumpBetaPath.c_str(), "w");
+        if (fp) {
+            std::fprintf(fp, "# f0_hz fout_hz  (0 = nao-vozeado; decimado por hop=%d)\n", p.nHop);
+            size_t n = std::min(f0s.size(), fos.size());
+            for (size_t i = 0; i < n; i += (size_t)p.nHop)
+                std::fprintf(fp, "%.4f %.4f\n", f0s[i], fos[i]);
+            std::fclose(fp);
+            std::printf("beta (f0,fout) gravado em: %s (%zu linhas)\n",
+                        dumpBetaPath.c_str(), (n + p.nHop - 1) / p.nHop);
+        } else std::printf("AVISO: nao consegui escrever dumpbeta='%s'\n", dumpBetaPath.c_str());
     }
 
     // ------------------------------------------------------------------
