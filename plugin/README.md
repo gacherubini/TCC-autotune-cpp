@@ -1,8 +1,8 @@
 # Caminho C2 — plugin VST3 (casca JUCE em volta do núcleo C1)
 
 Transforma o autotune em **plugin VST3 + app Standalone** para rodar **ao vivo no
-Ableton Live** (Windows). **Não** reescreve DSP: o miolo é o `AutotuneStream`
-(`../src/autotune_stream.h`), já pronto e verificado headless no C1. O JUCE entra
+Ableton Live**. **Não** reescreve DSP: o miolo é o `AutotuneStream`
+(`../src/c1_streaming/autotune_stream.h`), já pronto e verificado headless no C1. O JUCE entra
 só como adaptador do host (callback de áudio, parâmetros, GUI, latência).
 
 ## Arquivos
@@ -144,5 +144,15 @@ saída = fones. Ajuste os sliders e cante. É o jeito mais rápido de validar an
 
 > **Nota (resultado do TCC):** a latência que se *ouve* ao vivo = driver_in +
 > bloco_host + latência do núcleo + driver_out. O PDC (`setLatencySamples`) alinha
-> faixas gravadas, mas não remove o atraso de monitoração. Nosso número (~40–60 ms)
-> ser maior que o do Auto-Tune Pro (~1 ms) é **discussão de método**, não defeito.
+> faixas gravadas, mas **não remove o atraso de monitoração**.
+>
+> ⚠️ **Cite a latência sempre junto com o FMIN.** A guarda do PSOLA é `2·fs/FMIN`, então o
+> número muda com o preset de voz: **71,4 ms** com o FMIN padrão de 80 Hz e **57,9 ms** com
+> `voz=contralto` (FMIN 175 Hz).
+>
+> A diferença para o Auto-Tune Pro (37 amostras, 0,84 ms) **não é de ajuste, é de
+> arquitetura**: a latência dele é fixa em amostras, a nossa é proporcional a `fs/FMIN`.
+> Ele não faz análise-e-ressíntese — corrige com um ponteiro de leitura móvel sobre um buffer
+> circular, e o áudio nunca espera pela detecção. A dedução completa, com a patente e o que
+> seria preciso para chegar perto, está em
+> [`../docs/pesquisa-latencia-antares.md`](../docs/pesquisa-latencia-antares.md).
