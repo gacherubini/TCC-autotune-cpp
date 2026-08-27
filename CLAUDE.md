@@ -26,6 +26,7 @@ que fundamentou a escolha do pYIN.
 | **Implementar qualquer coisa** | [`docs/plano-de-implementacao.md`](docs/plano-de-implementacao.md) (o plano) + [`docs/execucao-do-plano.md`](docs/execucao-do-plano.md) (o que já foi feito) |
 | **Verificar que não quebrou nada** | `./baseline.sh conferir` — 17 casos, espera `IDENTICO`. Rode **antes e depois** de qualquer mudança |
 | Trabalhar no **modo de baixa latência** | [`docs/modo-baixa-latencia.md`](docs/modo-baixa-latencia.md) — ⚠️ há 6 questões em aberto a resolver antes de codar |
+| **Entender por que o Auto-Tune tem 0,84 ms** e o que é alcançável aqui | [`docs/pesquisa-latencia-antares.md`](docs/pesquisa-latencia-antares.md) — ⚠️ o plano v1/v2 tem um teto: sem `nFrame` e `look`, sobra a guarda do PSOLA, que é `fs/FMIN` |
 | Mexer em **Retune Speed, vibrato ou qualquer controle de expressão** | [`docs/pesquisa-retune-speed-e-cor.md`](docs/pesquisa-retune-speed-e-cor.md) — ⚠️ `Tolerancia` **não** é Flex-Tune, e formante **não** resolve "cor" |
 | Citar qualquer coisa no texto do TCC | [`docs/pesquisa-bibliografica.md`](docs/pesquisa-bibliografica.md) — e confira a [errata](docs/historico-e-decisoes.md#errata--afirmações-corrigidas-pela-pesquisa-bibliográfica-2026-08-26) antes de citar o doc técnico |
 

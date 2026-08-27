@@ -8,6 +8,19 @@
 > **Referências:** [comparacao-antares.md](comparacao-antares.md) ·
 > [pesquisa-bibliografica.md](pesquisa-bibliografica.md) ·
 > [documentacao-tecnica.md §8.1 e §9.1](documentacao-tecnica.md)
+>
+> ### ⚠️ Leia [pesquisa-latencia-antares.md](pesquisa-latencia-antares.md) antes deste documento
+>
+> A pesquisa de 2026-08-27 sobre como o Auto-Tune declara 37 amostras mudou duas coisas aqui:
+>
+> 1. **Os números de latência deste documento são do preset contralto** (FMIN 175 Hz). Com o
+>    FMIN padrão de 80 Hz, a guarda do PSOLA dobra: **o v2 dá 12,5 ms, não 5,7 ms** — dentro da
+>    faixa de 7 a 13 ms onde a coloração tímbrica começa, e portanto **na fronteira, não abaixo
+>    dela**. A §4 e a §10 abaixo continuam corretas para contralto e otimistas para o resto.
+> 2. **Existe um v3 que este documento não considerava.** Depois que `nFrame` e `look` saem, o
+>    que sobra é a guarda do PSOLA, que é `fs/FMIN` **por construção**. Enquanto a síntese for
+>    PSOLA, a latência é proporcional ao período da nota mais grave aceita — é um piso
+>    arquitetural, não um parâmetro. Passar dele exige trocar o motor de síntese.
 
 ---
 
@@ -271,12 +284,17 @@ Nenhuma linha de código deve ser escrita enquanto estas perguntas não tiverem 
 
 ## 10. Resumo executivo
 
-| | v1 (parâmetros) | v2 (arquitetura) |
-|---|---|---|
-| Mudanças | L1 + L2 + L3 | v1 + L6 |
-| Latência (contralto) | 17,1 ms | **5,7 ms** |
-| Cruza o limiar de coloração (13 ms)? | ❌ não | ✅ sim |
-| Esforço | baixo | alto |
-| Risco | baixo (testes cobrem) | alto (vozeamento a medir) |
-| Muda o DSP? | não | **sim** |
-| Contribuição original? | não | **sim** — a curva latência × robustez |
+| | v1 (parâmetros) | v2 (detecção) | v3 (síntese) |
+|---|---|---|---|
+| Mudanças | L1 + L2 + L3 | v1 + L6 | v2 + ponteiro móvel no lugar do PSOLA |
+| Latência (contralto, FMIN 175) | 17,1 ms | **5,7 ms** | ~0,8 ms |
+| Latência (padrão, FMIN 80) | ~23 ms | **12,5 ms** | ~0,8 ms |
+| Cruza o limiar de coloração (7–13 ms)? | ❌ não | ⚠️ só no contralto | ✅ sempre |
+| Esforço | baixo | alto | alto |
+| Risco | baixo (testes cobrem) | alto (vozeamento a medir) | alto (perde formantes; invalida a linha de base) |
+| Muda o DSP? | não | **sim** (detecção) | **sim** (síntese — o núcleo) |
+| Contribuição original? | não | **sim** — a curva latência × robustez | **sim** — duas arquiteturas de síntese comparadas na mesma base |
+
+O v3 está fundamentado em [pesquisa-latencia-antares.md §6](pesquisa-latencia-antares.md), com
+os custos declarados e a medição barata que decide se ele é viável (deslocamento de formante da
+reamostragem na faixa de correção real, mensurável hoje com `formantes.py`).

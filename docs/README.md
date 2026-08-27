@@ -14,6 +14,7 @@
 | **[plano-de-implementacao.md](plano-de-implementacao.md)** | 📐 **O plano de execução**: a cadeia de correção proposta, a prova de que a fusão é retrocompatível, as 6 etapas verificáveis, mudanças por arquivo e a estratégia de teste. | **Antes de escrever qualquer código.** |
 | **[modo-baixa-latencia.md](modo-baixa-latencia.md)** | Especificação do modo de baixa latência: cada mudança, o ganho, o custo, os números por preset de voz e **seis questões em aberto**. ⚠️ Nada implementado. | Antes de escrever a primeira linha do modo. |
 | **[pesquisa-bibliografica.md](pesquisa-bibliografica.md)** | Fundamentação das soluções: 5 artigos revisados por pares, a patente do Auto-Tune, manuais de fabricante. Cada afirmação com grau de evidência declarado. | Para citar qualquer coisa no texto do TCC. |
+| **[pesquisa-latencia-antares.md](pesquisa-latencia-antares.md)** | 🔬 **Como o Auto-Tune declara 0,84 ms**: a dedução de que são **37 amostras fixas**, a arquitetura de ponteiro móvel da patente, a distinção entre *atraso de detecção* e *atraso do áudio*, e por que o plano v1/v2 tem um teto que só a troca do motor de síntese atravessa. | Antes de decidir qualquer coisa sobre latência. |
 | **[pesquisa-retune-speed-e-cor.md](pesquisa-retune-speed-e-cor.md)** | O que o Retune Speed é (manual oficial, verbatim), por que `Tolerancia` **não** é Flex-Tune, e a conclusão de que **formante não resolve "cor"**. Define os itens K1–K6. | Antes de implementar o Retune Speed ou qualquer controle de expressão. |
 
 ## Mapa rápido
@@ -28,7 +29,8 @@
                   ├─ execucao-do-plano.md ─────── o que JA foi feito, etapa por etapa
                   ├─ modo-baixa-latencia.md ───── o que o modo vai fazer (não implementado)
                   ├─ pesquisa-bibliografica.md ── as fontes de tudo acima
-                  └─ pesquisa-retune-speed-e-cor.md ─ Retune Speed e a origem da "cor"
+                  ├─ pesquisa-retune-speed-e-cor.md ─ Retune Speed e a origem da "cor"
+                  └─ pesquisa-latencia-antares.md ─ por que o Auto-Tune tem 37 amostras
 ```
 
 ## ⚠️ Leia antes de citar a documentação técnica
