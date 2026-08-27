@@ -7,11 +7,16 @@
 | Etapa | Status | Data |
 |---|---|---|
 | **0 — malha de correção unificada** | ✅ **concluída** | 2026-08-26 |
-| **1 — 24 tonalidades** | ✅ **concluída** (plugin não compilado localmente — ver ressalva) | 2026-08-26 |
-| 2 — Mix / remoção da Forca | ⬜ não iniciada | |
-| 3 — Retune Speed (funde o Glide) | ⬜ não iniciada | |
-| 4 — Humanize | ⬜ não iniciada | |
-| 5 — Create Vibrato | ⬜ não iniciada | |
+| **1 — 24 tonalidades** | ✅ **concluída** (a ressalva "plugin não compilado" foi fechada pela Etapa 1-bis) | 2026-08-26 |
+| **1-bis — ambiente de compilação e `pluginval` (macOS)** | ✅ **concluída** | 2026-08-26 |
+| **2 — Mix / remoção da Forca** | ✅ **concluída** | 2026-08-26 |
+| **3 — Retune Speed (funde o Glide)** | ✅ **concluída** | 2026-08-26 |
+| **4 — Humanize** | ✅ **concluída** | 2026-08-26 |
+| **5 — Create Vibrato** | ✅ **concluída** | 2026-08-26 |
+
+> **O plano acabou.** As cinco etapas estão feitas e verificadas — o que isso prova, e o que
+> **não** prova, está na [última seção deste documento](#o-plano-acabou-o-que-ele-não-entrega).
+> O que ficou pendente está reunido em [§ Pendências abertas](#pendências-abertas-ao-fim-do-plano).
 
 ---
 
@@ -887,3 +892,42 @@ As cinco etapas estão feitas e verificadas. Vale ser exato sobre o que isso sig
 única coisa que nenhuma destas verificações substitui. O teste com o mesmo usuário, agora com
 Retune Speed, Humanize e Natural Vibrato disponíveis, é o próximo passo do trabalho — e é dele
 que sai a resposta sobre se o plano funcionou.
+
+---
+
+## Pendências abertas ao fim do plano
+
+Consolidação dos itens que ficaram registrados ao longo das etapas. Nada aqui bloqueou o
+fechamento do plano; tudo aqui está em aberto.
+
+### 1. Escuta — o item mais importante
+
+Aparece como pendência ao fim das Etapas 2, 3 e 5, e é a única verificação que nenhum teste
+automático substitui. A reprovação que originou o plano foi de escuta; a validação também
+precisa ser. **Não feito.**
+
+O que só a escuta responde: se τ = 25 ms é o valor certo **para esta voz**, se `k = 1` soa
+melhor que `k = 1,2`, se o ataque na altura real incomoda quando o cantor entra errado, se o
+`Mix` intermediário é útil, e se a fusão do Glide fez falta em legato.
+
+### 2. Backlog técnico
+
+| Item | Origem | Situação |
+|---|---|---|
+| Faixa de controles com 13 colunas — reorganizar em grupos (Escala \| Correção \| Expressão) | Etapa 5 | dívida de interface, registrada |
+| Escorregão de fase entre streaming e offline (corr. 0,57, concentrada em poucas janelas, com correlação negativa) | Achado A | não investigado |
+| Limitar a busca por correlação à região vozeada — DSP argumentavelmente mais correto, custo zero de CPU | Achado C | não aplicado: exigiria regravar todas as referências |
+| `src/offline_causal/main.cpp` só parseia `tol=` e `glide=` e **ignora em silêncio** o resto (`look=`, `dumpf0=`) | Etapa 3 | não corrigido |
+| `bench_stream.py` nunca foi executado nesta máquina (roda no venv Windows do repositório irmão) | Etapa 2 | os números de correlação do README são da medição anterior |
+| `g_permitida[12]` é estado global — duas instâncias do plugin compartilham a escala | plano §11.3 | decidido fora de escopo; **declarar como limitação no texto do TCC** |
+| Faixa do `Mix` na GUI está em 0–1; a Antares mostra em % | Etapa 2 | cosmético |
+| `exp()` calculado por amostra dentro do callback de áudio | Etapa 0 | oportunidade; xRT 0,042, provavelmente não é gargalo |
+
+### 3. Fora do escopo do plano, ainda por fazer
+
+- **Modo de baixa latência** — [`modo-baixa-latencia.md`](modo-baixa-latencia.md) é
+  especificação; **nada implementado**, e as 6 questões da §8 seguem em aberto.
+- **K5 · Flex-Tune de verdade** e **K6 · Targeting Ignores Vibrato** — mecanismos novos, sem
+  decisão de desenho.
+- **Detune / Transpose / Tracking** — decididos como ausentes, não priorizados.
+- **Formante / Throat** — descartados com fundamentação.

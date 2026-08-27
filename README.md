@@ -35,9 +35,18 @@ Automática de Afinação Vocal*.
 | [`tcc-texto/`](tcc-texto/) | O texto do TCC em LaTeX |
 
 > **Estado atual:** o pipeline funciona ponta a ponta e o plugin roda no Ableton, mas o teste
-> de usuário reprovou dois requisitos — **latência de 57,9 ms** e **naturalidade**
-> ("duro, robótico"). O diagnóstico está em
-> [`docs/documentacao-tecnica.md`](docs/documentacao-tecnica.md) §8 e §9.
+> de usuário reprovou dois requisitos — **latência** e **naturalidade** ("duro, robótico"). O
+> diagnóstico está em [`docs/documentacao-tecnica.md`](docs/documentacao-tecnica.md) §8 e §9.
+>
+> - **Naturalidade:** endereçada pelas Etapas 3 a 5 do plano (Retune Speed com fusão do Glide,
+>   Humanize, Natural Vibrato e Create Vibrato), **implementadas e verificadas em 26/08/2026**.
+>   Falta a **reavaliação de escuta** com o mesmo usuário — é o próximo passo do trabalho.
+> - **Latência:** **nada implementado.** A especificação está em
+>   [`docs/modo-baixa-latencia.md`](docs/modo-baixa-latencia.md), com 6 questões em aberto.
+>
+> ⚠️ **Latência sempre tem de ser citada junto com o FMIN.** A guarda do PSOLA é proporcional a
+> `fs/FMIN`, então o número muda com o preset de voz: **71,4 ms** com o FMIN padrão de 80 Hz, e
+> **57,9 ms** com `voz=contralto` (FMIN 175 Hz) — que é o valor citado no texto do TCC.
 >
 > A revisão bibliográfica de 2026-08-26 **corrigiu oito afirmações** dessa documentação,
 > incluindo a própria meta de latência (os ≤ 20 ms não têm respaldo revisado por pares).
@@ -205,12 +214,26 @@ amostra a amostra.
 |---|---|---|
 | Identidade em `mix = 0` (bypass) | `baseline.sh`, `test_mix` | **bit-perfect** |
 | Identidade em `tol = 600` (PSOLA com β = 1) | `baseline.sh` | **bit-perfect** |
-| Correlação com o gold, `mix = 1` | `bench_stream.py` | **0,997** (>0,999 por região) |
+| Correlação **streaming × causal**, `mix = 1` | `medir_qualidade.py` | **0,9981** (0,9979 por região vozeada) |
+| Correlação **streaming × offline**, `mix = 1` | `medir_qualidade.py` | **0,5695** ⚠️ ver ressalva abaixo |
 | Invariância ao tamanho de bloco (1–4096) | `baseline.sh` | **confirmada** (estava quebrada acima de 256 até 26/08/2026) |
-| Trilha de F0 vs. gold | `bench_pitch.py` | **100 %** |
+| Trilha de F0 **streaming × causal** | `medir_qualidade.py` | **100 %**, erro máx. 0,0000 Hz |
 | Disparo de quadros | `bench_frames.py` | **confirmado** |
-| Cliques ("pipoco") | `bench_latencia.py` | **0** |
+| Cliques ("pipoco"), limiar absoluto \|Δ\| > 0,25 | `medir_qualidade.py` | **13 / 13 / 12** (offline / causal / streaming), contra **2916 da entrada intocada** |
 | Preservação de formantes | `formantes.py` | **confirmada** |
+
+> ⚠️ **Duas ressalvas de leitura, medidas em 26/08/2026** (detalhes em
+> [`docs/execucao-do-plano.md`](docs/execucao-do-plano.md#achados-de-medição--três-afirmações-do-projeto-que-não-se-sustentam)):
+>
+> 1. **"Correlação com o gold" precisa dizer *com qual* caminho.** O que o projeto sempre
+>    verificou é *streaming ≡ causal* (0,998), não *streaming ≡ offline* (0,570). A lacuna
+>    contra o offline é esperada em espécie — o offline usa Viterbi global e
+>    `suavizarVozeamento()`, não-causais por construção — mas o **tamanho** dela não está
+>    explicado: concentra-se em poucas janelas, com correlação negativa. Item de backlog.
+> 2. **"Pipoco = 0" era artefato do limiar.** O critério antigo ("descontinuidade > 30× a
+>    mediana") conta conteúdo de alta frequência, não clique: dá 2916 na **entrada intocada**.
+>    Com limiar absoluto a medida é defensável, e o resultado que importa se mantém — **os
+>    três caminhos ficam muito abaixo da entrada; nenhum introduz descontinuidade.**
 
 ---
 
@@ -221,10 +244,13 @@ O backlog priorizado, com ganho, esforço, risco e encaixe no cronograma do TCC,
 
 Resumo das frentes:
 
-- **Latência** — `look=0`, quadro derivado da tessitura e guarda do PSOLA de 2 para 1 período
-  levam de 57,9 para **17,3 ms** sem trocar de arquitetura.
-- **Naturalidade** — filtrar a *correção* em vez do *alvo* (retune speed), refino de pitch
-  dentro do bin, interpolação de F0 entre quadros e mix seco/molhado.
+- **Latência** — ⬜ **nada implementado.** `look=0`, quadro derivado da tessitura e guarda do
+  PSOLA de 2 para 1 período levam de 57,9 para **17,1 ms** (preset contralto) sem trocar de
+  arquitetura; chegar aos 5,7 ms exige CMNDF recursivo, que **muda o DSP**. Especificação e as
+  6 questões em aberto: [`docs/modo-baixa-latencia.md`](docs/modo-baixa-latencia.md).
+- **Naturalidade** — ✅ **implementada** (Etapas 3 a 5): o filtro passou a agir sobre a
+  *correção* em vez do *alvo* (Retune Speed, que absorveu o Glide), mais Natural Vibrato,
+  Humanize, Create Vibrato e mix seco/molhado. **Falta a reavaliação de escuta.**
 - **Robustez** — janela de re-síntese limitada, buffers pré-alocados (RT-safe) e normalização
   consistente.
 - **Funcionalidades** — detecção automática de tonalidade; preset "Low Latency".

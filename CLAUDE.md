@@ -90,10 +90,13 @@ python python\bench_latencia.py  REM latência × qualidade × xRT, e contagem d
 2. Correlação do streaming com o **causal** (`autotune_rt`) ≥ **0,995** (medido: 0,9996).
    ⚠️ **Cuidado com o nome:** o `bench_stream.py` chama `autotune_rt` de `_gold.wav`. Ele
    verifica *streaming ≡ causal*, **não** *streaming ≡ offline*. Contra o offline a correlação
-   é ~0,78. Ver `docs/execucao-do-plano.md`, "Achados de medição".
+   medida em 26/08/2026 é **0,5695** (0,5123 por região vozeada). Ver
+   `docs/execucao-do-plano.md`, "Achados de medição".
 3. Contagem de "pipoco" (descontinuidades > 30× a mediana) = **0**. ⚠️ Não se reproduz: com
    voz real a própria **entrada** pontua ~2900 por esse critério. O limiar relativo mede
-   conteúdo de alta frequência, não clique. Ver "Achados de medição".
+   conteúdo de alta frequência, não clique. Com limiar absoluto (|Δ| > 0,25) dá **13/13/12**
+   (offline/causal/streaming) contra **2916 da entrada** — o invariante defensável é *ficar
+   abaixo da entrada*, não "= 0". Ver "Achados de medição".
 4. A saída é **idêntica para qualquer tamanho de bloco** do host. Estava **quebrada** acima de
    `nHop` (256) até 26/08/2026 — e a afirmação nunca tinha sido testada, porque o `baseline.sh`
    rodava `block=64` e `block=512` mas não comparava um com o outro. Hoje compara, e a
@@ -128,10 +131,21 @@ O teste com usuário reprovou dois requisitos não funcionais:
 
 | | Situação | Meta |
 |---|---|---|
-| **Latência** | 57,9 ms algorítmica (`frame 1024 + look 4×256 + guarda 504`) | ≤ 20 ms |
-| **Naturalidade** | "duro, estático, robótico" na escuta | vibrato preservado, ataque com glide |
+| **Latência** | **71,4 ms** com o FMIN padrão (80 Hz); 57,9 ms com `voz=contralto` (FMIN 175 Hz) | ver ressalva |
+| **Naturalidade** | endereçada pelas Etapas 3–5 (Retune Speed, Humanize, Natural Vibrato) — **falta a escuta** | vibrato preservado, ataque com glide |
 
-Diagnóstico completo em §8 do doc técnico; soluções em §9; ordem de ataque em §10.
+> ⚠️ **Latência sempre tem de ser citada junto com o FMIN**, senão o número não quer dizer
+> nada: a guarda do PSOLA é proporcional a `fs/FMIN`. Os 57,9 ms que circulam no texto são do
+> preset contralto.
+>
+> ⚠️ **A meta "≤ 20 ms" não tem respaldo revisado por pares** — ver a
+> [errata](docs/historico-e-decisoes.md#errata--afirmações-corrigidas-pela-pesquisa-bibliográfica-2026-08-26).
+> A literatura de monitoração vocal é mais exigente: 7–13 ms para o limiar de coloração
+> tímbrica (Marentakis et al.), e da ordem de 1 ms para avaliação "boa" com fone
+> intra-auricular (Lester e Boley).
+
+Diagnóstico completo em §8 do doc técnico; soluções em §9; ordem de ataque em §10. O estado
+da naturalidade está em [`docs/execucao-do-plano.md`](docs/execucao-do-plano.md).
 
 ## Convenções
 
