@@ -12,7 +12,7 @@
 | **2 — Mix / remoção da Forca** | ✅ **concluída** | 2026-08-26 |
 | **3 — Retune Speed (funde o Glide)** | ✅ **concluída** | 2026-08-26 |
 | **4 — Humanize** | ✅ **concluída** | 2026-08-26 |
-| **5 — Create Vibrato** | ✅ **concluída** | 2026-08-26 |
+| **5 — Create Vibrato** | ✅ **concluída** — ⚠️ os quatro controles saíram da GUI em 2026-08-31 ([Decisão 8](historico-e-decisoes.md#decisão-8--create-vibrato-sai-da-interface-fica-no-dsp-2026-08-31)); o DSP, os CLIs e os parâmetros do APVTS ficam | 2026-08-26 |
 
 > **O plano acabou.** As cinco etapas estão feitas e verificadas — o que isso prova, e o que
 > **não** prova, está na [última seção deste documento](#o-plano-acabou-o-que-ele-não-entrega).
@@ -801,6 +801,14 @@ cents** (×1,47) ao ligar o Humanize em 1.
 
 ### Etapa 5 — Create Vibrato
 
+> ⚠️ **Revisto em 2026-08-31: os quatro controles saíram da interface do plugin.** O DSP descrito
+> abaixo continua inteiro — `formaVibrato()`, os campos de `ParamsCorrecao`, as flags dos CLIs e
+> os quatro parâmetros do APVTS (logo, ainda automatizáveis pelo host). O que saiu foram os
+> widgets. Motivo curto: o Create Vibrato é um **gerador** num protótipo que se declara
+> **corretor** — o mesmo argumento que cortou Throat e Formante. Registro completo em
+> [Decisão 8](historico-e-decisoes.md#decisão-8--create-vibrato-sai-da-interface-fica-no-dsp-2026-08-31).
+> O texto desta seção fica como está, como registro do que foi construído e por quê.
+
 Aqui o plugin deixa de só **corrigir** e passa a **gerar**. Quatro controles: forma (off /
 senoide / triangular / quadrada), taxa (Hz), profundidade (cents) e **Amplitude Amount**, que
 modula a amplitude em sincronia com a altura.
@@ -877,6 +885,12 @@ a GUI genérica não escala mais. A organização certa é em grupos (**Escala |
 Expressão**), mas isso é trabalho de **desenho de interface**, não de DSP — não entra numa etapa
 cujo critério de aceite é "não mudou o áudio". Fica como item explícito de backlog.
 
+> **Atualização de 2026-08-31.** A [Decisão 8](historico-e-decisoes.md#decisão-8--create-vibrato-sai-da-interface-fica-no-dsp-2026-08-31)
+> ataca essa dívida pela outra ponta: em vez de acomodar 13 controles, retira 4 deles — os do
+> Create Vibrato, que eram ~31 % da faixa. Sobram **9**, e nove cabem em três grupos numa linha
+> só (**Escala | Correção | Motor**). A dívida encolhe, mas não some: o agrupamento em si
+> continua sendo trabalho de desenho de interface.
+
 ### O plano acabou. O que ele não entrega.
 
 As cinco etapas estão feitas e verificadas. Vale ser exato sobre o que isso significa:
@@ -914,7 +928,7 @@ melhor que `k = 1,2`, se o ataque na altura real incomoda quando o cantor entra 
 
 | Item | Origem | Situação |
 |---|---|---|
-| Faixa de controles com 13 colunas — reorganizar em grupos (Escala \| Correção \| Expressão) | Etapa 5 | dívida de interface, registrada |
+| Faixa de controles — agrupar em **Escala \| Correção \| Motor** | Etapa 5 + Decisão 8 | **redimensionada, não quitada.** Eram 13 colunas numa faixa única; a [Decisão 8](historico-e-decisoes.md#decisão-8--create-vibrato-sai-da-interface-fica-no-dsp-2026-08-31) tira os 4 do Create Vibrato e deixa **9**, que cabem em três grupos numa linha. Deixou de ser "não cabe" e virou "falta agrupar" |
 | Escorregão de fase entre streaming e offline (corr. 0,57, concentrada em poucas janelas, com correlação negativa) | Achado A | não investigado |
 | Limitar a busca por correlação à região vozeada — DSP argumentavelmente mais correto, custo zero de CPU | Achado C | não aplicado: exigiria regravar todas as referências |
 | `src/offline_causal/main.cpp` só parseia `tol=` e `glide=` e **ignora em silêncio** o resto (`look=`, `dumpf0=`) | Etapa 3 | não corrigido |

@@ -197,7 +197,7 @@ pesquisa bibliográfica.
 | **Retune Speed** | C1 | ✅ decidido. É a fundação da camada de expressão inteira |
 | **Natural Vibrato** | K1 | 🟢 **sai de graça com C1** — uma multiplicação |
 | **Humanize** | K2 | 🟢 **sai quase de graça com C1** — τ variável no tempo |
-| **Create Vibrato** | K3 | parâmetros já especificados pelo manual |
+| **Create Vibrato** (com o Amplitude Amount, K4) | K3 | ⚠️ **implementado no DSP, retirado da interface em 2026-08-31.** É gerador, não corretor — o mesmo argumento que cortou o Nível 3. Segue no APVTS e nos CLIs. Ver [Decisão 8](historico-e-decisoes.md#decisão-8--create-vibrato-sai-da-interface-fica-no-dsp-2026-08-31) |
 | **Flex-Tune** (de verdade) | K5 | mecanismo novo, não renomeação |
 | Tracking exposto | — | hoje fixo no HMM |
 | Transpose | — | barato: o PSOLA já desloca altura |

@@ -107,6 +107,12 @@ python python\bench_latencia.py  REM latência × qualidade × xRT, e contagem d
 
 - **`W_TRANS` e `SIGMA_TRANS` estão em bins, não em cents.** Mudar `RES_CENTS` sem reescalar
   esses dois muda o modelo probabilístico do HMM. Ver doc técnico §9.2 C2.
+- **O Create Vibrato existe no DSP, nos CLIs e no APVTS, mas *não* na GUI — de propósito.**
+  Os quatro widgets (`Create Vib`, `Vib Rate`, `Vib Depth`, `Vib Amp`) foram retirados do editor
+  em 31/08/2026: é um **gerador** num protótipo que se declara **corretor**. Os parâmetros
+  continuam automatizáveis pelo host e alcançáveis por `vibforma=`/`vibtaxa=`/`vibprof=`/`vibamp=`.
+  Não é widget esquecido — não "conserte". Ver
+  [Decisão 8](docs/historico-e-decisoes.md#decisão-8--create-vibrato-sai-da-interface-fica-no-dsp-2026-08-31).
 - **Duas fórmulas de latência divergentes.** `autotune_rt.cpp` usa `1·fs/FMIN + block`;
   `autotune_stream.h` usa `2·fs/FMIN` sem bloco. Padronizar antes de citar números.
 - **`psolaSintetiza()` normaliza por pico.** No streaming ela roda uma vez por janela, então

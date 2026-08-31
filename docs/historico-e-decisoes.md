@@ -407,6 +407,52 @@ O comportamento antigo continua alcançável por flag interna (`ataqueNoAlvo`), 
 pelo teste de não-regressão da etapa 3. Ver
 [plano-de-implementacao.md §11](plano-de-implementacao.md).
 
+### Decisão 8 — Create Vibrato sai da interface, fica no DSP (2026-08-31)
+
+**O que muda:** os quatro widgets do Create Vibrato saem da faixa de controles do editor — o
+combo `Create Vib` e os sliders `Vib Rate`, `Vib Depth` e `Vib Amp`. **Só eles.** `FormaVibrato`,
+`formaVibrato()`, os campos `vibForma`/`vibTaxa`/`vibProf`/`vibAmp` de `ParamsCorrecao`, as flags
+`vibforma=`, `vibtaxa=`, `vibprof=` e `vibamp=` dos CLIs e os quatro parâmetros do APVTS
+**continuam existindo e funcionando**. Como permanecem no APVTS, seguem **automatizáveis pelo
+host** e alcançáveis pela linha de comando — só deixam de ocupar espaço na tela custom.
+
+Em uma linha: **o DSP fica; a exposição na GUI sai.**
+
+**Por quê — quatro motivos:**
+
+1. **Tensão com o escopo declarado do projeto.** [comparacao-antares.md §6](comparacao-antares.md)
+   e [documentacao-tecnica.md §8.2](documentacao-tecnica.md#82-a-cor-por-que-soa-duro-e-estático)
+   sustentam que o protótipo é um **corretor**, não um **colorizador** — e foi esse mesmo
+   argumento que justificou cortar Throat Length e Formant Correction (Nível 3). O Create
+   Vibrato é um **gerador**: não corrige nada. Manter os quatro controles em pé de igualdade com
+   os de correção abre um flanco óbvio na banca — *"cortaram formante alegando que corretor não
+   colore, e implementaram um LFO de vibrato?"*.
+
+2. **A justificativa de entrada era a mais fraca das cinco etapas.** K1 (Natural Vibrato) e K2
+   (Humanize) entraram porque **saem de graça** do Retune Speed: uma multiplicação e um τ
+   variável. K3/K4 não saem de graça de nada — são LFO, quatro formas de onda, rampa de onset e
+   modulação de amplitude. A única justificativa registrada é a da tabela do
+   [§5 Nível 2](comparacao-antares.md), *"parâmetros já especificados pelo manual"*, que diz
+   **como** implementar, não **se** deveria. Diferente do Mix e do Retune Speed, o K3 nunca
+   recebeu o `✅ decidido` naquela tabela.
+
+3. **Ele não endereça a reprovação que originou o plano.** O teste de usuário reprovou porque o
+   vibrato **do cantor** era destruído. Quem conserta isso é o Natural Vibrato (`k`, Decisão 3).
+   Somar um vibrato sintético é outro problema.
+
+4. **Custo de interface desproporcional.** Eram **4 dos 13** controles da faixa — ~31 % da
+   densidade que a dívida de interface da Etapa 5 registrou como problema. Sem eles a faixa cai
+   para **9** controles e cabe em três grupos numa linha só (**Escala | Correção | Motor**).
+
+**O que se perde, registrado:** a *descoberta*. Quem abrir a janela do plugin não vê mais que o
+vibrato sintético existe — precisa saber que ele está lá, na lista genérica de parâmetros do host
+ou nas flags dos CLIs. É um custo assumido: o público do gerador é o próprio autor, para
+demonstração, não o usuário do corretor.
+
+**Não muda áudio.** Nenhum caminho de DSP é tocado, então nenhuma hash do `baseline.sh` deve
+mudar, e o `test_expressao.cpp` continua cobrindo o gerador inteiro — inclusive a forma
+`off`, que precisa reproduzir a Etapa 4 bit a bit.
+
 ### Ordem de implementação acordada
 
 | # | Item | Muda DSP? | Risco | Questões em aberto |
@@ -416,8 +462,8 @@ pelo teste de não-regressão da etapa 3. Ver
 | 3 | **Retune Speed** (funde o `Glide`; polo sobre a correção) | sim | médio | ✅ nenhuma — fundir |
 | 4 | **K1 · Natural Vibrato** | sim | 🟢 trivial | ✅ **é o próprio `k`** da fusão |
 | 5 | **K2 · Humanize** | sim | 🟢 baixo | ✅ nenhuma — sai junto do item 3 |
-| 6 | **K3 · Create Vibrato** | sim | médio | ✅ nenhuma — parâmetros no manual |
-| 7 | **K4 · Amplitude Amount** | sim | 🟢 trivial | depende de K3 |
+| 6 | **K3 · Create Vibrato** | sim | médio | ⚠️ **DSP feito, GUI retirada** — Decisão 8 |
+| 7 | **K4 · Amplitude Amount** | sim | 🟢 trivial | idem K3 — sai da GUI junto, Decisão 8 |
 | 8 | **K5 · Flex-Tune de verdade** | sim | médio | ⚠️ convive com `tol` como? |
 | 9 | **K6 · Targeting Ignores Vibrato** | sim | médio | ⚠️ mexe no Viterbi |
 | 10 | Modo de baixa latência | v1 não, v2 sim | alto | ⏸️ 6 questões em aberto |
