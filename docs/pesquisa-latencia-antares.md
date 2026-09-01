@@ -201,6 +201,22 @@ Para que a comparação não fique injusta com o protótipo nem generosa demais 
 
 ## 6. O que é alcançável aqui — três cenários, agora com um terceiro
 
+> ### ⚠️ Dois números desta seção foram corrigidos em 2026-08-31
+>
+> Ver [analise-v1-v2-v3.md](analise-v1-v2-v3.md), §3 e §4. Em resumo:
+>
+> 1. **O v1 em FMIN 80 Hz é 37,5 ms, não ~23 ms.** A tabela abaixo assume `nFrame = 512`, que dá
+>    `tauMax = 256` e portanto f0 mínimo detectável de 172 Hz — ou seja, essa configuração **não
+>    detecta 80 Hz**. Pela regra `nFrame ≥ 2·fs/FMIN` da própria
+>    [especificação §3](modo-baixa-latencia.md), o valor é 1104 + 551 = 1655 amostras. A §4 da
+>    especificação já concordava (preset Baixo: 36,6 ms).
+> 2. **A latência do v3 tem duas parcelas, e a tabela conta só uma.** Os ~0,8 ms são a parte
+>    **fixa** (interpolador, ~32 amostras), que é a declarada ao host. Falta a distância entre os
+>    ponteiros de escrita e leitura, que oscila entre 0 e `fs/f0`. O número honesto é **2 ms no
+>    caso comum e 6,9 ms no pior**. A conclusão da seção **não muda**: 6,9 ms continua abaixo da
+>    faixa de coloração, e a diferença de espécie (proporcional a `fs/FMIN` contra proporcional a
+>    `fs/f0` da nota cantada) fica mais forte, não mais fraca.
+
 A [especificação do modo de baixa latência](modo-baixa-latencia.md) contemplava v1 e v2. Esta
 pesquisa mostra que **os dois têm um piso** que nenhum ajuste de parâmetro atravessa, e revela
 um v3 que a especificação não considerava.

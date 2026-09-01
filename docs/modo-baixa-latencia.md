@@ -252,6 +252,17 @@ Independente da escolha, o valor de `setLatencySamples()` precisa ser atualizado
 
 ## 8. Questões em aberto — resolver ANTES de implementar
 
+> ### ⚠️ Esta seção está desatualizada (nota de 2026-08-31)
+>
+> Ela foi escrita em 26/08, quando existiam dois caminhos. A
+> [pesquisa de 27/08](pesquisa-latencia-antares.md) abriu um terceiro, e a §8 nunca foi
+> reescrita. A questão 4 abaixo ainda pergunta "v1 ou direto para o v2?", que já não é a
+> pergunta. Além disso a questão de formante, que parecia decisiva contra o v3, **foi respondida
+> e derrubada** pelo commit `cb2a3b6`.
+>
+> Ver [analise-v1-v2-v3.md](analise-v1-v2-v3.md) para o estado atual da decisão, os números
+> corrigidos e o que de fato continua em aberto.
+
 Nenhuma linha de código deve ser escrita enquanto estas perguntas não tiverem resposta:
 
 1. **O custo de `look = 0` é aceitável ao vivo?** A métrica atual (similaridade com o offline)
