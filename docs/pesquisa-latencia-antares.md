@@ -7,6 +7,11 @@
 > **Origem:** a comparação medida em `tcc1-sections.tex` §"Comparação medida com o Auto-Tune"
 > **Consequência:** a §6 abre uma terceira alternativa que a
 > [especificação do modo de baixa latência](modo-baixa-latencia.md) **não contemplava**.
+>
+> **Atualização 2026-09-02:** a v3 foi especificada em
+> [especificacao-v3-ponteiro.md](especificacao-v3-ponteiro.md) e implementada — Etapa 6 do
+> [diário](execucao-do-plano.md), Decisão 9 do [histórico](historico-e-decisoes.md). Os números
+> deste documento continuam valendo como projeção; os medidos estão na Etapa 6.
 
 ---
 

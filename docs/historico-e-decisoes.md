@@ -389,6 +389,12 @@ modo v1 (só parâmetros) chega a 17,1 ms no preset contralto, o que **ainda nã
 coloração**; só o v2, que exige mudança de arquitetura de detecção (CMNDF recursivo), chega aos
 5,7 ms.
 
+> 🔀 **Superseded em 2026-09-01 pela [Decisão 9](#decisão-9--motor-v3-de-ponteiro-móvel-como-motor-paralelo-2026-09-01).**
+> O modo por parâmetros aqui descrito (v1/v2) tem um piso de `fs/FMIN` enquanto a síntese for
+> PSOLA — a [análise de 31/08](analise-v1-v2-v3.md) mostrou isso. A v3 troca o **motor de
+> síntese** em vez de reconfigurar `look`/`nFrame`, e é o caminho que foi implementado. Esta
+> decisão fica registrada como o que se tentou primeiro, e por que não bastava.
+
 ### Decisão 6 — escala global permanece global (2026-08-26)
 
 `g_permitida[12]` (`dsp.h:109`) é estado global. Duas instâncias do plugin compartilham a
@@ -452,6 +458,31 @@ demonstração, não o usuário do corretor.
 **Não muda áudio.** Nenhum caminho de DSP é tocado, então nenhuma hash do `baseline.sh` deve
 mudar, e o `test_expressao.cpp` continua cobrindo o gerador inteiro — inclusive a forma
 `off`, que precisa reproduzir a Etapa 4 bit a bit.
+
+### Decisão 9 — motor v3 de ponteiro móvel como motor paralelo (2026-09-01)
+
+**O que muda:** um segundo motor de síntese (ponteiro móvel, patente US 5.973.252) selecionável
+por um botão **Low Latency** no plugin e por `motor=`/`lowlat=` no CLI. O TD-PSOLA fica, intocado,
+como padrão e referência.
+
+**Por quê:** a [análise de 31/08](analise-v1-v2-v3.md) mostrou que v1 e v2 têm um piso de
+`fs/FMIN` enquanto a síntese for PSOLA (12,5 ms com voz grave, na fronteira de coloração). Só a
+troca do motor atravessa esse piso. O objetivo fixado em 31/08 — contribuição acadêmica **e** uso
+ao vivo — elimina parar na v1 e deixa a v2 na fronteira.
+
+**Três escolhas, decididas com o autor em 2026-09-01:**
+1. **Só o ponteiro, sem L6.** Argumento da análise §8: na v3 o L6 resolve um problema que a v3
+   dissolve. Volta se o erro de ataque medido for inaceitável.
+2. **Qualquer escala.** O teto de formante (2,93 % cromática / 5,95 % maior-menor) é documentado,
+   não imposto. Mais útil para medir.
+3. **Botão Low Latency = ponteiro + look = 0**, com o slider de look-ahead visível e desabilitado
+   (opção B da spec do modo de baixa latência). O CLI mantém `motor=` e `look=` independentes para
+   a varredura latência × robustez.
+
+**Consequências registradas:** a linha de base antiga mede o PSOLA e continua `IDENTICO`; a
+latência declarada com o botão ligado é 8 amostras (parte fixa) e a parte variável (0..T da nota
+cantada) **não** é declarada ao host — o texto do TCC tem de citar as duas. Supersede a
+[Decisão 5](#decisão-5--modo-de-baixa-latência), que previa um modo por parâmetros.
 
 ### Ordem de implementação acordada
 

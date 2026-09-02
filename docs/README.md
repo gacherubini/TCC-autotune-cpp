@@ -16,6 +16,8 @@
 | **[pesquisa-bibliografica.md](pesquisa-bibliografica.md)** | Fundamentação das soluções: 5 artigos revisados por pares, a patente do Auto-Tune, manuais de fabricante. Cada afirmação com grau de evidência declarado. | Para citar qualquer coisa no texto do TCC. |
 | **[pesquisa-latencia-antares.md](pesquisa-latencia-antares.md)** | 🔬 **Como o Auto-Tune declara 0,84 ms**: a dedução de que são **37 amostras fixas**, a arquitetura de ponteiro móvel da patente, a distinção entre *atraso de detecção* e *atraso do áudio*, e por que o plano v1/v2 tem um teto que só a troca do motor de síntese atravessa. | Antes de decidir qualquer coisa sobre latência. |
 | **[pesquisa-retune-speed-e-cor.md](pesquisa-retune-speed-e-cor.md)** | O que o Retune Speed é (manual oficial, verbatim), por que `Tolerancia` **não** é Flex-Tune, e a conclusão de que **formante não resolve "cor"**. Define os itens K1–K6. | Antes de implementar o Retune Speed ou qualquer controle de expressão. |
+| **[especificacao-v3-ponteiro.md](especificacao-v3-ponteiro.md)** | Especificação do motor v3 — ponteiro móvel sobre um anel, no lugar do TD-PSOLA: interface, fiação no streaming, controles (`motor=`/`lowlat=`/botão **Low Latency**), verificação e medição. | Mexer no motor v3 / Low Latency, ou entender a Etapa 6. |
+| **[plano-v3-ponteiro.md](plano-v3-ponteiro.md)** | 📐 Plano de execução da Etapa 6, por tarefa — o que a [execucao-do-plano.md](execucao-do-plano.md) registra como feito. | Só para reconstruir a ordem em que a Etapa 6 foi implementada. |
 
 ## Mapa rápido
 
@@ -27,7 +29,9 @@
                   ├─ comparacao-antares.md ────── o que falta para ser um plugin completo
                   ├─ plano-de-implementacao.md ── o que vai ser feito e em que ordem
                   ├─ execucao-do-plano.md ─────── o que JA foi feito, etapa por etapa
-                  ├─ modo-baixa-latencia.md ───── o que o modo vai fazer (não implementado)
+                  ├─ modo-baixa-latencia.md ───── v1/v2 por parâmetros (superado pela v3)
+                  ├─ especificacao-v3-ponteiro.md ─ o motor v3, implementado na Etapa 6
+                  ├─ plano-v3-ponteiro.md ──────── o plano da Etapa 6, por tarefa
                   ├─ pesquisa-bibliografica.md ── as fontes de tudo acima
                   ├─ pesquisa-retune-speed-e-cor.md ─ Retune Speed e a origem da "cor"
                   └─ pesquisa-latencia-antares.md ─ por que o Auto-Tune tem 37 amostras
@@ -73,5 +77,5 @@ lista **correções pendentes no texto do TCC 1** identificadas durante a revis�
 | Plano de implementação | ✅ escrito — 6 etapas |
 | **Etapa 0** — malha de correção unificada | ✅ **concluída** (2026-08-26), 17/17 casos idênticos |
 | Etapas 1–5 | ⬜ não iniciadas |
-| Modo de baixa latência | ⏸️ especificado, implementação suspensa |
+| Modo de baixa latência | ✅ **v3 implementada (Etapa 6)** |
 | Correções de código (§8.3) | ⏳ não medidas |

@@ -21,6 +21,11 @@
 >    que sobra é a guarda do PSOLA, que é `fs/FMIN` **por construção**. Enquanto a síntese for
 >    PSOLA, a latência é proporcional ao período da nota mais grave aceita — é um piso
 >    arquitetural, não um parâmetro. Passar dele exige trocar o motor de síntese.
+>
+> **Atualização 2026-09-02:** a v3 foi especificada em
+> [especificacao-v3-ponteiro.md](especificacao-v3-ponteiro.md) e implementada — Etapa 6 do
+> [diário](execucao-do-plano.md), Decisão 9 do [histórico](historico-e-decisoes.md). Os números
+> deste documento continuam valendo como projeção; os medidos estão na Etapa 6.
 
 ---
 

@@ -1,6 +1,6 @@
 # Scripts de medição
 
-Oito scripts, e **eles não rodam todos no mesmo lugar** — é a primeira coisa que se precisa
+Nove scripts, e **eles não rodam todos no mesmo lugar** — é a primeira coisa que se precisa
 saber antes de citar qualquer número que saia daqui.
 
 ## Onde cada um roda
@@ -9,6 +9,7 @@ saber antes de citar qualquer número que saia daqui.
 |---|---|---|
 | **`medir_qualidade.py`** | 🟢 **qualquer máquina** | linha de base de qualidade dos três caminhos: latência, xRT, correlação entre caminhos, trilha de F0, contagem de cliques, invariância ao tamanho de bloco |
 | **`medir_formante_resample.py`** | 🟢 **qualquer máquina** | quanto de formante a reamostragem deslocaria — decide a viabilidade do motor de baixa latência (v3) |
+| **`medir_v3.py`** | 🟢 **qualquer máquina** | PSOLA × Ponteiro × Low Latency (Etapa 6): latência fixa e variável, erro de afinação estável e de ataque, contagem de degraus — a tabela usada na Etapa 6 do [diário](../docs/execucao-do-plano.md#etapa-6--motor-v3-de-ponteiro-móvel-low-latency) |
 | `formantes.py` | 🟢 qualquer máquina | preservação de formantes por envelope cepstral, entrada × saída |
 | `bench_stream.py` | 🟡 Windows | streaming × causal e invariância ao tamanho de bloco |
 | `bench_pitch.py` | 🟡 Windows | trilha de F0 do streaming × causal |
@@ -41,11 +42,14 @@ python3 -m venv .venv                     # na raiz do repositório
 
 .venv/bin/python python/medir_qualidade.py
 .venv/bin/python python/medir_formante_resample.py
+.venv/bin/python python/medir_v3.py
 ```
 
-Ambos aceitam `--wav` para trocar o material e `--bin DIR` para pular a compilação e usar
-binários já prontos. O `medir_qualidade.py` aceita ainda `--fonte` para medir uma árvore de
-código diferente da do repositório — útil para comparar contra uma versão anterior.
+`medir_qualidade.py` e `medir_formante_resample.py` aceitam `--wav` para trocar o material e
+`--bin DIR` para pular a compilação e usar binários já prontos; o `medir_qualidade.py` aceita
+ainda `--fonte` para medir uma árvore de código diferente da do repositório — útil para comparar
+contra uma versão anterior. O `medir_v3.py` aceita só `--wav` (compila os binários que precisa
+num diretório temporário, sempre).
 
 ## O que é verificação e o que é medição
 

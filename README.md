@@ -34,19 +34,27 @@ Automática de Afinação Vocal*.
 | [`docs/pesquisa-retune-speed-e-cor.md`](docs/pesquisa-retune-speed-e-cor.md) | O que é o Retune Speed, e por que **formante não dá "cor"** a um corretor |
 | [`tcc-texto/`](tcc-texto/) | O texto do TCC em LaTeX |
 
-> **Estado atual:** o pipeline funciona ponta a ponta e o plugin roda no Ableton, mas o teste
-> de usuário reprovou dois requisitos — **latência** e **naturalidade** ("duro, robótico"). O
-> diagnóstico está em [`docs/documentacao-tecnica.md`](docs/documentacao-tecnica.md) §8 e §9.
+> **Estado atual:** o pipeline funciona ponta a ponta e o plugin roda no Ableton. O teste de
+> usuário original reprovou dois requisitos — **latência** e **naturalidade** ("duro, robótico").
+> O diagnóstico está em [`docs/documentacao-tecnica.md`](docs/documentacao-tecnica.md) §8 e §9.
 >
 > - **Naturalidade:** endereçada pelas Etapas 3 a 5 do plano (Retune Speed com fusão do Glide,
 >   Humanize, Natural Vibrato e Create Vibrato), **implementadas e verificadas em 26/08/2026**.
 >   Falta a **reavaliação de escuta** com o mesmo usuário — é o próximo passo do trabalho.
-> - **Latência:** **nada implementado.** A especificação está em
->   [`docs/modo-baixa-latencia.md`](docs/modo-baixa-latencia.md), com 6 questões em aberto.
+> - **Latência:** ✅ **v3 implementada** (Etapa 6, 2026-09-02) — motor de **ponteiro móvel**
+>   selecionável por `motor=`/`lowlat=` ou pelo botão **Low Latency** do plugin, com latência
+>   fixa de **8 amostras (0,18 ms)**, no lugar do piso `fs/FMIN` do TD-PSOLA. A parte **variável**
+>   (0 a T da nota cantada) não é declarada ao host e precisa ser citada junto no texto do TCC.
+>   Falta a reavaliação de escuta, que agora também responde ao erro de ataque. Ver
+>   [Etapa 6 do diário](docs/execucao-do-plano.md#etapa-6--motor-v3-de-ponteiro-móvel-low-latency)
+>   e [`docs/especificacao-v3-ponteiro.md`](docs/especificacao-v3-ponteiro.md). O modo v1/v2 por
+>   parâmetros de [`docs/modo-baixa-latencia.md`](docs/modo-baixa-latencia.md) fica superado.
 >
-> ⚠️ **Latência sempre tem de ser citada junto com o FMIN.** A guarda do PSOLA é proporcional a
-> `fs/FMIN`, então o número muda com o preset de voz: **71,4 ms** com o FMIN padrão de 80 Hz, e
-> **57,9 ms** com `voz=contralto` (FMIN 175 Hz) — que é o valor citado no texto do TCC.
+> ⚠️ **Latência sempre tem de ser citada junto com o FMIN — e, no motor v3, junto com a parte
+> variável.** A guarda do PSOLA é proporcional a `fs/FMIN`: **71,4 ms** com o FMIN padrão de
+> 80 Hz, e **57,9 ms** com `voz=contralto` (FMIN 175 Hz) — o valor citado no texto do TCC 1. No
+> motor de ponteiro, a parte fixa é **8 amostras (0,18 ms)** para qualquer FMIN, mas soma-se uma
+> parte variável de 0 a T (o período da nota cantada) que **não** entra no `setLatencySamples`.
 >
 > A revisão bibliográfica de 2026-08-26 **corrigiu oito afirmações** dessa documentação,
 > incluindo a própria meta de latência (os ≤ 20 ms não têm respaldo revisado por pares).
@@ -145,6 +153,26 @@ Mesmo áudio, mas com detecção de pitch **causal** (Viterbi de lag fixo) e rel
 .\autotune_rt.exe exemplo-antes.wav rt.wav 1.0 crom tol=15 glide=40 look=8 voz=contralto
 ```
 
+### Motor de streaming — `stream_test.exe`
+
+Driver headless do núcleo que o plugin usa (`src/c1_streaming/autotune_stream.h`). Aceita os
+mesmos parâmetros de correção do `autotune_rt.exe`, mais a escolha do **motor de síntese**
+(Etapa 6):
+
+```bat
+.\stream_test.exe <in.wav> [out.wav] [mix] [escala] [tol=] [retune=] [vibrato=] [look=] [block=] [motor=psola|ponteiro] [lowlat=1]
+```
+
+- **motor=** : `psola` (padrão) — TD-PSOLA, motor de referência — ou `ponteiro` (aceita também
+  `v3`) — o motor de **ponteiro móvel**, que troca análise-e-ressíntese por leitura contínua de
+  um anel circular a velocidade `β`.
+- **lowlat=1** : atalho que reproduz o botão **Low Latency** do plugin — `motor=ponteiro` **e**
+  `look=0` de uma vez, o que zera a parte fixa da latência para **8 amostras (0,18 ms)**.
+
+Ver [`docs/especificacao-v3-ponteiro.md`](docs/especificacao-v3-ponteiro.md) para a mecânica do
+motor, e a [Etapa 6 do diário](docs/execucao-do-plano.md#etapa-6--motor-v3-de-ponteiro-móvel-low-latency)
+para os números medidos.
+
 ---
 
 ## Como funciona (pipeline)
@@ -164,6 +192,13 @@ Mesmo áudio, mas com detecção de pitch **causal** (Viterbi de lag fixo) e rel
 6. **Correção (TD-PSOLA)**: marcas de análise por período (alinhadas por correlação), síntese
    por overlap-add no novo período, reconstrução por cobertura. Como copia grãos no tempo e
    só muda o espaçamento, **preserva os formantes** (timbre).
+6-bis. **Motor alternativo (v3)**: em vez do TD-PSOLA, o motor de **ponteiro móvel**
+   (`MotorPonteiro`, Etapa 6) lê a mesma entrada de um anel circular com um ponteiro fracionário
+   que avança a velocidade `β` — o mesmo `β` de sempre, do mesmo lugar —, saltando um período
+   inteiro quando a distância até a escrita sai da faixa permitida. Latência fixa de **8
+   amostras (0,18 ms)**, contra os `fs/FMIN` do PSOLA. Selecionável por `motor=`/`lowlat=` nos
+   CLIs, ou pelo botão **Low Latency** do plugin. Ver
+   [`docs/especificacao-v3-ponteiro.md`](docs/especificacao-v3-ponteiro.md).
 7. **Mix seco/molhado**: cruzamento linear entre a entrada e o sinal corrigido (`mix`).
    No streaming o seco é atrasado da latência do motor, para os dois ficarem alinhados.
 8. **Gravar WAV** 16-bit PCM mono.
@@ -221,6 +256,8 @@ amostra a amostra.
 | Disparo de quadros | `bench_frames.py` | **confirmado** |
 | Cliques ("pipoco"), limiar absoluto \|Δ\| > 0,25 | `medir_qualidade.py` | **13 / 13 / 12** (offline / causal / streaming), contra **2916 da entrada intocada** |
 | Preservação de formantes | `formantes.py` | **confirmada** |
+| Identidade no ponteiro (`lowlat`) | `baseline.sh` | **bit-perfect** (β = 1 no motor de ponteiro == bypass) |
+| Invariância ao bloco no ponteiro | `baseline.sh` | **confirmada** (64 == 512) |
 
 > ⚠️ **Duas ressalvas de leitura, medidas em 26/08/2026** (detalhes em
 > [`docs/execucao-do-plano.md`](docs/execucao-do-plano.md#achados-de-medição--três-afirmações-do-projeto-que-não-se-sustentam)):
@@ -244,10 +281,14 @@ O backlog priorizado, com ganho, esforço, risco e encaixe no cronograma do TCC,
 
 Resumo das frentes:
 
-- **Latência** — ⬜ **nada implementado.** `look=0`, quadro derivado da tessitura e guarda do
-  PSOLA de 2 para 1 período levam de 57,9 para **17,1 ms** (preset contralto) sem trocar de
-  arquitetura; chegar aos 5,7 ms exige CMNDF recursivo, que **muda o DSP**. Especificação e as
-  6 questões em aberto: [`docs/modo-baixa-latencia.md`](docs/modo-baixa-latencia.md).
+- **Latência** — ✅ **v3 implementada; falta a escuta.** O motor de ponteiro móvel (Etapa 6)
+  substitui o TD-PSOLA e derruba a latência fixa para **8 amostras (0,18 ms)**, atravessando o
+  piso `fs/FMIN` que limitava os modos v1/v2 por parâmetros (que ficam superados, ver
+  [Decisão 9](docs/historico-e-decisoes.md#decisão-9--motor-v3-de-ponteiro-móvel-como-motor-paralelo-2026-09-01)).
+  Falta a parte variável (0 a T da nota cantada, **não** declarada ao host) ser citada junto no
+  texto do TCC, e o teste de escuta — que agora também responde ao erro de ataque. Detalhes e
+  a medição: [Etapa 6 do diário](docs/execucao-do-plano.md#etapa-6--motor-v3-de-ponteiro-móvel-low-latency)
+  e [`docs/especificacao-v3-ponteiro.md`](docs/especificacao-v3-ponteiro.md).
 - **Naturalidade** — ✅ **implementada** (Etapas 3 a 5): o filtro passou a agir sobre a
   *correção* em vez do *alvo* (Retune Speed, que absorveu o Glide), mais Natural Vibrato,
   Humanize, Create Vibrato e mix seco/molhado. **Falta a reavaliação de escuta.**

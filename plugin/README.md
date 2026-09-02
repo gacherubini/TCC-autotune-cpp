@@ -114,6 +114,7 @@ senão realimenta). É o jeito mais rápido de ver a GUI e ouvir o efeito.
 | **Voz** | preset | estrutural | tessitura → `fmin/fmax` (re-prepara, muda a latência) |
 | **Tonica** | 12 opções | estrutural | tônica da escala (Etapa 1) |
 | **Escala** | cromática / maior / menor | estrutural | grade de notas permitidas |
+| **Low Latency** (`lowlat`) | on/off | estrutural | troca o motor de síntese, Etapa 6 (ver abaixo). Padrão **desligado** |
 
 "Ao vivo" = aplicado sem realocar, a cada bloco. "Estrutural" = muda dimensões/
 latência → o núcleo é re-preparado (e o host relê `setLatencySamples`).
@@ -122,6 +123,31 @@ latência → o núcleo é re-preparado (e o host relê `setLatencySamples`).
 > latência do motor**, não a entrada de agora. É o comportamento correto para um plugin que
 > reporta latência: se o bypass não atrasasse, mexer no Mix deslocaria o áudio no tempo. O
 > host compensa um atraso fixo; não compensa um atraso que aparece e some.
+
+## O botão Low Latency (motor v3, Etapa 6)
+
+Um `ToggleButton` **"Low Latency"** no grupo *Motor*, id de parâmetro estável `"lowlat"`
+(`AudioParameterBool`, padrão **desligado**). É **estrutural**: liga/desliga dispara re-prepare,
+porque muda a latência declarada.
+
+Ligado, ele força duas coisas de uma vez — **não** são controles independentes enquanto o botão
+estiver ativo:
+
+- **O motor de síntese vira o ponteiro móvel**, no lugar do TD-PSOLA.
+- **`look` é forçado a 0.** O slider de Look-ahead continua **visível**, mas fica **desabilitado
+  e mostra 0** — o valor salvo no parâmetro não é sobrescrito, só ignorado enquanto o botão está
+  ligado; desligar devolve exatamente o `look` de antes.
+
+O que muda na saída: `setLatencySamples()` passa a reportar **8 amostras (0,18 ms)**, contra os
+milhares de amostras (`fs/FMIN`) do TD-PSOLA — o Ableton mostra 8 em vez de, por exemplo, 2552 no
+preset contralto. A **nota** de saída não muda (é o mesmo `β`); o que muda é como o esticamento é
+feito, o tipo de artefato e uma parte de latência **variável** (0 a T, o período da nota cantada)
+que **não** entra nesse número declarado. Mecânica completa, verificação e a medição comparando
+os dois motores: [`../docs/especificacao-v3-ponteiro.md`](../docs/especificacao-v3-ponteiro.md) e
+a [Etapa 6 do diário](../docs/execucao-do-plano.md#etapa-6--motor-v3-de-ponteiro-móvel-low-latency).
+
+Padrão **desligado** por dois motivos: uma instalação nova tem de soar como antes, e a linha de
+base (`baseline.sh`) mede o motor padrão (TD-PSOLA).
 
 ## Testar no Ableton
 

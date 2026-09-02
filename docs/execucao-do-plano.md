@@ -13,10 +13,14 @@
 | **3 — Retune Speed (funde o Glide)** | ✅ **concluída** | 2026-08-26 |
 | **4 — Humanize** | ✅ **concluída** | 2026-08-26 |
 | **5 — Create Vibrato** | ✅ **concluída** — ⚠️ os quatro controles saíram da GUI em 2026-08-31 ([Decisão 8](historico-e-decisoes.md#decisão-8--create-vibrato-sai-da-interface-fica-no-dsp-2026-08-31)); o DSP, os CLIs e os parâmetros do APVTS ficam | 2026-08-26 |
+| **6 — motor v3 (Low Latency)** | ✅ **concluída** | 2026-09-02 |
 
-> **O plano acabou.** As cinco etapas estão feitas e verificadas — o que isso prova, e o que
-> **não** prova, está na [última seção deste documento](#o-plano-acabou-o-que-ele-não-entrega).
-> O que ficou pendente está reunido em [§ Pendências abertas](#pendências-abertas-ao-fim-do-plano).
+> **O plano acabou — as cinco primeiras etapas.** Elas estão feitas e verificadas — o que isso
+> prova, e o que **não** prova, está na [seção logo abaixo da Etapa 5](#o-plano-acabou-o-que-ele-não-entrega).
+> A **Etapa 6** veio depois, de um plano próprio ([plano-v3-ponteiro.md](plano-v3-ponteiro.md)),
+> motivado pelo piso de latência que a [análise v1/v2/v3](analise-v1-v2-v3.md) expôs — não estava
+> nas cinco etapas originais. O que ficou pendente ao todo está reunido em
+> [§ Pendências abertas](#pendências-abertas-ao-fim-do-plano).
 
 ---
 
@@ -906,6 +910,86 @@ As cinco etapas estão feitas e verificadas. Vale ser exato sobre o que isso sig
 única coisa que nenhuma destas verificações substitui. O teste com o mesmo usuário, agora com
 Retune Speed, Humanize e Natural Vibrato disponíveis, é o próximo passo do trabalho — e é dele
 que sai a resposta sobre se o plano funcionou.
+
+---
+
+## Etapa 6 — motor v3 de ponteiro móvel (Low Latency)
+
+**Concluída em 2026-09-02.** Especificação: [especificacao-v3-ponteiro.md](especificacao-v3-ponteiro.md).
+Decisão de escopo: [Decisão 9](historico-e-decisoes.md#decisão-9--motor-v3-de-ponteiro-móvel-como-motor-paralelo-2026-09-01).
+
+### O que foi feito
+
+- `MotorPonteiro` em `dsp.h` (98 linhas), RT-safe; `MotorSintese` e `StreamParams::motor` no
+  streaming; `motor=`/`lowlat=` no `stream_test`; botão **Low Latency** no plugin;
+  `test_ponteiro.cpp`; 7 casos e 2 invariantes no `baseline.sh`; `python/medir_v3.py`.
+- O que **não** mudou: pYIN, Viterbi, `CorretorAltura`, `psolaSintetiza`, `avancarPsola`.
+
+### Verificação
+
+```
+./baseline.sh conferir
+→ ok    test_ponteiro
+→ ok    ponteiro em identidade (beta=1) == bypass  [lowlat]
+→ ok    invariancia ao bloco no ponteiro: 64 == 512
+→ IDENTICO — nada mudou.
+```
+
+- 30 casos antigos `IDENTICO`; 8 invariantes `ok`; 19 legados `ok`; **37 casos** no total (30 +
+  7 novos: `st_lowlat_mix1`, `st_lowlat_mix0`, `st_lowlat_tol600`, `st_lowlat_natural`,
+  `st_lowlat_block64`, `st_lowlat_block512`, `st_ponteiro_look4`).
+- `test_ponteiro`: **18 verificações, todas `ok`** (`TUDO CERTO (0 falha(s))`), sobre as cinco
+  seções da especificação §6: identidade em β = 1, identidade sem voz, nota sobe (231 Hz),
+  nota desce (209 Hz), salto de nota no meio do sinal (220 → 330 Hz).
+- `pluginval` no nível de rigor 10: `SUCCESS`, 0 falhas, 0 avisos.
+- Latência declarada com Low Latency: **8 amostras = 0,18 ms** (era 2552 = 57,9 ms no contralto).
+
+### Medição — `python/medir_v3.py`
+
+Sobre `exemplo-antes.wav`, preset natural (`tol=15 retune=25`):
+
+| Motor | Latência fixa | dist média | dist máx | erro estável (med / p95, ct) | erro de ataque (med, ct) | degraus |
+|---|---:|---:|---:|---:|---:|---:|
+| PSOLA, look=4 | 71.43 ms | 0.00 ms | 0.00 ms | 4.6 / 20.0 | 2.8 | 4 |
+| Ponteiro, look=4 | 0.18 ms | 1.84 ms | 3.81 ms | 6.2 / 24.1 | 2.7 | 5 |
+| Low Latency (look=0) | 0.18 ms | 2.45 ms | 4.87 ms | 5.1 / 21.2 | 6.9 | 4 |
+
+### O que a medição diz, e o que não diz
+
+- **A nota sai igual.** Os três erros estáveis ficam na mesma ordem de grandeza (4,6 a 6,2 ct de
+  mediana), bem abaixo do quarto de tom (50 ct) — os dois motores convergem para a mesma nota,
+  como a §2 da especificação previa (`β` é o mesmo número, lido do mesmo lugar). O Ponteiro tem
+  um pouco mais de erro residual que o PSOLA no mesmo `look`, plausível: ele reamostra
+  continuamente em vez de re-sintetizar por período.
+- **O erro de ataque não é maior no motor de ponteiro — é maior com `look = 0`.** Com o mesmo
+  `look = 4`, Ponteiro (2,7 ct) e PSOLA (2,8 ct) empatam; quem dispara o erro de ataque é o
+  Low Latency (6,9 ct, ~2,5× os outros dois), e ele é a combinação **ponteiro + `look = 0`**, não
+  o motor em si. A leitura mais provável: com menos look-ahead o Viterbi causal decide o pitch do
+  ataque com menos contexto futuro, então erra mais logo no início da nota — é o preço da parte
+  do botão Low Latency que zera o `look`, não do motor de síntese.
+- **A latência variável medida é compatível com a projeção `T/2` / `T` da §4.** A razão
+  `distMax/distMedia` dá 2,07 (Ponteiro look=4) e 1,99 (Low Latency) — perto do 2 que a
+  especificação prevê para `dist` variando entre `margem` (≈0) e `margem + T`, com média em
+  torno de `T/2`. Não há trilha de F0 independente para decompor isso em Hz nesta medição; o que
+  se pode afirmar é a *forma* da relação, não o valor de `T` em si.
+- **Ressalva 1 — o critério de "degraus" não se sustentou.** O `exemplo-antes.wav` só tem **4**
+  descontinuidades acima do limiar absoluto (`|Δ| > 0,25`) na própria **entrada**, intocada — a
+  métrica já está no piso de ruído para este arquivo antes de qualquer motor processar algo.
+  PSOLA e Low Latency empatam com a entrada (4); o Ponteiro em `look=4` fica **um acima** (5).
+  Uma diferença de ±1 sobre uma base de 4 não é evidência de nada, para nenhum dos dois lados —
+  não é um critério que este motor **passou**, é um critério que **não tinha o que medir** neste
+  material. Um WAV com mais transiente (ou um limiar relativo) seria necessário para essa
+  comparação fazer sentido.
+- **Ressalva 2 — o erro de ataque não é um número absoluto.** A janela de ataque medida é de
+  **30 ms**, com um detector de **23 ms** de quadro (`N_FRAME = 1024` a 44,1 kHz) — a janela mal
+  cobre um quadro e meio de análise. Os números da coluna "erro de ataque" servem para comparar
+  os três motores **entre si**, na mesma medição, não como distância a um padrão de qualidade
+  absoluto.
+
+### Pendências que esta etapa abre
+
+- Teste de escuta (agora responde também ao erro de ataque).
+- L6, recentragem em silêncio, formante em maior/menor — ver [especificacao-v3-ponteiro.md §8](especificacao-v3-ponteiro.md#8-fora-do-escopo-registrado).
 
 ---
 
