@@ -82,6 +82,17 @@ void PainelAfinador::timerCallback() {
     histVoz  [escritaHist] = temVoz;
     escritaHist = (escritaHist + 1) % N_HIST;
 
+    // O texto anda mais devagar que o desenho, de proposito (ver PluginEditor.h).
+    // Nada e' suavizado: o que se exibe e' o valor de um instante real, so que
+    // amostrado a 7,5 Hz em vez de 60.
+    if (--divTexto <= 0) {
+        divTexto      = DIV_TEXTO;
+        f0Texto       = f0Atual;
+        freqAlvoTexto = freqAlvo;
+        centsTexto    = centsCorr;
+        temVozTexto   = temVoz;
+    }
+
     repaint();
 }
 
@@ -118,7 +129,7 @@ void PainelAfinador::desenharCabecalho(juce::Graphics& g, juce::Rectangle<float>
 
     // Nome da nota: a peca de identidade da tela.
     juce::String nomeNota("--");
-    if (temVoz) nomeNota = juce::String(hzParaNota((double) freqAlvo).c_str());
+    if (temVozTexto) nomeNota = juce::String(hzParaNota((double) freqAlvoTexto).c_str());
     g.setColour(tccColours::destaque);
     g.setFont(juce::Font(34.0f, juce::Font::bold));
     g.drawText(nomeNota, r.toNearestInt(), juce::Justification::bottomLeft);
@@ -127,11 +138,11 @@ void PainelAfinador::desenharCabecalho(juce::Graphics& g, juce::Rectangle<float>
     auto colDir = r.removeFromRight(r.getWidth() * 0.55f);
     g.setFont(juce::Font(11.0f));
     g.setColour(tccColours::textoSecundario);
-    g.drawText(temVoz ? juce::String::formatted("%.1f Hz", freqAlvo) : juce::String(),
+    g.drawText(temVozTexto ? juce::String::formatted("%.1f Hz", freqAlvoTexto) : juce::String(),
                colDir.removeFromTop(14.0f).toNearestInt(), juce::Justification::bottomRight);
     g.setFont(juce::Font(9.5f));
     g.setColour(tccColours::cantado);
-    g.drawText(temVoz ? juce::String::formatted("cantado %.1f", f0Atual) : juce::String(),
+    g.drawText(temVozTexto ? juce::String::formatted("cantado %.1f", f0Texto) : juce::String(),
                colDir.removeFromTop(13.0f).toNearestInt(), juce::Justification::topRight);
 }
 
@@ -204,12 +215,12 @@ void PainelAfinador::desenharArco(juce::Graphics& g, juce::Rectangle<float> r) {
     juce::Rectangle<float> leitura(centro.x - 60.0f, centro.y - 56.0f, 120.0f, 40.0f);
     g.setColour(tccColours::destaque);
     g.setFont(juce::Font(26.0f, juce::Font::bold));
-    g.drawText(temVoz ? juce::String::formatted("%+.0f", centsCorr) : juce::String("--"),
+    g.drawText(temVozTexto ? juce::String::formatted("%+.0f", centsTexto) : juce::String("--"),
                leitura.removeFromTop(28.0f).toNearestInt(), juce::Justification::centred);
     g.setColour(tccColours::textoSecundario);
     g.setFont(juce::Font(8.5f, juce::Font::bold));
-    juce::String seta = (! temVoz || std::abs(centsCorr) < 0.5f) ? "CENTS"
-                      : (centsCorr > 0.0f ? "CENTS  ^" : "CENTS  v");
+    juce::String seta = (! temVozTexto || std::abs(centsTexto) < 0.5f) ? "CENTS"
+                      : (centsTexto > 0.0f ? "CENTS  ^" : "CENTS  v");
     g.drawText(seta, leitura.toNearestInt(), juce::Justification::centredTop);
 }
 

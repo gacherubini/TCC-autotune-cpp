@@ -76,6 +76,21 @@ private:
     float centsCorr  = 0.0f;   // saida - cantado, em cents: o numero grande
     bool  temVoz     = false;
 
+    // Os MESMOS valores, congelados num ritmo mais lento, para o TEXTO.
+    //
+    //  POR QUE DUAS COPIAS: o `getF0Atual()` muda a cada hop -- 5,8 ms a 44,1
+    //  kHz -- e o Timer amostra a cada 16,7 ms, entao o numero trocava em
+    //  praticamente todo repaint. Agulha em movimento a 60 Hz o olho segue; um
+    //  digito trocando 60 vezes por segundo nao da' para ler. As agulhas, o
+    //  rastro e o historico seguem usando os valores de cima, no ritmo cheio;
+    //  so o nome da nota, os dois Hz e o numero de cents leem estes.
+    static constexpr int DIV_TEXTO = 8;   // 60 Hz / 8 = 7,5 Hz (133 ms por leitura)
+    int   divTexto      = 0;
+    float f0Texto       = 0.0f;
+    float freqAlvoTexto = 0.0f;
+    float centsTexto    = 0.0f;
+    bool  temVozTexto   = false;
+
     // Escala fixa dos dois medidores. Meio semitom para cada lado: passou
     // disso, o alvo teria sido outra nota.
     static constexpr float CENTS_ESCALA = 50.0f;

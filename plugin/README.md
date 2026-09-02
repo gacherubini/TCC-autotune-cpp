@@ -49,6 +49,13 @@ Três detalhes de implementação que valem para o texto do TCC:
    **Mix passou a ser mostrado em %** (o parâmetro continua 0–1), fechando um item cosmético do
    backlog da Etapa 2.
 
+**Correção de 02/09/2026 — o texto anda a 7,5 Hz, o desenho a 60 Hz.** O `getF0Atual()` muda a
+cada hop (5,8 ms), e o timer de 60 Hz amostrava isso direto no texto: o nome da nota, os dois Hz
+e o número de cents trocavam em todo repaint e não davam para ler. Agora as agulhas, o rastro e
+o histórico seguem no ritmo cheio, e uma cópia congelada a cada 8 ticks alimenta só o texto.
+Nada é suavizado — é o valor de um instante real, amostrado com menos frequência. Ver a
+[correção no diário](../docs/execucao-do-plano.md#correção-de-2026-09-02--o-texto-do-afinador-piscava-a-60-hz).
+
 Verificação: `baseline.sh` responde `IDENTICO` antes e depois (nenhum áudio mudou), e o
 `pluginval` no nível 10 passa, incluindo *Editor Automation* e *Fuzz parameters*.
 

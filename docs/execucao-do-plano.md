@@ -934,6 +934,27 @@ defesa com ela seria vender o trabalho por menos do que ele é.
 **O que continua sem verificação automatizada:** a aparência. Layout e legibilidade seguem
 conferidos por olho humano no app Standalone, como já era o caso dos ComboBox na Etapa 1-bis.
 
+#### Correção de 2026-09-02 — o texto do afinador piscava a 60 Hz
+
+Apareceu ao montar uma reprodução da tela fora do plugin, sem áudio: os números eram ilegíveis.
+Não era defeito da reprodução, era do editor.
+
+O `getF0Atual()` muda a cada **hop**, ou seja a cada **5,8 ms** a 44,1 kHz. O
+`startTimerHz(60)` amostra a cada 16,7 ms e chama `repaint()` — então o nome da nota, os dois
+Hz e o número de cents trocavam em praticamente **todo** repaint. Uma agulha em movimento a
+60 Hz o olho acompanha; um dígito trocando 60 vezes por segundo, não.
+
+**A correção separa as duas taxas dentro do `timerCallback()`:** as agulhas, o rastro e o
+histórico seguem lendo os valores no ritmo cheio, e uma cópia dos mesmos valores é congelada a
+cada 8 ticks (**7,5 Hz**, 133 ms) só para o texto. Nada é suavizado nem interpolado — o que se
+exibe continua sendo o valor de um instante real, amostrado com menos frequência.
+
+Ao vivo o efeito era menos evidente porque o cantor **ouve** a nota, e o ouvido cobre o que o
+olho não conseguia ler. É o tipo de defeito que só aparece quando se tira o áudio do caminho.
+
+**Verificação:** `baseline.sh` = `IDENTICO` (nenhum áudio mudou, como se espera de uma mudança
+que só toca o editor) e `pluginval` nível 10 = `SUCCESS`.
+
 ### O plano acabou. O que ele não entrega.
 
 As cinco etapas estão feitas e verificadas. Vale ser exato sobre o que isso significa:
