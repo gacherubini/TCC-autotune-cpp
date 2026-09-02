@@ -658,4 +658,134 @@ inline std::vector<float> psolaSintetiza(const std::vector<float>& x, long long 
     return out;
 }
 
+// ----------------------------------------------------------------------------
+//  MotorPonteiro — v3: correcao de altura por PONTEIRO DE LEITURA MOVEL, no
+//  lugar do TD-PSOLA. E' o mecanismo da patente do Auto-Tune (US 5.973.252,
+//  Hildebrand 1999) e o que o produto chama de "Classic Mode". Especificacao
+//  completa em docs/especificacao-v3-ponteiro.md; a razao de existir esta em
+//  docs/analise-v1-v2-v3.md: enquanto a sintese for PSOLA, a latencia e'
+//  proporcional a fs/FMIN por construcao. Este motor tem latencia FIXA de
+//  MARGEM amostras, mais uma parte VARIAVEL (0..T) que depende da nota cantada.
+//
+//  Como funciona, por amostra:
+//    1. a entrada e' escrita num anel (ponteiro W, avanca 1 por amostra);
+//    2. a saida e' LIDA do mesmo anel num ponteiro fracionario R que avanca
+//       beta = fAlvo/f0 por amostra (beta > 1 = le mais rapido = sobe a nota);
+//    3. como os dois andam a taxas diferentes, a distancia W - R muda. Quando
+//       ela sai de [MARGEM, MARGEM + T], soma-se ou subtrai-se EXATAMENTE um
+//       periodo T = fs/f0 de R: um ciclo e' repetido (subindo) ou descartado
+//       (descendo). Como o salto e' de um periodo inteiro, as duas pontas da
+//       emenda estao no mesmo ponto do ciclo -- e' a mesma ideia que sustenta
+//       o PSOLA, sem quadros, sem marcas e sem janelas.
+//
+//  O que ele NAO faz: nao preserva formantes. Reamostrar desloca o envelope
+//  espectral por |beta - 1|. Medido em docs/pesquisa-latencia-antares.md §10:
+//  teto de 2,93 % em escala cromatica, abaixo do limiar tipico de 5 %.
+//
+//  Invariante que o teste verifica: com beta = 1 a saida e' a entrada
+//  atrasada de MARGEM amostras, BIT A BIT. Depende de tres coisas: R nunca
+//  sai da grade inteira (soma 1.0 exata), a interpolacao em fracao zero
+//  devolve a amostra crua, e nenhum salto dispara.
+//
+//  RT-safe: o anel e' alocado em prepare(); processar() nao aloca.
+// ----------------------------------------------------------------------------
+class MotorPonteiro {
+public:
+    // Distancia minima entre leitura e escrita, em amostras. E' a latencia FIXA
+    // declarada ao host. 8 porque a interpolacao cubica le ate i+2 e a distancia
+    // cai no maximo (beta - 1) < 1 por amostra antes de o salto disparar: sobra
+    // folga. (A Antares declara 37; o interpolador dela e' mais longo.)
+    static const int MARGEM = 8;
+
+    void prepare(int fsHz, double fminHz) {
+        fs = fsHz;
+        // Precisa caber: a margem, ate T atras (salto para tras), mais um T de
+        // folga para o ponteiro velho do crossfade, mais os 2 pontos que a
+        // interpolacao le a frente. Potencia de 2 para que o wrap seja um '&'.
+        const double T = (double)fs / std::max(1.0, fminHz);
+        long long precisa = MARGEM + (long long)std::ceil(2.0 * T) + 8;
+        size_t n = 16; while ((long long)n < precisa) n <<= 1;
+        anel.assign(n, 0.0f); mask = n - 1;
+        reset();
+    }
+
+    void reset() {
+        std::fill(anel.begin(), anel.end(), 0.0f);
+        // W comeca em N (nao em 0) para que R = W - MARGEM seja >= 0 e o
+        // priming leia zeros do anel, sem indice negativo.
+        W = (long long)anel.size(); R = (double)W - MARGEM; Rvelho = R;
+        xfResta = 0; xfLen = 1;
+        nSaltos = 0; somaDist = 0.0; nDist = 0; maxDist = 0.0;
+    }
+
+    int latencia() const { return MARGEM; }
+
+    // f0Hz <= 0: sem voz -> beta = 1, nenhum salto (a distancia fica onde esta).
+    float processar(float x, double f0Hz, double fAlvoHz) {
+        anel[(size_t)(W & (long long)mask)] = x; ++W;
+        const double beta = (f0Hz > 0.0 && fAlvoHz > 0.0) ? fAlvoHz / f0Hz : 1.0;
+
+        double y = ler(R);
+        if (xfResta > 0) {
+            // Crossfade linear entre a leitura ANTIGA (que continua andando a
+            // beta) e a nova. Em sinal periodico as duas sao quase iguais e o
+            // crossfade e' quase nulo; em consoante/ataque ele transforma o
+            // degrau numa modulacao curta de amplitude.
+            const double w = 1.0 - (double)xfResta / (double)xfLen;
+            y = (1.0 - w) * ler(Rvelho) + w * y;
+            Rvelho += beta; --xfResta;
+            // O ponteiro velho de um salto para tras estava perto da escrita e
+            // continua se aproximando: se ameacar ler o futuro, encerra antes.
+            if ((double)W - Rvelho < 4.0) xfResta = 0;
+        }
+        R += beta;
+
+        if (f0Hz > 0.0) {
+            const double T = (double)fs / f0Hz;
+            const double dist = (double)W - R;
+            if      (dist < (double)MARGEM)     saltar(-T, T);   // repete um ciclo
+            else if (dist > (double)MARGEM + T) saltar(+T, T);   // descarta um ciclo
+            const double d2 = (double)W - R;
+            somaDist += d2; ++nDist; if (d2 > maxDist) maxDist = d2;
+        }
+        return (float)y;
+    }
+
+    long long saltos()    const { return nSaltos; }
+    double    distMedia() const { return nDist ? somaDist / (double)nDist : (double)MARGEM; }
+    double    distMax()   const { return maxDist; }
+
+private:
+    // Catmull-Rom de 4 pontos em torno de floor(pos). Em fracao ZERO devolve a
+    // amostra crua sem passar pela aritmetica -- e' o que garante a identidade
+    // bit a bit com beta = 1.
+    double ler(double pos) const {
+        const long long i = (long long)std::floor(pos);
+        const double f = pos - (double)i;
+        const double x0 = anel[(size_t)(i & (long long)mask)];
+        if (f == 0.0) return x0;
+        const double xm1 = anel[(size_t)((i - 1) & (long long)mask)];
+        const double x1  = anel[(size_t)((i + 1) & (long long)mask)];
+        const double x2  = anel[(size_t)((i + 2) & (long long)mask)];
+        const double c1 = 0.5 * (x1 - xm1);
+        const double c2 = xm1 - 2.5 * x0 + 2.0 * x1 - 0.5 * x2;
+        const double c3 = 0.5 * (x2 - xm1) + 1.5 * (x0 - x1);
+        return ((c3 * f + c2) * f + c1) * f + x0;
+    }
+
+    void saltar(double delta, double T) {
+        Rvelho = R; R += delta;
+        xfLen = std::max(1, std::min(64, (int)std::llround(T / 2.0)));
+        xfResta = xfLen;
+        ++nSaltos;
+    }
+
+    int fs = 44100;
+    std::vector<float> anel; size_t mask = 0;
+    long long W = 0;             // escrita (absoluto)
+    double R = 0.0, Rvelho = 0.0;// leitura (absoluto, fracionario) e leitura antiga do crossfade
+    int xfResta = 0, xfLen = 1;
+    long long nSaltos = 0; double somaDist = 0.0; long long nDist = 0; double maxDist = 0.0;
+};
+
 #endif // DSP_H
