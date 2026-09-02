@@ -11,11 +11,46 @@ só como adaptador do host (callback de áudio, parâmetros, GUI, latência).
 |---|---|
 | `CMakeLists.txt` | traz o JUCE via `FetchContent` e declara o plugin (`juce_add_plugin`, formatos VST3 + Standalone) |
 | `PluginProcessor.h/.cpp` | o `AudioProcessor`: parâmetros (APVTS) ↔ `StreamParams`, `processBlock` → `core.process`, `setLatencySamples` |
+| `PluginEditor.h/.cpp` | a tela: `PainelAfinador`, os 9 controles em três grupos e o `TccLookAndFeel` (ver *A tela*, abaixo) |
 | `build.bat` | configura + compila no **Windows** (atalho dos 2 comandos CMake) |
 | `build.sh` | configura + compila + **valida** no **macOS/Linux** (ver seção própria abaixo) |
+| `instalar_vst3.bat` | copia o `.vst3` para a pasta do sistema no Windows — exige prompt de **administrador** |
 
-GUI: por enquanto a **genérica do JUCE** (sliders/combos automáticos a partir dos
-parâmetros). Uma GUI custom é refinamento posterior.
+## A tela (GUI custom, 31/08/2026)
+
+Até 31/08/2026 a tela era a **genérica do JUCE**: um slider ou combo por parâmetro, na ordem em
+que foram declarados. Ela deixou de servir quando a faixa chegou a **13 colunas** numa linha
+só, no fim da Etapa 5.
+
+O que existe hoje, em `PluginEditor.h/.cpp`, sem uma linha de DSP nova:
+
+- **`PainelAfinador`, em cima.** Um cabeçalho com o nome da **nota-alvo** e a frequência, um
+  **arco** que mostra a que distância em cents o cantor está dela com a zona morta da
+  `Tolerancia` desenhada dentro, e uma faixa com o **histórico dos últimos 2,5 s** da correção
+  aplicada. A quantidade de correção virou um número na tela, no lugar do vão entre duas
+  agulhas.
+- **Nove controles embaixo, em três grupos:** **Escala** | **Correção** | **Motor**. Os quatro
+  widgets do Create Vibrato saíram na [Decisão 8](../docs/historico-e-decisoes.md#decisão-8--create-vibrato-sai-da-interface-fica-no-dsp-2026-08-31);
+  é o que fez 13 caberem em 9.
+- **Tema verde escuro** (`TccLookAndFeel`). Duas cores carregam significado e não são gosto:
+  `destaque` é **sempre** o sinal corrigido e `cantado` é **sempre** a altura crua do cantor.
+  Elas são de famílias de matiz diferentes de propósito, senão a leitura do arco se perde.
+
+Três detalhes de implementação que valem para o texto do TCC:
+
+1. **A nota-alvo vem do `fout`, não do `f0`.** Atacar um F# em dó maior faz o motor mirar em F
+   ou G; ler a nota mais próxima do `f0` mostrava F#, que a escala nem permite.
+2. **O anel do histórico é acumulado no timer da UI, a 60 Hz, não no processor.** O que a faixa
+   plota é uma envoltória lenta (o vibrato vive em ~5,5 Hz), então não é preciso um ring buffer
+   lock-free dentro do callback de áudio só para desenhar um gráfico.
+3. **A formatação do texto dos sliders tem de vir *depois* dos attachments.** O
+   `SliderAttachment` instala o próprio `textFromValueFunction` a partir de `param.getText()`,
+   que ignora `setNumDecimalPlacesToDisplay` e imprimia `15.0000…` em toda caixa. Foi aí que o
+   **Mix passou a ser mostrado em %** (o parâmetro continua 0–1), fechando um item cosmético do
+   backlog da Etapa 2.
+
+Verificação: `baseline.sh` responde `IDENTICO` antes e depois (nenhum áudio mudou), e o
+`pluginval` no nível 10 passa, incluindo *Editor Automation* e *Fuzz parameters*.
 
 ## Pré-requisitos
 
@@ -106,10 +141,10 @@ senão realimenta). É o jeito mais rápido de ver a GUI e ouvir o efeito.
 | **Retune Speed** | 0–200 ms | ao vivo | tempo até a nota. Padrão 25 ms (Antares: 10–50 é típico); 0 = efeito "duro" |
 | **Natural Vibrato** | 0–2 | ao vivo | 0 = remove o vibrato, 1 = preserva (padrão), 2 = dobra |
 | **Humanize** | 0–1 | ao vivo | afrouxa o Retune Speed na sustentação da nota (padrão 0) |
-| **Create Vibrato** | off/sen/tri/qua | ao vivo | **gera** vibrato (≠ Natural Vibrato, que preserva) |
-| **Vibrato Rate** | 0,1–10 Hz | ao vivo | taxa do vibrato gerado (padrão 5,5) |
-| **Vibrato Depth** | 0–100 ct | ao vivo | profundidade do vibrato gerado (padrão 0 = desligado) |
-| **Amplitude Amount** | 0–1 | ao vivo | modulação de amplitude em sincronia (±3 dB em 1) |
+| **Create Vibrato** 🚫 | off/sen/tri/qua | ao vivo | **gera** vibrato (≠ Natural Vibrato, que preserva) |
+| **Vibrato Rate** 🚫 | 0,1–10 Hz | ao vivo | taxa do vibrato gerado (padrão 5,5) |
+| **Vibrato Depth** 🚫 | 0–100 ct | ao vivo | profundidade do vibrato gerado (padrão 0 = desligado) |
+| **Amplitude Amount** 🚫 | 0–1 | ao vivo | modulação de amplitude em sincronia (±3 dB em 1) |
 | **Look-ahead** | 0–16 quadros | estrutural | latência × qualidade do Viterbi (re-prepara) |
 | **Voz** | preset | estrutural | tessitura → `fmin/fmax` (re-prepara, muda a latência) |
 | **Tonica** | 12 opções | estrutural | tônica da escala (Etapa 1) |
@@ -118,6 +153,15 @@ senão realimenta). É o jeito mais rápido de ver a GUI e ouvir o efeito.
 
 "Ao vivo" = aplicado sem realocar, a cada bloco. "Estrutural" = muda dimensões/
 latência → o núcleo é re-preparado (e o host relê `setLatencySamples`).
+
+🚫 = **existe no parâmetro, não existe na tela.** Os quatro controles do Create Vibrato saíram
+do editor em **31/08/2026** ([Decisão 8](../docs/historico-e-decisoes.md#decisão-8--create-vibrato-sai-da-interface-fica-no-dsp-2026-08-31)):
+é um **gerador** num protótipo que se declara **corretor**. Eles continuam automatizáveis pelo
+host, salvos no estado e alcançáveis pelos CLIs (`vibforma=`, `vibtaxa=`, `vibprof=`,
+`vibamp=`). Não é widget esquecido — não "conserte".
+
+**O Mix aparece na tela em %**, e não em 0–1 (desde 31/08/2026). O parâmetro em si continua
+0–1: quem muda é só a formatação do texto do slider.
 
 > **`Mix = 0` não é um bypass instantâneo.** A saída passa a ser a entrada **atrasada da
 > latência do motor**, não a entrada de agora. É o comportamento correto para um plugin que

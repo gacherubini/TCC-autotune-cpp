@@ -31,6 +31,7 @@ que fundamentou a escolha do pYIN.
 | **Entender por que o Auto-Tune tem 0,84 ms** e o que é alcançável aqui | [`docs/pesquisa-latencia-antares.md`](docs/pesquisa-latencia-antares.md) — ⚠️ o plano v1/v2 tem um teto: sem `nFrame` e `look`, sobra a guarda do PSOLA, que é `fs/FMIN` |
 | Mexer em **Retune Speed, vibrato ou qualquer controle de expressão** | [`docs/pesquisa-retune-speed-e-cor.md`](docs/pesquisa-retune-speed-e-cor.md) — ⚠️ `Tolerancia` **não** é Flex-Tune, e formante **não** resolve "cor" |
 | **Discutir v1/v2/v3 ou citar qualquer número de latência** | [`docs/analise-v1-v2-v3.md`](docs/analise-v1-v2-v3.md) — ⚠️ corrige dois números errados nos outros dois docs; a §8 da especificação está desatualizada |
+| Entender a **tela do plugin** | [`plugin/README.md`](plugin/README.md#a-tela-gui-custom-31082026) + [Redesenho da interface](docs/execucao-do-plano.md#redesenho-da-interface-2026-08-31--fora-do-plano) |
 | Mexer no **motor v3 / Low Latency** | [`docs/especificacao-v3-ponteiro.md`](docs/especificacao-v3-ponteiro.md) + [Etapa 6 do diário](docs/execucao-do-plano.md#etapa-6--motor-v3-de-ponteiro-móvel-low-latency) |
 | Citar qualquer coisa no texto do TCC | [`docs/pesquisa-bibliografica.md`](docs/pesquisa-bibliografica.md) — e confira a [errata](docs/historico-e-decisoes.md#errata--afirmações-corrigidas-pela-pesquisa-bibliográfica-2026-08-26) antes de citar o doc técnico |
 
@@ -94,7 +95,9 @@ python python\bench_latencia.py  REM latência × qualidade × xRT, e contagem d
    duas coisas ao mesmo tempo; ao removê-la, o teste foi desdobrado em dois para não perder
    cobertura. Desde a Etapa 6 o par existe **duplicado**: `mix=0`/`tol=600` para o PSOLA e
    `st_lowlat_mix0`/`st_lowlat_tol600` para o ponteiro (`lowlat=1`).
-2. Correlação do streaming com o **causal** (`autotune_rt`) ≥ **0,995** (medido: 0,9996).
+2. Correlação do streaming com o **causal** (`autotune_rt`) ≥ **0,995** (medido: **0,9981**
+   pelo `medir_qualidade.py`, que roda aqui; os 0,9996 que aparecem no diário são do
+   `bench_stream.py`, medido noutra máquina — quando os dois discordam, vale o primeiro).
    ⚠️ **Cuidado com o nome:** o `bench_stream.py` chama `autotune_rt` de `_gold.wav`. Ele
    verifica *streaming ≡ causal*, **não** *streaming ≡ offline*. Contra o offline a correlação
    medida em 26/08/2026 é **0,5695** (0,5123 por região vozeada). Ver

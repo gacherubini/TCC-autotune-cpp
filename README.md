@@ -2,8 +2,12 @@
 
 Protótipo de **correção automática de afinação vocal (autotune)** em tempo real, construído
 com apoio de bibliotecas de software livre (`dr_wav`, JUCE). Detecta o pitch com **pYIN**
-(YIN probabilístico + HMM/Viterbi) e corrige a afinação com **TD-PSOLA**, preservando os
-formantes.
+(YIN probabilístico + HMM/Viterbi) e corrige a afinação por um de **dois motores de síntese**,
+com o mesmo deslocamento de pitch: o **TD-PSOLA** (padrão), que preserva os formantes ao custo
+de uma latência proporcional a `fs/FMIN`, ou o **ponteiro móvel** (v3, botão *Low Latency*),
+que derruba a latência fixa para 8 amostras e paga com o formante. A escolha entre os dois é a
+principal contribuição de engenharia do TCC 2 — ver a
+[linha do tempo](#linha-do-tempo-das-mudanças-tcc-2).
 
 Entrega em três formas: executáveis de linha de comando (offline e causal), um núcleo de
 streaming header-only e um **plugin VST3 / Standalone** testado no Ableton Live.
@@ -30,6 +34,11 @@ Automática de Afinação Vocal*.
 | [`docs/plano-de-implementacao.md`](docs/plano-de-implementacao.md) | 📐 **O que vai ser implementado e como** — 6 etapas verificáveis |
 | [`docs/execucao-do-plano.md`](docs/execucao-do-plano.md) | 📓 **O que já foi feito** — diário das etapas, com a verificação de cada uma |
 | [`docs/modo-baixa-latencia.md`](docs/modo-baixa-latencia.md) | Especificação do modo de baixa latência — ⏸️ **superado pela v3** ([especificação](docs/especificacao-v3-ponteiro.md), implementada na Etapa 6) |
+| [`docs/especificacao-v3-ponteiro.md`](docs/especificacao-v3-ponteiro.md) | Especificação do **motor v3 de ponteiro móvel** — a mecânica do anel, a fiação no streaming e o que ele custa em formante |
+| [`docs/plano-v3-ponteiro.md`](docs/plano-v3-ponteiro.md) | 📐 O plano da Etapa 6, tarefa a tarefa |
+| [`docs/analise-v1-v2-v3.md`](docs/analise-v1-v2-v3.md) | ⚠️ **Leia antes de citar qualquer número de latência** — compara v1/v2/v3 por estágio e corrige dois números errados nos outros documentos |
+| [`docs/pesquisa-latencia-antares.md`](docs/pesquisa-latencia-antares.md) | 🔬 Como o Auto-Tune declara 0,84 ms: a dedução das **37 amostras fixas** e a arquitetura de ponteiro móvel da patente |
+| [`docs/diagnostico-block512.md`](docs/diagnostico-block512.md) | 🔬 A invariância ao tamanho de bloco: causa raiz, medições e as três correções avaliadas |
 | [`docs/pesquisa-bibliografica.md`](docs/pesquisa-bibliografica.md) | As fontes: artigos, a patente do Auto-Tune, manuais |
 | [`docs/pesquisa-retune-speed-e-cor.md`](docs/pesquisa-retune-speed-e-cor.md) | O que é o Retune Speed, e por que **formante não dá "cor"** a um corretor |
 | [`tcc-texto/`](tcc-texto/) | O texto do TCC em LaTeX |
@@ -63,6 +72,41 @@ Automática de Afinação Vocal*.
 
 ---
 
+## Linha do tempo das mudanças (TCC 2)
+
+Tudo o que entrou no código depois do teste com usuário, em ordem, com a data em que foi
+concluído e onde está a verificação. É esta tabela que alimenta o capítulo de desenvolvimento
+do texto. O diário completo, com o que cada etapa provou e o que não provou, está em
+[`docs/execucao-do-plano.md`](docs/execucao-do-plano.md); os bugs e decisões anteriores a
+26/08/2026 estão em [`docs/historico-e-decisoes.md`](docs/historico-e-decisoes.md).
+
+| Data | O que mudou | Onde, no código | Como foi verificado |
+|---|---|---|---|
+| 2026-08-26 | **Etapa 0** — a malha de correção dos três caminhos vira uma só (`CorretorAltura`). Offline, causal e streaming deixam de ter três cópias da mesma matemática | `src/core/dsp.h` | 17/17 casos do `baseline.sh` idênticos |
+| 2026-08-26 | **Etapa 1** — as tonalidades vão de 6 para **24** (12 tônicas × maior/menor). A tabela de nomes ficou em `dsp.h`, não na GUI, para o teste e o plugin lerem a mesma lógica | `dsp.h`, `PluginProcessor`, `PluginEditor` | `test_escalas` (36 combos) |
+| 2026-08-26 | **Etapa 1-bis** — toolchain macOS (`build.sh`, `build-mac/`) e validação com `pluginval` no nível 10 | `plugin/build.sh`, `plugin/CMakeLists.txt` | `pluginval` = `SUCCESS` |
+| 2026-08-26 | **Etapa 2** — `Forca` sai, entra **Mix** seco/molhado. Um valor intermediário deixa de significar "corrija pela metade" e passa a significar "ouça metade de cada" | `dsp.h`, os três CLIs, plugin | `test_mix` + invariante `mix=0` == bypass |
+| 2026-08-26 | **Etapa 3** — **Retune Speed** absorve o `Glide`, e nasce o **Natural Vibrato**. O filtro passou a agir sobre a *correção*, não sobre o *alvo*: é o que separa a deriva de afinação do vibrato | `dsp.h` | `test_retune` (ganho de vibrato dentro de 0,1 % da teoria) |
+| 2026-08-26 | **Invariância ao tamanho de bloco vira estrutural.** Estava **quebrada** acima de `nHop` (256), e a afirmação nunca tinha sido testada porque o script rodava 64 e 512 sem comparar um com o outro | `autotune_stream.h` (`avancarPsola()`) | invariantes 64 == 512 e 64 == 1024; diagnóstico em [`diagnostico-block512.md`](docs/diagnostico-block512.md) |
+| 2026-08-26 | **Etapas 4 e 5** — **Humanize** (afrouxa o Retune Speed na sustentação) e **Create Vibrato** (gera vibrato: forma, taxa, profundidade e amplitude) | `dsp.h` | `test_expressao` + invariantes "valor neutro não muda nada" |
+| 2026-08-26 | Os três CLIs param de ler as mesmas flags com três cópias do `if/else` — vira `lerFlagCorrecao()`. Flag ignorada em silêncio é bug que nenhum teste pega | `dsp.h` | os três CLIs aceitam a mesma malha |
+| 2026-08-27 | Medição de **quanto formante a reamostragem custaria**, que decidiu a viabilidade do motor v3 | `python/medir_formante_resample.py` | 2,93 % em cromática, 5,95 % em maior/menor |
+| 2026-08-31 | **Decisão 8** — os quatro widgets do Create Vibrato **saem da GUI** e ficam no DSP, nos CLIs e no APVTS. É um gerador num protótipo que se declara corretor | `PluginEditor.cpp` | [Decisão 8](docs/historico-e-decisoes.md#decisão-8--create-vibrato-sai-da-interface-fica-no-dsp-2026-08-31) |
+| 2026-08-31 | **GUI custom, no lugar da genérica do JUCE.** Painel afinador em cima (nota-alvo, arco de desvio com a zona morta desenhada, histórico de 2,5 s da correção) e 9 controles em três grupos embaixo (Escala \| Correção \| Motor). Tema verde escuro. Nenhuma linha de DSP | `plugin/PluginEditor.h/.cpp` | `baseline.sh` = `IDENTICO` antes e depois; `pluginval` = `SUCCESS` |
+| 2026-09-02 | **Etapa 6** — **motor v3 de ponteiro móvel** e o botão **Low Latency**. Latência fixa de **8 amostras (0,18 ms)**, contra `fs/FMIN` do TD-PSOLA, ao custo de não preservar formantes | `dsp.h` (`MotorPonteiro`), `autotune_stream.h`, `stream_test`, plugin | `test_ponteiro` (18 verificações), 2 invariantes novos, `python/medir_v3.py` |
+
+**Três coisas que a tabela não diz, e que o texto do TCC precisa dizer junto:**
+
+1. Toda etapa foi verificada por **não-regressão de áudio**, não por escuta. O `baseline.sh`
+   responde "não mudou"; ele não responde "ficou bom".
+2. A **reavaliação de escuta** com o mesmo usuário do teste original **ainda não aconteceu** —
+   é o que fecha as duas reprovações (latência e naturalidade).
+3. Os 19 casos de **não-regressão legada** (`legado=1 vibrato=0`) travam o comportamento da
+   Etapa 2 num hash que nunca é regravado. É o que garante que as Etapas 3 a 6 são
+   generalizações, e não mudanças de comportamento disfarçadas.
+
+---
+
 ## Como compilar
 
 ```bat
@@ -92,20 +136,37 @@ Para o **plugin VST3**, veja [`plugin/README.md`](plugin/README.md) (exige MSVC)
 ## Como usar
 
 ```bat
-.\autotune.exe <entrada.wav> [saida.wav] [mix 0..1] [escala] [tol=cents] [retune=ms] [vibrato=k]
+.\autotune.exe <entrada.wav> [saida.wav] [mix 0..1] [escala] [flags da malha]
 ```
+
+Os **três** executáveis leem as mesmas flags de correção, pelo mesmo `lerFlagCorrecao()` em
+`dsp.h` (unificado em 26/08/2026, Etapa 5). Cada um acrescenta as suas — ver as seções
+seguintes.
 
 - **mix**: cruzamento seco/molhado. `0` = só o sinal original (bypass exato) · `0.5` = metade
   de cada · `1` = só o corrigido (padrão).
 - **escala**: `crom` (padrão, cromática) · `C`, `G`, `F#`... (maior) · `Am`, `C#m`... (menor).
 - **tol=** (cents): zona morta — desvios menores que isso **não** são corrigidos, preservando
-  vibrato e micro-afinação. Padrão `0`. Sugerido `10–20`.
+  vibrato e micro-afinação. Padrão `0`. Sugerido `10–20`. *(Etapa 2)*
 - **retune=** (ms): **Retune Speed** — quanto tempo a correção leva para chegar à nota.
   Padrão `0` (imediato, efeito "duro"). O manual da Antares recomenda `10–50` para som
-  natural. *(`glide=` continua valendo como apelido do nome antigo.)*
+  natural. *(Etapa 3; `glide=` continua valendo como apelido do nome antigo.)*
 - **vibrato=** (k): quanto do vibrato do cantor sobrevive. `0` = removido (comportamento até a
-  Etapa 2) · `1` = preservado (padrão) · `>1` = exagerado.
+  Etapa 2) · `1` = preservado (padrão) · `>1` = exagerado. *(Etapa 3)*
+- **humanize=** (0–1): afrouxa o Retune Speed na **sustentação** da nota, mantendo o ataque
+  rápido. Padrão `0`. *(Etapa 4)*
+- **vibforma=** (`0` off · `1` senoide · `2` triangular · `3` quadrada): **Create Vibrato**, o
+  vibrato **gerado** — não confundir com o `vibrato=`, que **preserva** o do cantor. *(Etapa 5)*
+- **vibtaxa=** (Hz, padrão `5.5`) · **vibprof=** (cents, padrão `0`) · **vibamp=** (0–1):
+  taxa, profundidade e modulação de amplitude do vibrato gerado. Com `vibprof=0` o Create
+  Vibrato não faz nada, qualquer que seja a forma. *(Etapa 5)*
+- **legado=1**: faz a nota nascer **no alvo** em vez de na altura real do cantor, que era o
+  comportamento até a Etapa 2. Existe para a não-regressão do `baseline.sh` travar o passado;
+  não é um modo de uso.
 - **mix negativo** (`-1`) = modo cópia (só converte pra mono, sem processar — diagnóstico).
+
+> O `autotune.exe` **ignora em silêncio** `dumpf0=` (só o causal e o streaming gravam a trilha
+> de F0). Item aberto no backlog.
 
 > ⚠️ **Mudou na Etapa 2 (26/08/2026).** O 3º argumento posicional era `forca` (0–1, fração do
 > desvio a corrigir) e passou a ser `mix` (seco/molhado). Os extremos se comportam igual —
@@ -160,14 +221,18 @@ mesmos parâmetros de correção do `autotune_rt.exe`, mais a escolha do **motor
 (Etapa 6):
 
 ```bat
-.\stream_test.exe <in.wav> [out.wav] [mix] [escala] [tol=] [retune=] [vibrato=] [look=] [block=] [motor=psola|ponteiro] [lowlat=1]
+.\stream_test.exe <in.wav> [out.wav] [mix] [escala] [flags da malha] [look=] [block=] [frame=] [hop=] [voz=] [fmin=] [fmax=] [motor=psola|ponteiro] [lowlat=1] [dumpf0=] [dumpframes=] [dumpbeta=]
 ```
 
 - **motor=** : `psola` (padrão) — TD-PSOLA, motor de referência — ou `ponteiro` (aceita também
   `v3`) — o motor de **ponteiro móvel**, que troca análise-e-ressíntese por leitura contínua de
-  um anel circular a velocidade `β`.
+  um anel circular a velocidade `β`. *(Etapa 6, 02/09/2026)*
 - **lowlat=1** : atalho que reproduz o botão **Low Latency** do plugin — `motor=ponteiro` **e**
   `look=0` de uma vez, o que zera a parte fixa da latência para **8 amostras (0,18 ms)**.
+  *(Etapa 6, 02/09/2026)*
+- **dumpframes=** : grava o instante de disparo de cada quadro do ring buffer num `.txt`.
+- **dumpbeta=** : grava, por hop, o `β` aplicado e o alvo `fout`. É de onde o `medir_v3.py`
+  tira o alvo por amostra para medir o erro de afinação dos dois motores.
 
 Ver [`docs/especificacao-v3-ponteiro.md`](docs/especificacao-v3-ponteiro.md) para a mecânica do
 motor, e a [Etapa 6 do diário](docs/execucao-do-plano.md#etapa-6--motor-v3-de-ponteiro-móvel-low-latency)
@@ -219,14 +284,27 @@ src/offline_causal/main.cpp         autotune OFFLINE (referência/gold)  -> auto
 src/offline_causal/autotune_rt.cpp  autotune CAUSAL (Viterbi lag fixo)  -> autotune_rt.exe
 src/c1_streaming/autotune_stream.h  núcleo de STREAMING (header-only, usado pelo plugin)
 src/c1_streaming/stream_test.cpp    driver headless do streaming        -> stream_test.exe
-plugin/                             plugin VST3/Standalone (JUCE) em volta do núcleo
+
+src/tests/test_escalas.cpp          as 24 tonalidades e os 36 combos da GUI   (Etapa 1)
+src/tests/test_mix.cpp              o cruzamento seco/molhado                 (Etapa 2)
+src/tests/test_retune.cpp           Retune Speed e Natural Vibrato            (Etapa 3)
+src/tests/test_expressao.cpp        Humanize e Create Vibrato              (Etapas 4 e 5)
+src/tests/test_ponteiro.cpp         o motor de ponteiro móvel                 (Etapa 6)
+
+plugin/PluginProcessor.h/.cpp       APVTS <-> StreamParams, processBlock, latência declarada
+plugin/PluginEditor.h/.cpp          GUI custom: painel afinador + 3 grupos    (31/08/2026)
 external/dr_wav.h                   leitor/gravador WAV (header-only)
 compilar.bat                        build rápido com g++ (compila os 3 exes)
+baseline.sh                         VERIFICAÇÃO: 37 casos + 8 invariantes + 19 legados
+                                    + as 5 suítes de src/tests/. Rode antes e depois.
 exemplo-antes.wav                   excerto de voz cantada (Vocadito, CC-BY 4.0)
 
 docs/                               DOCUMENTAÇÃO — comece por docs/README.md
 tcc-texto/                          texto do TCC em LaTeX (classe EP-TCC / PUCRS)
 
+python/medir_qualidade.py           MEDIÇÃO: latência, xRT, correlação, F0, cliques, bloco
+python/medir_formante_resample.py   MEDIÇÃO: o formante que a reamostragem custa    (v3)
+python/medir_v3.py                  MEDIÇÃO: PSOLA × Ponteiro × Low Latency   (Etapa 6)
 python/formantes.py                 verifica preservação dos formantes (entrada vs saída)
 python/bench_stream.py              valida o streaming vs. o gold, e a invariância ao bloco
 python/bench_pitch.py               compara a trilha de F0 do streaming vs. o gold
@@ -236,8 +314,12 @@ python/bench_nframe.py              varre N_FRAME: piso de latência × fmin det
 python/bench_fmin.py                varre presets de tessitura: latência × notas perdidas
 ```
 
-Os scripts em `python/` usam o venv do repositório irmão:
-`..\TCC-autotune-python\.venv\Scripts\python.exe`.
+**`baseline.sh` é verificação; os scripts de `python/` são medição.** Só o primeiro falha
+quando algo quebra — os outros descrevem o estado atual e produzem os números do texto. Os
+**`medir_*.py`** rodam em qualquer máquina (compilam o que precisam e usam o
+`exemplo-antes.wav` versionado); os **`bench_*.py`** são de Windows e dependem do venv do
+repositório irmão (`..\TCC-autotune-python\.venv\Scripts\python.exe`) e de um
+`audioteste.wav` que não está versionado. Detalhes em [`python/README.md`](python/README.md).
 
 ---
 

@@ -13,6 +13,7 @@
 | **3 — Retune Speed (funde o Glide)** | ✅ **concluída** | 2026-08-26 |
 | **4 — Humanize** | ✅ **concluída** | 2026-08-26 |
 | **5 — Create Vibrato** | ✅ **concluída** — ⚠️ os quatro controles saíram da GUI em 2026-08-31 ([Decisão 8](historico-e-decisoes.md#decisão-8--create-vibrato-sai-da-interface-fica-no-dsp-2026-08-31)); o DSP, os CLIs e os parâmetros do APVTS ficam | 2026-08-26 |
+| **redesenho da interface** (fora do plano) | ✅ **concluída** — painel afinador + 9 controles em três grupos, no lugar da GUI genérica | 2026-08-31 |
 | **6 — motor v3 (Low Latency)** | ✅ **concluída** | 2026-09-02 |
 
 > **O plano acabou — as cinco primeiras etapas.** Elas estão feitas e verificadas — o que isso
@@ -893,8 +894,45 @@ cujo critério de aceite é "não mudou o áudio". Fica como item explícito de 
 > **Atualização de 2026-08-31.** A [Decisão 8](historico-e-decisoes.md#decisão-8--create-vibrato-sai-da-interface-fica-no-dsp-2026-08-31)
 > ataca essa dívida pela outra ponta: em vez de acomodar 13 controles, retira 4 deles — os do
 > Create Vibrato, que eram ~31 % da faixa. Sobram **9**, e nove cabem em três grupos numa linha
-> só (**Escala | Correção | Motor**). A dívida encolhe, mas não some: o agrupamento em si
-> continua sendo trabalho de desenho de interface.
+> só (**Escala | Correção | Motor**).
+>
+> **A dívida foi quitada no mesmo dia** — ver a seção seguinte.
+
+### Redesenho da interface (2026-08-31) — fora do plano
+
+Não é uma etapa: não tem critério de aceite de áudio, porque **não toca DSP**. Entrou porque a
+GUI genérica do JUCE parou de servir com 13 colunas numa linha, e sair do protótipo para a
+defesa com ela seria vender o trabalho por menos do que ele é.
+
+**O que passou a existir**, em `plugin/PluginEditor.h/.cpp`:
+
+| Parte | O que faz |
+|---|---|
+| `PainelAfinador` (metade de cima) | cabeçalho com a **nota-alvo** e a frequência; **arco** com o desvio em cents e a zona morta da `Tolerancia` desenhada dentro; faixa com o **histórico de 2,5 s** da correção aplicada |
+| Faixa de controles (metade de baixo) | os **9** controles restantes em três grupos: **Escala** \| **Correção** \| **Motor** |
+| `TccLookAndFeel` | tema verde escuro. `destaque` é **sempre** a saída corrigida, `cantado` é **sempre** a altura crua — matizes de famílias diferentes, senão o arco fica ilegível |
+
+**Três decisões que vale registrar:**
+
+1. **A nota-alvo é derivada do `fout`, não do `f0`.** Atacar um F# em dó maior faz o motor mirar
+   em F ou G; ler a nota mais próxima do `f0` mostrava F#, que a escala nem permite. O erro
+   aparecia justamente quando o plugin estava fazendo o trabalho dele.
+2. **O anel do histórico é acumulado no timer da UI, a 60 Hz, não no processor.** O que a faixa
+   plota é uma envoltória lenta — o vibrato vive em ~5,5 Hz, então 60 Hz sobra. Acumular na UI
+   evitou escrever um ring buffer lock-free dentro do callback de áudio só para desenhar um
+   gráfico, que seria código novo em tempo real por um motivo cosmético.
+3. **A formatação do texto dos sliders tem de ser aplicada *depois* dos attachments.** O
+   `SliderAttachment` instala o próprio `textFromValueFunction` a partir de `param.getText()`,
+   que ignora `setNumDecimalPlacesToDisplay` — toda caixa imprimia `15.0000…`. Foi ao corrigir
+   isso que o **Mix passou a ser exibido em %**, fechando o item cosmético que a Etapa 2 tinha
+   deixado.
+
+**Verificação:** nenhuma linha de DSP mudou, e é isso que o `baseline.sh` confirma —
+`IDENTICO` antes e depois. O `pluginval` no nível 10 passa, incluindo *Editor Automation* e
+*Fuzz parameters*, que são justamente os testes que exercitam o editor novo.
+
+**O que continua sem verificação automatizada:** a aparência. Layout e legibilidade seguem
+conferidos por olho humano no app Standalone, como já era o caso dos ComboBox na Etapa 1-bis.
 
 ### O plano acabou. O que ele não entrega.
 
@@ -1037,13 +1075,13 @@ melhor que `k = 1,2`, se o ataque na altura real incomoda quando o cantor entra 
 
 | Item | Origem | Situação |
 |---|---|---|
-| Faixa de controles — agrupar em **Escala \| Correção \| Motor** | Etapa 5 + Decisão 8 | **redimensionada, não quitada.** Eram 13 colunas numa faixa única; a [Decisão 8](historico-e-decisoes.md#decisão-8--create-vibrato-sai-da-interface-fica-no-dsp-2026-08-31) tira os 4 do Create Vibrato e deixa **9**, que cabem em três grupos numa linha. Deixou de ser "não cabe" e virou "falta agrupar" |
+| ~~Faixa de controles — agrupar em **Escala \| Correção \| Motor**~~ | Etapa 5 + Decisão 8 | ✅ **quitada em 2026-08-31** — ver [Redesenho da interface](#redesenho-da-interface-2026-08-31--fora-do-plano) |
 | Escorregão de fase entre streaming e offline (corr. 0,57, concentrada em poucas janelas, com correlação negativa) | Achado A | não investigado |
 | Limitar a busca por correlação à região vozeada — DSP argumentavelmente mais correto, custo zero de CPU | Achado C | não aplicado: exigiria regravar todas as referências |
-| `src/offline_causal/main.cpp` só parseia `tol=` e `glide=` e **ignora em silêncio** o resto (`look=`, `dumpf0=`) | Etapa 3 | não corrigido |
+| `src/offline_causal/main.cpp` **ignora em silêncio** `dumpf0=` — por isso não há trilha de F0 do offline para comparar | Etapa 3 | **parcialmente corrigido**: desde a Etapa 5 ele lê a malha inteira por `lerFlagCorrecao()`; sobra o `dumpf0=` (o `look=` não faz sentido no offline, que usa Viterbi global) |
 | `bench_stream.py` nunca foi executado nesta máquina (roda no venv Windows do repositório irmão) | Etapa 2 | os números de correlação do README são da medição anterior |
 | `g_permitida[12]` é estado global — duas instâncias do plugin compartilham a escala | plano §11.3 | decidido fora de escopo; **declarar como limitação no texto do TCC** |
-| Faixa do `Mix` na GUI está em 0–1; a Antares mostra em % | Etapa 2 | cosmético |
+| ~~Faixa do `Mix` na GUI está em 0–1; a Antares mostra em %~~ | Etapa 2 | ✅ **quitado em 2026-08-31**, junto com o redesenho — o slider mostra %, o parâmetro segue 0–1 |
 | `exp()` calculado por amostra dentro do callback de áudio | Etapa 0 | oportunidade; xRT 0,042, provavelmente não é gargalo |
 
 ### 3. Fora do escopo do plano, ainda por fazer

@@ -1,6 +1,6 @@
 # Scripts de medição
 
-Nove scripts, e **eles não rodam todos no mesmo lugar** — é a primeira coisa que se precisa
+Dez scripts, e **eles não rodam todos no mesmo lugar** — é a primeira coisa que se precisa
 saber antes de citar qualquer número que saia daqui.
 
 ## Onde cada um roda

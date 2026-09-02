@@ -18,6 +18,7 @@
 | **[pesquisa-retune-speed-e-cor.md](pesquisa-retune-speed-e-cor.md)** | O que o Retune Speed é (manual oficial, verbatim), por que `Tolerancia` **não** é Flex-Tune, e a conclusão de que **formante não resolve "cor"**. Define os itens K1–K6. | Antes de implementar o Retune Speed ou qualquer controle de expressão. |
 | **[especificacao-v3-ponteiro.md](especificacao-v3-ponteiro.md)** | Especificação do motor v3 — ponteiro móvel sobre um anel, no lugar do TD-PSOLA: interface, fiação no streaming, controles (`motor=`/`lowlat=`/botão **Low Latency**), verificação e medição. | Mexer no motor v3 / Low Latency, ou entender a Etapa 6. |
 | **[plano-v3-ponteiro.md](plano-v3-ponteiro.md)** | 📐 Plano de execução da Etapa 6, por tarefa — o que a [execucao-do-plano.md](execucao-do-plano.md) registra como feito. | Só para reconstruir a ordem em que a Etapa 6 foi implementada. |
+| **[analise-v1-v2-v3.md](analise-v1-v2-v3.md)** | ⚠️ Compara os três caminhos de baixa latência **por estágio do pipeline**, mostra onde cada um corta e qual é o piso de cada um. **Corrige dois números de latência errados** em [modo-baixa-latencia.md](modo-baixa-latencia.md) e [pesquisa-latencia-antares.md](pesquisa-latencia-antares.md), e marca a §8 da especificação v3 como desatualizada. | **Antes de citar qualquer número de latência**, e antes de discutir v1/v2/v3. |
 
 ## Mapa rápido
 
@@ -32,6 +33,7 @@
                   ├─ modo-baixa-latencia.md ───── v1/v2 por parâmetros (superado pela v3)
                   ├─ especificacao-v3-ponteiro.md ─ o motor v3, implementado na Etapa 6
                   ├─ plano-v3-ponteiro.md ──────── o plano da Etapa 6, por tarefa
+                  ├─ analise-v1-v2-v3.md ──────── os numeros de latencia, por estagio
                   ├─ pesquisa-bibliografica.md ── as fontes de tudo acima
                   ├─ pesquisa-retune-speed-e-cor.md ─ Retune Speed e a origem da "cor"
                   └─ pesquisa-latencia-antares.md ─ por que o Auto-Tune tem 37 amostras
@@ -72,10 +74,12 @@ lista **correções pendentes no texto do TCC 1** identificadas durante a revis�
 | Diagnóstico dos dois sintomas | ✅ concluído |
 | Revisão bibliográfica | ✅ concluída |
 | Comparação com o estado da arte | ✅ concluída |
-| Redesenho de interface | 📋 decidido, não implementado |
+| Redesenho de interface | ✅ **implementado** (2026-08-31) — painel afinador + 9 controles em três grupos; ver [`../plugin/README.md`](../plugin/README.md#a-tela-gui-custom-31082026) |
 | Pesquisa sobre Retune Speed e "cor" | ✅ concluída — 1 decisão cancelada, 6 itens novos (K1–K6) |
 | Plano de implementação | ✅ escrito — 6 etapas |
 | **Etapa 0** — malha de correção unificada | ✅ **concluída** (2026-08-26), 17/17 casos idênticos |
-| Etapas 1–5 | ✅ **concluídas** (2026-08-26 a 2026-08-31) |
-| Modo de baixa latência | ✅ **v3 implementada (Etapa 6)** |
+| Etapas 1–5 | ✅ **concluídas** (2026-08-26) |
+| **Etapa 6** — motor v3 / Low Latency | ✅ **concluída** (2026-09-02) |
+| Modo de baixa latência | ✅ **resolvido pela v3 (Etapa 6)** — o caminho v1/v2 por parâmetros fica superado |
 | Correções de código (§8.3) | ⏳ não medidas |
+| **Reavaliação de escuta com o usuário** | ⛔ **não feita** — é o que fecha as duas reprovações |
