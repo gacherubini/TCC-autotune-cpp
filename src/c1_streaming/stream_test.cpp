@@ -14,13 +14,14 @@
 //
 //  Uso: stream_test.exe <in.wav> [out.wav] [mix] [escala] [tol=] [retune=] [vibrato=] [humanize=] [vib*=] [look=]
 //                       [frame=] [hop=] [voz=] [fmin=] [fmax=] [block=B] [dumpf0=arq] [dumpbeta=arq]
+//                       [motor=psola|ponteiro] [lowlat=1]
 // ============================================================================
 #define DR_WAV_IMPLEMENTATION
 #include "../core/dsp.h"
 #include "autotune_stream.h"
 
 int main(int argc, char** argv) {
-    if (argc < 2) { std::printf("Uso: %s <in.wav> [out.wav] [mix] [escala] [flags...] [block=B]\n", argv[0]); return 1; }
+    if (argc < 2) { std::printf("Uso: %s <in.wav> [out.wav] [mix] [escala] [flags...] [motor=psola|ponteiro] [lowlat=1] [block=B]\n", argv[0]); return 1; }
 
     // ------------------------------------------------------------------
     // 1. Leitura dos argumentos de linha de comando (mesmo formato do
@@ -37,6 +38,8 @@ int main(int argc, char** argv) {
     const char* escalaTxt = (!a4.empty() && a4.find('=') == std::string::npos) ? argv[4] : "crom";
     definirEscala(escalaTxt);
     int block = 128; std::string vozNome, dumpF0Path, dumpFramesPath, dumpBetaPath; bool fminExpl=false, fmaxExpl=false;
+    bool lowlat = false; // Etapa 6: guardado no laco e aplicado DEPOIS dele (ver abaixo), para
+                          // vencer um look= que apareca antes OU depois na linha de comando.
     for (int i = 2; i < argc; ++i) {
         std::string a = argv[i];
         if      (lerFlagCorrecao(a, p.corr)) { /* flag da malha (dsp.h) */ }
@@ -50,9 +53,20 @@ int main(int argc, char** argv) {
         else if (a.rfind("dumpf0=",0)==0)dumpF0Path = a.c_str()+7;
         else if (a.rfind("dumpframes=",0)==0) dumpFramesPath = a.c_str()+11;
         else if (a.rfind("dumpbeta=",0)==0)   dumpBetaPath   = a.c_str()+9;
+        else if (a.rfind("motor=",0)==0) {
+            std::string m = a.c_str()+6;
+            p.motor = (m == "ponteiro" || m == "v3") ? MotorSintese::Ponteiro : MotorSintese::PSOLA;
+        }
+        // lowlat=1 reproduz o botao do plugin: motor de ponteiro E look = 0.
+        else if (a.rfind("lowlat=",0)==0 && std::atoi(a.c_str()+7) != 0) {
+            lowlat = true;
+        }
     }
     // Preset de tessitura (igual ao autotune_rt): fmin=/fmax= explícitos vencem.
     if (!vozNome.empty()) { double pf,px; if (presetVoz(vozNome,pf,px)) { if(!fminExpl)p.fmin=pf; if(!fmaxExpl)p.fmax=px; } }
+    // lowlat= tem de vencer um look= que venha antes OU depois dele na linha de
+    // comando: por isso e' aplicado aqui, depois do laco, antes da sanitizacao.
+    if (lowlat) { p.motor = MotorSintese::Ponteiro; p.look = 0; }
     // Sanitização básica dos parâmetros (mesmos limites do autotune_rt).
     sanearCorrecao(p.corr);
     if (p.look<0) p.look=0; if (p.nFrame<128) p.nFrame=128; if (p.nHop<1) p.nHop=1;
@@ -143,8 +157,15 @@ int main(int argc, char** argv) {
     //
     // 5. Relatório e gravação do WAV de saída (16-bit PCM).
     // ------------------------------------------------------------------
-    std::printf("stream_test: %.2fs | fs=%u | block=%d | look=%d | frame=%d | FMIN=%.0f | lat=%d amostras\n",
-                (double)N/fs, taxa, block, p.look, p.nFrame, FMIN, eng.getLatencySamples());
+    const bool ponteiro = (p.motor == MotorSintese::Ponteiro);
+    std::printf("stream_test: %.2fs | fs=%u | block=%d | look=%d | frame=%d | FMIN=%.0f | motor=%s | lat=%d amostras\n",
+                (double)N/fs, taxa, block, p.look, p.nFrame, FMIN, ponteiro ? "ponteiro" : "psola",
+                eng.getLatencySamples());
+    if (ponteiro)
+        std::printf("ponteiro: defasagem da correcao=%d amostras | saltos=%lld | dist media=%.1f am (%.2f ms) | dist max=%.1f am (%.2f ms)\n",
+                    eng.getDefasagemCorrecao(), eng.getSaltosPonteiro(),
+                    eng.getDistMediaPonteiro(), 1000.0 * eng.getDistMediaPonteiro() / fs,
+                    eng.getDistMaxPonteiro(),   1000.0 * eng.getDistMaxPonteiro() / fs);
     std::printf("ultimo f0=%.1f Hz | ultimo fout=%.1f Hz\n", eng.getF0Atual(), eng.getFoutAtual());
     if (!gravarWav16(saida, out, taxa)) { std::printf("ERRO ao gravar\n"); return 1; }
     std::printf("Gravado: %s\n", saida);

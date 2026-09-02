@@ -54,8 +54,9 @@ for t in src/tests/*.cpp; do
 done
 
 # ---------------------------------------------------------------------------
-#  Casos. Cobrem: bypass, correcao cheia, zona morta, glide, look-ahead,
-#  invariancia ao tamanho de bloco e escalas diferentes.
+#  Casos (37). Cobrem: bypass, correcao cheia, zona morta, glide, look-ahead,
+#  invariancia ao tamanho de bloco, escalas diferentes e, desde a Etapa 6, o
+#  motor de ponteiro movel (v3) e o modo de baixa latencia (lowlat=1).
 #
 #  Etapa 2: os casos "forca0" viraram DOIS casos, porque a antiga forca=0 fazia
 #  duas coisas ao mesmo tempo e so uma delas sobreviveu como parametro:
@@ -116,6 +117,17 @@ echo "== rodando casos =="
   rodar st_createvib_sen "$BIN/stream_test" "$WAV" st_createvib_sen.wav 1.0 crom retune=25 vibforma=1 vibtaxa=5.5 vibprof=30
   rodar st_createvib_amp "$BIN/stream_test" "$WAV" st_createvib_amp.wav 1.0 crom retune=25 vibforma=1 vibtaxa=5.5 vibprof=30 vibamp=1
   rodar gold_humanize1   "$BIN/autotune"    "$WAV" gold_humanize1.wav   1.0 crom retune=25 humanize=1
+
+  # Etapa 6: motor v3 (ponteiro movel). lowlat=1 == motor=ponteiro look=0, que
+  # e' exatamente o botao do plugin. Os pares mix0/tol600 e block64/block512 sao
+  # invariantes (abaixo); mix1, natural e ponteiro_look4 fixam o comportamento.
+  rodar st_lowlat_mix1     "$BIN/stream_test" "$WAV" st_lowlat_mix1.wav     1.0 crom lowlat=1
+  rodar st_lowlat_mix0     "$BIN/stream_test" "$WAV" st_lowlat_mix0.wav     0.0 crom lowlat=1
+  rodar st_lowlat_tol600   "$BIN/stream_test" "$WAV" st_lowlat_tol600.wav   1.0 crom tol=600 lowlat=1
+  rodar st_lowlat_natural  "$BIN/stream_test" "$WAV" st_lowlat_natural.wav  1.0 crom tol=15 retune=25 lowlat=1
+  rodar st_lowlat_block64  "$BIN/stream_test" "$WAV" st_lowlat_block64.wav  1.0 crom lowlat=1 block=64
+  rodar st_lowlat_block512 "$BIN/stream_test" "$WAV" st_lowlat_block512.wav 1.0 crom lowlat=1 block=512
+  rodar st_ponteiro_look4  "$BIN/stream_test" "$WAV" st_ponteiro_look4.wav  1.0 crom motor=ponteiro look=4
 } | tee "$TMP/resumo.txt"
 
 # ---------------------------------------------------------------------------
@@ -142,6 +154,11 @@ par "invariancia ao tamanho de bloco: 64 == 1024"       st_block64.wav  st_block
 par "Create Vibrato off == retune25 puro"               st_createvib_off.wav st_retune25.wav
 # Etapa 4: humanize=0 tem de ser exatamente a Etapa 3.
 par "humanize=0 == retune25 puro"                       st_humanize0.wav     st_retune25.wav
+# Etapa 6: o motor de ponteiro tem os MESMOS dois caminhos de identidade do
+# PSOLA, e eles tem de concordar: se divergirem, a interpolacao deixou de ser
+# exata em fracao zero ou um salto disparou com beta = 1.
+par "ponteiro em identidade (beta=1) == bypass  [lowlat]" st_lowlat_tol600.wav st_lowlat_mix0.wav
+par "invariancia ao bloco no ponteiro: 64 == 512"        st_lowlat_block64.wav st_lowlat_block512.wav
 
 # ---------------------------------------------------------------------------
 #  Nao-regressao da ETAPA 3 contra a ETAPA 2.
@@ -203,7 +220,7 @@ fi
 # de gravar uma referencia nova por cima de um resultado errado.
 if [[ "$INVAR_FALHOU" == "1" ]]; then
     echo; echo "ERRO: invariante quebrada. Isso NAO se resolve com 'gravar' —"
-    echo "      significa que o PSOLA deixou de ser identidade em beta=1."
+    echo "      significa que um motor deixou de ser identidade em beta=1."
     exit 1
 fi
 
