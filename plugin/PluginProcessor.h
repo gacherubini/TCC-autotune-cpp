@@ -70,6 +70,10 @@ public:
     float getUiF0()   const { return uiF0.load();   }
     float getUiFout() const { return uiFout.load(); }
 
+    // Etapa 6: le' se o modo Low Latency esta' ligado. Usado pela GUI para
+    // trocar o rotulo do motor no rodape (ver PluginEditor::paint()).
+    bool lowLatencyLigado() const { return pLowLat && pLowLat->load() > 0.5f; }
+
 private:
     // Monta os parâmetros do plugin (chamado no construtor da APVTS).
     static juce::AudioProcessorValueTreeState::ParameterLayout criarParametros();
@@ -107,6 +111,7 @@ private:
     std::atomic<float>* pVibProf  = nullptr;
     std::atomic<float>* pVibAmp   = nullptr;
     std::atomic<float>* pLook   = nullptr;
+    std::atomic<float>* pLowLat = nullptr;
     std::atomic<float>* pVoz    = nullptr;
     std::atomic<float>* pEscala = nullptr;
     std::atomic<float>* pTonica = nullptr;

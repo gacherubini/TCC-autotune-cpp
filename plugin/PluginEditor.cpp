@@ -339,6 +339,23 @@ TccAutotuneEditor::TccAutotuneEditor(TccAutotuneProcessor& p)
     configurarSlider(lookSlider, lookLabel, "Look-ahead", false);
     configurarSlider(mixSlider,  mixLabel,  "Mix",        false);
 
+    // Etapa 6: o botao Low Latency. Ligado, o slider de look-ahead fica visivel
+    // e DESABILITADO mostrando o valor que o motor usa (0) -- opcao B da spec
+    // do modo de baixa latencia: a interface mostra o que o modo mudou, em vez
+    // de esconder. O valor salvo de 'look' nao e' tocado; desligar devolve tudo.
+    addAndMakeVisible(lowlatButton);
+    lowlatButton.onStateChange = [this] {
+        const bool on = lowlatButton.getToggleState();
+        lookSlider.setEnabled(!on);
+        lookSlider.setAlpha(on ? 0.45f : 1.0f);
+        lookSlider.updateText();
+        repaint();
+        // A latencia nova so' existe depois do re-prepare no proximo bloco de
+        // audio; repinta de novo um pouco depois para o rodape acompanhar.
+        juce::Component::SafePointer<TccAutotuneEditor> sp(this);
+        juce::Timer::callAfterDelay(250, [sp] { if (sp != nullptr) sp->repaint(); });
+    };
+
     for (auto* l : { &tolLabel, &retuneLabel, &vibratoLabel, &humanizeLabel })
         l->setFont(juce::Font(9.5f));
 
@@ -365,6 +382,11 @@ TccAutotuneEditor::TccAutotuneEditor(TccAutotuneProcessor& p)
     vozAttach      = std::make_unique<ComboAttachment>(apvts, "voz",    vozCombo);
     tonicaAttach   = std::make_unique<ComboAttachment>(apvts, "tonica", tonicaCombo);
     escalaAttach   = std::make_unique<ComboAttachment>(apvts, "escala", escalaCombo);
+    lowlatAttach   = std::make_unique<ButtonAttachment>(apvts, "lowlat", lowlatButton);
+    // Aplica o estado restaurado do projeto (o attachment ja' setou o toggle,
+    // mas o onStateChange so' dispara em MUDANCA -- sem isto, um projeto salvo
+    // com lowlat=true abriria com o look-ahead habilitado por engano).
+    lowlatButton.onStateChange();
 
     // Formatacao das caixas de valor — TEM de vir DEPOIS dos attachments.
     // O SliderAttachment instala, no proprio construtor, um
@@ -391,7 +413,13 @@ TccAutotuneEditor::TccAutotuneEditor(TccAutotuneProcessor& p)
     formatar(retuneSlider,   0);
     formatar(vibratoSlider,  2);
     formatar(humanizeSlider, 2);
-    formatar(lookSlider,     0);
+    // Look-ahead: exibicao normal, exceto com o Low Latency ligado, quando
+    // mostra 0 -- o valor que o motor realmente usa -- sem tocar no
+    // parametro salvo (ver lowlatButton.onStateChange acima).
+    lookSlider.textFromValueFunction = [this](double v) {
+        return juce::String(lowlatButton.getToggleState() ? 0.0 : v, 0);
+    };
+    lookSlider.updateText();
     // Mix em porcentagem, como a Antares mostra. Item cosmetico do backlog
     // (docs/execucao-do-plano.md, "Backlog tecnico"): o parametro segue 0..1.
     formatar(mixSlider, 0, 100.0, " %");
@@ -431,7 +459,8 @@ void TccAutotuneEditor::paint(juce::Graphics& g) {
     g.drawText("TCC AUTOTUNE", faixaTitulo, juce::Justification::centredLeft);
     g.setColour(tccColours::textoFraco);
     g.setFont(juce::Font(8.5f));
-    g.drawText("pYIN  ->  TD-PSOLA", faixaTitulo, juce::Justification::centredRight);
+    g.drawText(processorRef.lowLatencyLigado() ? "pYIN  ->  PONTEIRO MOVEL (v3)" : "pYIN  ->  TD-PSOLA",
+               faixaTitulo, juce::Justification::centredRight);
 
     desenharGrupo(g, caixaEscala,   "ESCALA");
     desenharGrupo(g, caixaCorrecao, "CORRECAO");
@@ -444,7 +473,7 @@ void TccAutotuneEditor::paint(juce::Graphics& g) {
     const int    lat = processorRef.getLatencySamples();
     g.setColour(tccColours::textoFraco);
     g.setFont(juce::Font(8.5f));
-    g.drawText(fs > 0.0 ? juce::String::formatted("LATENCIA  %.1f ms", 1000.0 * lat / fs)
+    g.drawText(fs > 0.0 ? juce::String::formatted("LATENCIA  %.2f ms", 1000.0 * lat / fs)
                         : juce::String("LATENCIA  --"),
                caixaMotor.reduced(11, 0).removeFromBottom(16),
                juce::Justification::centredLeft);
@@ -505,6 +534,8 @@ void TccAutotuneEditor::resized() {
             s.setBounds(dentro.removeFromTop(22));
             dentro.removeFromTop(10);
         };
+        lowlatButton.setBounds(dentro.removeFromTop(22));
+        dentro.removeFromTop(6);
         linha(lookLabel, lookSlider);
         linha(mixLabel,  mixSlider);
     }

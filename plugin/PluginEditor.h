@@ -116,12 +116,15 @@ private:
     juce::Slider   mixSlider, tolSlider, retuneSlider, vibratoSlider, lookSlider, humanizeSlider;
     juce::Label    vozLabel, tonicaLabel, escalaLabel, mixLabel, tolLabel, retuneLabel,
                    vibratoLabel, lookLabel, humanizeLabel;
+    juce::ToggleButton lowlatButton { "Low Latency" };
 
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ComboAttachment  = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
+    using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
     std::unique_ptr<SliderAttachment> mixAttach, tolAttach, retuneAttach, vibratoAttach,
                                       lookAttach, humanizeAttach;
     std::unique_ptr<ComboAttachment>  vozAttach, tonicaAttach, escalaAttach;
+    std::unique_ptr<ButtonAttachment> lowlatAttach;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(TccAutotuneEditor)
 };

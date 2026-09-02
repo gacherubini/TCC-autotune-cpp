@@ -36,6 +36,9 @@ namespace ids {
     static constexpr const char* vibProf  = "vibprof";
     static constexpr const char* vibAmp   = "vibamp";
     static constexpr const char* look   = "look";
+    // Etapa 6: o botao Low Latency. Liga o motor de ponteiro E forca look = 0.
+    // Estrutural: muda a latencia declarada ao host.
+    static constexpr const char* lowlat = "lowlat";
     static constexpr const char* voz    = "voz";
     static constexpr const char* escala = "escala";
     // Etapa 1 do plano: a tonica virou parametro proprio. O id "escala" foi
@@ -115,6 +118,11 @@ TccAutotuneProcessor::criarParametros() {
     // look 0..16 quadros — look-ahead do Viterbi (latencia x qualidade). ESTRUTURAL.
     layout.add(std::make_unique<AudioParameterInt>(
         ParameterID{ ids::look, 1 }, "Look-ahead (quadros)", 0, 16, 4));
+    // Low Latency (Etapa 6): troca o TD-PSOLA pelo motor de ponteiro movel (v3)
+    // e forca look = 0. Desligado por padrao: a instalacao nova soa como antes e
+    // a linha de base mede o motor padrao. Ver docs/especificacao-v3-ponteiro.md.
+    layout.add(std::make_unique<AudioParameterBool>(
+        ParameterID{ ids::lowlat, 1 }, "Low Latency", false));
     // voz — preset de tessitura (define fmin/fmax). ESTRUTURAL. Default Contralto.
     layout.add(std::make_unique<AudioParameterChoice>(
         ParameterID{ ids::voz, 1 }, "Voz (tessitura)", kVozes, 3));
@@ -148,12 +156,14 @@ TccAutotuneProcessor::TccAutotuneProcessor()
     pVibProf  = apvts.getRawParameterValue(ids::vibProf);
     pVibAmp   = apvts.getRawParameterValue(ids::vibAmp);
     pLook   = apvts.getRawParameterValue(ids::look);
+    pLowLat = apvts.getRawParameterValue(ids::lowlat);
     pVoz    = apvts.getRawParameterValue(ids::voz);
     pEscala = apvts.getRawParameterValue(ids::escala);
     pTonica = apvts.getRawParameterValue(ids::tonica);
 
     // Só os estruturais disparam re-prepare (mix/tol/retune/vibrato são "ao vivo").
     apvts.addParameterListener(ids::look,   this);
+    apvts.addParameterListener(ids::lowlat, this);
     apvts.addParameterListener(ids::voz,    this);
     apvts.addParameterListener(ids::escala, this);
     apvts.addParameterListener(ids::tonica, this);
@@ -161,6 +171,7 @@ TccAutotuneProcessor::TccAutotuneProcessor()
 
 TccAutotuneProcessor::~TccAutotuneProcessor() {
     apvts.removeParameterListener(ids::look,   this);
+    apvts.removeParameterListener(ids::lowlat, this);
     apvts.removeParameterListener(ids::voz,    this);
     apvts.removeParameterListener(ids::escala, this);
     apvts.removeParameterListener(ids::tonica, this);
@@ -201,7 +212,12 @@ void TccAutotuneProcessor::aplicarParametros() {
     StreamParams p;
     p.mix      = pMix    ? pMix->load()    : 1.0;
     p.corr = lerCorrecao();
-    p.look     = pLook   ? (int) pLook->load() : 4;
+    // Low Latency (Etapa 6): liga o motor de ponteiro e forca look = 0. O
+    // valor salvo em 'pLook' NAO e' alterado -- so' o que chega ao nucleo.
+    // Desligar o botao devolve o look-ahead configurado sem o usuario mexer.
+    const bool lowlat = pLowLat && pLowLat->load() > 0.5f;
+    p.look  = lowlat ? 0 : (pLook ? (int) pLook->load() : 4);
+    p.motor = lowlat ? MotorSintese::Ponteiro : MotorSintese::PSOLA;
 
     // Preset de tessitura -> fmin/fmax (a grade de pitch do núcleo).
     double fmin = FMIN, fmax = FMAX;
