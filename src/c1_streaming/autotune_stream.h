@@ -525,8 +525,21 @@ private:
     //  decidido ha nFrame + look*nHop amostras".
     //
     //  O seco do mix e' a entrada atrasada de latSamples (= MARGEM), pelo mesmo
-    //  indice absoluto -- a regra da Etapa 2. Com beta = 1 o motor devolve
-    //  exatamente xAll[a - MARGEM], entao mix=0 e tol=600 continuam bit-identicos.
+    //  indice absoluto de saida -- a regra da Etapa 2. Em beta = 1 o motor devolve
+    //  exatamente xAll[a - MARGEM]: seco e molhado SAO a mesma amostra, e por
+    //  isso mix=0 e tol=600 continuam bit-identicos.
+    //
+    //  ATENCAO, fora de beta = 1 essa igualdade NAO vale: o molhado vem de uma
+    //  leitura em R = W - dist, com dist variando em [MARGEM, MARGEM + T] (ver
+    //  MotorPonteiro::processar em dsp.h) -- entao o molhado numa dada amostra
+    //  de saida pode ter vindo de um ponto da entrada ate T amostras distante do
+    //  seco emparelhado a ele (medido: mediana 60-110 amostras, maximo ~250
+    //  amostras / 5,7 ms em exemplo-antes.wav). Em mix intermediario isso soma o
+    //  sinal com uma copia deslocada de si mesmo -- o filtro-pente que dsp.h
+    //  adverte em ALINHAMENTO, so que aqui a causa nao e' uma latencia fixa mal
+    //  contabilizada, e' a distancia VARIAVEL que o proprio motor usa por
+    //  construcao. Nao ha correcao que preserve a baixa latencia -- ver a
+    //  especificacao v3 §3.3 e a Etapa 6 do diario.
     // -------------------------------------------------------------------
     float passoPonteiro(float x) {
         const long long a = (long long)xAll.size() - 1;      // indice absoluto desta amostra

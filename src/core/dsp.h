@@ -695,7 +695,7 @@ public:
     // declarada ao host. 8 porque a interpolacao cubica le ate i+2 e a distancia
     // cai no maximo (beta - 1) < 1 por amostra antes de o salto disparar: sobra
     // folga. (A Antares declara 37; o interpolador dela e' mais longo.)
-    static const int MARGEM = 8;
+    static constexpr int MARGEM = 8;
 
     void prepare(int fsHz, double fminHz) {
         fs = fsHz;
@@ -736,6 +736,11 @@ public:
             Rvelho += beta; --xfResta;
             // O ponteiro velho de um salto para tras estava perto da escrita e
             // continua se aproximando: se ameacar ler o futuro, encerra antes.
+            // Dentro da faixa real de beta deste projeto isto nunca dispara (maximo
+            // medido 1,008; teto 1,0595 em maior/menor, abaixo do 1,0625 que seria
+            // preciso) -- mas em beta = 1,3 dispara em 100% dos saltos para tras. Nao
+            // e' uma valvula de seguranca rara: e' o caminho normal logo depois do
+            // teto documentado de deslocamento.
             if ((double)W - Rvelho < 4.0) xfResta = 0;
         }
         R += beta;
