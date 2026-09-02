@@ -116,7 +116,7 @@ Propriedades que seguem daí, e que o teste de unidade verifica:
   e `mix = 0` continuarem sendo os dois caminhos de identidade do projeto.
 - **`dist` fica em `[margem − 1, margem + T + 1]`.** `dist` em si tem média ≈ `margem + T/2` e
   máximo ≈ `margem + T` — não `T/2` e `T` sem o termo `margem` (com `margem = 8` e `T`
-  tipicamente na casa de 80-200 amostras a 44,1 kHz, `margem` é uns 10 % da média — não
+  tipicamente na casa de 99-272 amostras a 44,1 kHz, `margem` é uns 10 % da média — não
   desprezível, mas pequeno frente a `T`). A **parte variável** da latência, isto é, o quanto
   `dist` se afasta da margem fixa, é que vai de 0 a `T` com média em torno de `T/2`. Depende da
   nota **cantada**, não do FMIN.
