@@ -30,6 +30,11 @@
 #define AUTOTUNE_STREAM_H
 #include "../core/dsp.h"   // primitivas + constantes (NÃO define DR_WAV_IMPLEMENTATION aqui)
 
+// Etapa 6: qual motor executa o estagio 3 (a sintese). O estagio 1 (pYIN +
+// Viterbi) e o 2 (CorretorAltura) sao os mesmos nos dois; o que muda e' COMO
+// o esticamento e' feito, nao QUANTO. Ver docs/especificacao-v3-ponteiro.md.
+enum class MotorSintese { PSOLA, Ponteiro };
+
 // ----------------------------------------------------------------------------
 //  Parâmetros do streaming. Espelham as flags de linha de comando do
 //  autotune_rt (mix, escala já é global via definirEscala/g_permitida,
@@ -49,6 +54,11 @@ struct StreamParams {
     int    nHop     = N_HOP;   // passo entre quadros de análise
     double fmin     = FMIN;    // faixa de busca de pitch (Hz)
     double fmax     = FMAX;
+
+    // Etapa 6: PSOLA (padrao; a linha de base mede este) ou Ponteiro (v3, baixa
+    // latencia). O plugin liga o Ponteiro pelo botao Low Latency, que tambem
+    // forca look = 0; o CLI expoe os dois separadamente (motor= e lowlat=).
+    MotorSintese motor = MotorSintese::PSOLA;
 };
 
 // ----------------------------------------------------------------------------
@@ -81,9 +91,18 @@ public:
         // orçamento de latência e em avancarPsola() (devem casar exatamente).
         psolaGuard = 2 * (int)std::llround((double)fs / FMIN);
 
-        // Orçamento de latência: quadro de análise + look-ahead do Viterbi +
-        // folga do PSOLA (psolaGuard).
-        latSamples = p.nFrame + p.look * p.nHop + psolaGuard;
+        // Orçamento de latência. Com PSOLA: quadro + look-ahead + guarda, os
+        // tres termos de docs/modo-baixa-latencia.md §2. Com Ponteiro: so a
+        // margem fixa do motor -- os outros dois termos nao somem, mudam de
+        // moeda: viram DEFASAGEM DA CORRECAO (o beta aplicado agora foi
+        // decidido 'defasagem' amostras atras). Ver especificacao §4.
+        defasagem = p.nFrame + p.look * p.nHop;
+        if (p.motor == MotorSintese::Ponteiro) {
+            ponteiro.prepare(fs, FMIN);
+            latSamples = ponteiro.latencia();
+        } else {
+            latSamples = p.nFrame + p.look * p.nHop + psolaGuard;
+        }
 
         // -----------------------------------------------------------------
         // TAREFA 3: monta os "limiares" de Beta (pYIN) e as dimensões do HMM
@@ -173,6 +192,12 @@ public:
     const std::vector<float>& getF0Samp()   const { return f0samp;   }
     const std::vector<float>& getFoutSamp() const { return foutSamp; }
 
+    // Etapa 6: medicao do motor de ponteiro (fora do caminho de audio).
+    long long getSaltosPonteiro()    const { return ponteiro.saltos(); }
+    double    getDistMediaPonteiro() const { return ponteiro.distMedia(); }
+    double    getDistMaxPonteiro()   const { return ponteiro.distMax(); }
+    int       getDefasagemCorrecao() const { return defasagem; }
+
     // Limpa/realoca o estado interno: buffer circular de entrada (ringIn),
     // buffer de trabalho (work) e todos os contadores do "relógio" de
     // disparo de quadros. Chamado por prepare() e pode ser chamado de novo
@@ -235,6 +260,10 @@ public:
         //   lida:      nº de amostras já ENTREGUES ao host via process().
         // -----------------------------------------------------------------
         outBuf.clear(); synthFront = 0; lida = 0;
+
+        // Etapa 6: o motor de ponteiro zera os ponteiros e contadores sem
+        // realocar (o anel foi alocado em prepare()).
+        ponteiro.reset();
     }
 
     // -------------------------------------------------------------------
@@ -283,7 +312,14 @@ public:
                 ++qIdx;
                 passoPitch();                    // TAREFA 3: análise + Viterbi causal deste quadro
             }
+            // Etapa 6: no motor de ponteiro a saida desta amostra e' produzida
+            // AQUI, no mesmo indice do host -- nao passa por outBuf/lida, porque
+            // o atraso (MARGEM) ja esta dentro do motor. Fica depois do disparo
+            // de quadros para que a decisao lida seja funcao so do que ja
+            // chegou: e' o que torna a saida invariante ao tamanho de bloco.
+            if (p.motor == MotorSintese::Ponteiro) out[i] = passoPonteiro(in[i]);
         }
+        if (p.motor == MotorSintese::Ponteiro) { lida += n; return; }
         // TAREFA 5: avança a síntese incremental (finaliza as amostras de
         // saída cuja decisão de pitch já estabilizou) e ENTREGA ao host as
         // 'n' próximas amostras finalizadas. Enquanto o pipeline ainda está
@@ -479,6 +515,33 @@ private:
     }
 
     // -------------------------------------------------------------------
+    //  passoPonteiro() — Etapa 6: uma amostra pelo motor de ponteiro.
+    //
+    //  A decisao usada e' a da amostra 'defasagem' atras (nFrame + look*nHop):
+    //  e' a ultima que existe com certeza quando esta amostra chega, e usar um
+    //  indice FIXO (em vez de f0samp.back()) da duas coisas: a trajetoria do
+    //  Retune Speed chega ao motor amostra a amostra (nao em degraus de nHop),
+    //  e a defasagem vira um numero exato, citavel: "o beta aplicado agora foi
+    //  decidido ha nFrame + look*nHop amostras".
+    //
+    //  O seco do mix e' a entrada atrasada de latSamples (= MARGEM), pelo mesmo
+    //  indice absoluto -- a regra da Etapa 2. Com beta = 1 o motor devolve
+    //  exatamente xAll[a - MARGEM], entao mix=0 e tol=600 continuam bit-identicos.
+    // -------------------------------------------------------------------
+    float passoPonteiro(float x) {
+        const long long a = (long long)xAll.size() - 1;      // indice absoluto desta amostra
+        const long long d = a - (long long)defasagem;         // decisao que a governa
+        const bool temDecisao = (d >= 0 && d < (long long)f0samp.size());
+        const double f0 = temDecisao ? (double)f0samp[(size_t)d]   : 0.0;
+        const double fo = temDecisao ? (double)foutSamp[(size_t)d] : 0.0;
+        float molhado = ponteiro.processar(x, f0, fo);
+        if (p.corr.vibAmp > 0.0 && temDecisao) molhado *= ganhoSamp[(size_t)d];
+        const long long src = a - (long long)latSamples;
+        const float seco = (src >= 0) ? xAll[(size_t)src] : 0.0f;
+        return misturar(seco, molhado, p.mix);
+    }
+
+    // -------------------------------------------------------------------
     //  avancarPsola() — TAREFA 5: avança a SÍNTESE incremental por
     //  re-síntese em JANELA DESLIZANTE com overlap-save.
     //
@@ -573,6 +636,8 @@ private:
     int fs = 44100;        // taxa de amostragem (Hz)
     int latSamples = 0;    // latência algorítmica total (amostras)
     int psolaGuard = 0;    // folga (look-ahead) do PSOLA online = 2*fs/FMIN
+    int defasagem = 0;     // Etapa 6: nFrame + look*nHop (defasagem da correcao no ponteiro)
+    MotorPonteiro ponteiro; // Etapa 6: motor v3 (so usado com p.motor == Ponteiro)
     StreamParams p;        // cópia dos parâmetros recebidos em prepare()
 
     // ---- estado do buffer circular e do "relógio" de disparo de quadros ----
