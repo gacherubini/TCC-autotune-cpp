@@ -114,8 +114,20 @@ Propriedades que seguem daí, e que o teste de unidade verifica:
   grade inteira, a interpolação em fração zero devolve a amostra exata, e nenhum salto é
   disparado. Saída == entrada deslocada de 8 amostras, **bit a bit**. É o que faz `tol = 600`
   e `mix = 0` continuarem sendo os dois caminhos de identidade do projeto.
-- **`dist` fica em `[margem − 1, margem + T + 1]`.** A parte variável da latência é essa
-  distância: média ≈ `T/2`, máximo ≈ `T`. Depende da nota **cantada**, não do FMIN.
+- **`dist` fica em `[margem − 1, margem + T + 1]`.** `dist` em si tem média ≈ `margem + T/2` e
+  máximo ≈ `margem + T` — não `T/2` e `T` sem o termo `margem` (com `margem = 8` e `T`
+  tipicamente na casa de 80-200 amostras a 44,1 kHz, `margem` é uns 10 % da média — não
+  desprezível, mas pequeno frente a `T`). A **parte variável** da latência, isto é, o quanto
+  `dist` se afasta da margem fixa, é que vai de 0 a `T` com média em torno de `T/2`. Depende da
+  nota **cantada**, não do FMIN.
+- **A mistura seco/molhado em `mix` intermediário não está alinhada no tempo.** O seco é
+  `xAll[a − margem]`; o molhado, fora de `β = 1`, vem de uma leitura em `R = W − dist`, que
+  pode estar até `T` amostras distante do seco emparelhado a ele (medido em
+  `exemplo-antes.wav`: mediana 60-110 amostras, máximo ~250 amostras / 5,7 ms). Com um `mix`
+  intermediário isso soma o sinal a uma cópia deslocada de si mesmo — o filtro-pente que
+  `dsp.h` adverte em ALINHAMENTO (§"Mistura seco/molhado"). Não há correção que preserve a
+  baixa latência: a distância variável **é** o mecanismo do motor, não um bug a corrigir. Ver
+  a Etapa 6 do diário.
 - **Sem voz nada acontece.** `f0 = 0` ⇒ `β = 1` e nenhum salto. A distância que estava, fica.
   Não há recentragem em silêncio — pendência registrada na §8.
 - **O salto é de um período inteiro.** As duas pontas da emenda estão no mesmo ponto do ciclo.

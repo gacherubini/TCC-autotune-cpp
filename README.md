@@ -29,7 +29,7 @@ Automática de Afinação Vocal*.
 | [`docs/comparacao-antares.md`](docs/comparacao-antares.md) | Comparação controle a controle com o Auto-Tune: o que falta para ser um plugin completo |
 | [`docs/plano-de-implementacao.md`](docs/plano-de-implementacao.md) | 📐 **O que vai ser implementado e como** — 6 etapas verificáveis |
 | [`docs/execucao-do-plano.md`](docs/execucao-do-plano.md) | 📓 **O que já foi feito** — diário das etapas, com a verificação de cada uma |
-| [`docs/modo-baixa-latencia.md`](docs/modo-baixa-latencia.md) | Especificação do modo de baixa latência — ⚠️ **nada implementado** |
+| [`docs/modo-baixa-latencia.md`](docs/modo-baixa-latencia.md) | Especificação do modo de baixa latência — ⏸️ **superado pela v3** ([especificação](docs/especificacao-v3-ponteiro.md), implementada na Etapa 6) |
 | [`docs/pesquisa-bibliografica.md`](docs/pesquisa-bibliografica.md) | As fontes: artigos, a patente do Auto-Tune, manuais |
 | [`docs/pesquisa-retune-speed-e-cor.md`](docs/pesquisa-retune-speed-e-cor.md) | O que é o Retune Speed, e por que **formante não dá "cor"** a um corretor |
 | [`tcc-texto/`](tcc-texto/) | O texto do TCC em LaTeX |
@@ -196,8 +196,10 @@ para os números medidos.
    (`MotorPonteiro`, Etapa 6) lê a mesma entrada de um anel circular com um ponteiro fracionário
    que avança a velocidade `β` — o mesmo `β` de sempre, do mesmo lugar —, saltando um período
    inteiro quando a distância até a escrita sai da faixa permitida. Latência fixa de **8
-   amostras (0,18 ms)**, contra os `fs/FMIN` do PSOLA. Selecionável por `motor=`/`lowlat=` nos
-   CLIs, ou pelo botão **Low Latency** do plugin. Ver
+   amostras (0,18 ms)**, contra os `fs/FMIN` do PSOLA — mas ao reamostrar em vez de copiar
+   grãos, **não preserva formantes**: o deslocamento é limitado a 2,93 % em cromática e 5,95 %
+   em maior/menor antes de soar artificial (teto documentado, não imposto pelo código).
+   Selecionável por `motor=`/`lowlat=` nos CLIs, ou pelo botão **Low Latency** do plugin. Ver
    [`docs/especificacao-v3-ponteiro.md`](docs/especificacao-v3-ponteiro.md).
 7. **Mix seco/molhado**: cruzamento linear entre a entrada e o sinal corrigido (`mix`).
    No streaming o seco é atrasado da latência do motor, para os dois ficarem alinhados.
@@ -294,4 +296,4 @@ Resumo das frentes:
   Humanize, Create Vibrato e mix seco/molhado. **Falta a reavaliação de escuta.**
 - **Robustez** — janela de re-síntese limitada, buffers pré-alocados (RT-safe) e normalização
   consistente.
-- **Funcionalidades** — detecção automática de tonalidade; preset "Low Latency".
+- **Funcionalidades** — detecção automática de tonalidade.

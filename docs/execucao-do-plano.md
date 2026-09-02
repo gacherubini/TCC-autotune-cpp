@@ -968,11 +968,21 @@ Sobre `exemplo-antes.wav`, preset natural (`tol=15 retune=25`):
   o motor em si. A leitura mais provável: com menos look-ahead o Viterbi causal decide o pitch do
   ataque com menos contexto futuro, então erra mais logo no início da nota — é o preço da parte
   do botão Low Latency que zera o `look`, não do motor de síntese.
-- **A latência variável medida é compatível com a projeção `T/2` / `T` da §4.** A razão
-  `distMax/distMedia` dá 2,07 (Ponteiro look=4) e 1,99 (Low Latency) — perto do 2 que a
-  especificação prevê para `dist` variando entre `margem` (≈0) e `margem + T`, com média em
-  torno de `T/2`. Não há trilha de F0 independente para decompor isso em Hz nesta medição; o que
-  se pode afirmar é a *forma* da relação, não o valor de `T` em si.
+- **O `distMax` medido é compatível com um T de nota real do trecho.** Uma primeira tentativa de
+  confirmar a projeção do §3.3 pela razão `distMax/distMedia` (2,07 no Ponteiro look=4, 1,99 no
+  Low Latency, perto do 2 esperado) foi descartada: essa razão divide um máximo do arquivo
+  inteiro por uma média sobre notas de `T` bem diferentes, então fica perto de 2 para quase
+  qualquer distribuição — não é evidência de nada específico sobre `dist`. A checagem que
+  sobrou no lugar dela: `T` implícito por `distMax − margem` (margem = 8), comparado à faixa de
+  F0 realmente detectada no trecho — dado que o `dumpbeta=` do `stream_test` já grava por hop.
+  Ponteiro look=4: `distMax` = 168,1 amostras → `T` implícito = 160,1 amostras → F0 implícito ≈
+  275,5 Hz. Low Latency: `distMax` = 214,9 amostras → `T` implícito = 206,9 amostras → F0
+  implícito ≈ 213,1 Hz. A faixa de F0 vozeado detectada no trecho é 161,9–447,4 Hz (mediana
+  281,8 Hz). Os dois F0 implícitos caem dentro dessa faixa — o Ponteiro look=4 perto da mediana,
+  o Low Latency abaixo dela —, o que é consistente com `distMax` refletindo o período de uma
+  nota realmente cantada no trecho, não um acúmulo sem relação com o áudio. Isso confirma a
+  *plausibilidade* da fórmula, não decompõe `dist` em `T` por nota — a medição não guarda dist
+  por instante, só o agregado do arquivo inteiro.
 - **Ressalva 1 — o critério de "degraus" não se sustentou.** O `exemplo-antes.wav` só tem **4**
   descontinuidades acima do limiar absoluto (`|Δ| > 0,25`) na própria **entrada**, intocada — a
   métrica já está no piso de ruído para este arquivo antes de qualquer motor processar algo.
@@ -980,17 +990,31 @@ Sobre `exemplo-antes.wav`, preset natural (`tol=15 retune=25`):
   Uma diferença de ±1 sobre uma base de 4 não é evidência de nada, para nenhum dos dois lados —
   não é um critério que este motor **passou**, é um critério que **não tinha o que medir** neste
   material. Um WAV com mais transiente (ou um limiar relativo) seria necessário para essa
-  comparação fazer sentido.
+  comparação fazer sentido. **Nota de convenção:** estes 4/5/4 são contados sobre o sinal **bruto**
+  (`medir_v3.py`); os 13/13/12 do Achado B, que o `README.md` ainda cita, foram contados sobre o
+  sinal **normalizado por pico** (`medir_qualidade.py`) — a mesma entrada dá 4 descontinuidades
+  bruta e 13 normalizada. É uma convenção diferente, não uma contradição entre as duas medições.
 - **Ressalva 2 — o erro de ataque não é um número absoluto.** A janela de ataque medida é de
   **30 ms**, com um detector de **23 ms** de quadro (`N_FRAME = 1024` a 44,1 kHz) — a janela mal
   cobre um quadro e meio de análise. Os números da coluna "erro de ataque" servem para comparar
   os três motores **entre si**, na mesma medição, não como distância a um padrão de qualidade
   absoluto.
+- **Ressalva 3 — a tabela acima é medida em `mix=1` (100% molhado); em `mix` intermediário o
+  motor de ponteiro mistura dois sinais que não estão alinhados no tempo.** O seco é
+  `xAll[a − margem]`; o molhado, fora de `β = 1`, vem de uma leitura até `T` amostras distante
+  do seco emparelhado a ele (mediana 60-110 amostras, máximo ~250 amostras / 5,7 ms, medido em
+  `exemplo-antes.wav`). Com `mix` no meio, isso soma o sinal a uma cópia deslocada de si mesmo —
+  o filtro-pente que `dsp.h` adverte em ALINHAMENTO. Não é um bug do mix: é a distância variável
+  que o próprio motor usa por construção, então não há correção que preserve a baixa latência.
+  Ver [especificacao-v3-ponteiro.md §3.3](especificacao-v3-ponteiro.md#33-o-passo-por-amostra).
 
 ### Pendências que esta etapa abre
 
 - Teste de escuta (agora responde também ao erro de ataque).
 - L6, recentragem em silêncio, formante em maior/menor — ver [especificacao-v3-ponteiro.md §8](especificacao-v3-ponteiro.md#8-fora-do-escopo-registrado).
+- Medir o motor de ponteiro em `mix` intermediário (Ressalva 3) — um caso `st_lowlat_mix50` no
+  `baseline.sh` fixaria um comb filter no checksum sem valor diagnóstico, então fica registrado
+  aqui como caracterização em prosa, não como caso de teste.
 
 ---
 
@@ -1024,8 +1048,13 @@ melhor que `k = 1,2`, se o ataque na altura real incomoda quando o cantor entra 
 
 ### 3. Fora do escopo do plano, ainda por fazer
 
-- **Modo de baixa latência** — [`modo-baixa-latencia.md`](modo-baixa-latencia.md) é
-  especificação; **nada implementado**, e as 6 questões da §8 seguem em aberto.
+- **Modo de baixa latência** — implementado pela **v3** (Etapa 6 /
+  [Decisão 9](historico-e-decisoes.md#decisão-9--motor-v3-de-ponteiro-móvel-como-motor-paralelo-2026-09-01)),
+  que troca o motor de síntese em vez de seguir o caminho por parâmetros de
+  [`modo-baixa-latencia.md`](modo-baixa-latencia.md), que essa etapa supera. O que ficou de fora
+  da v3 e segue em aberto: **L6** (CMNDF recursivo), **recentragem do ponteiro em silêncio** e
+  **correção de formante em maior/menor** — ver
+  [especificacao-v3-ponteiro.md §8](especificacao-v3-ponteiro.md#8-fora-do-escopo-registrado).
 - **K5 · Flex-Tune de verdade** e **K6 · Targeting Ignores Vibrato** — mecanismos novos, sem
   decisão de desenho.
 - **Detune / Transpose / Tracking** — decididos como ausentes, não priorizados.

@@ -7,7 +7,9 @@ Contexto operacional deste repositório. Leia antes de mexer no código.
 Protótipo de autotune (correção automática de afinação vocal) em C++17, parte prática de um
 TCC de Ciência da Computação (PUCRS, 2026). Pipeline: **pYIN** (detecção de pitch) →
 **nota-alvo** (quantização 12-TET com zona morta e glide) → **TD-PSOLA** **ou** **ponteiro
-móvel (v3)** (dois motores de síntese, o mesmo deslocamento de pitch preservando formantes).
+móvel (v3)** (dois motores de síntese, o mesmo deslocamento de pitch; só o TD-PSOLA preserva
+formantes — o ponteiro troca essa preservação por latência quase nula, ver
+[`docs/especificacao-v3-ponteiro.md`](docs/especificacao-v3-ponteiro.md) §8).
 
 Repositório irmão: [`TCC-autotune-python`](https://github.com/gacherubini/TCC-autotune-python)
 — estudo comparativo de algoritmos de detecção de pitch (autocorrelação, YIN, pYIN, SWIPE′)

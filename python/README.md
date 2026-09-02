@@ -55,8 +55,8 @@ num diretório temporário, sempre).
 
 Não confundir os dois papéis, porque só um deles falha quando algo quebra:
 
-- **`../baseline.sh` é a verificação.** Roda 19 casos de áudio, 6 invariantes e a trilha de
-  não-regressão, e responde `IDENTICO — nada mudou`. É o que se roda **antes e depois** de
+- **`../baseline.sh` é a verificação.** Roda 37 casos de áudio, 8 invariantes e os 19 testes
+  legados, e responde `IDENTICO — nada mudou`. É o que se roda **antes e depois** de
   qualquer mudança em DSP. Ele compila e executa as suítes de `../src/tests/` junto.
 - **Os scripts daqui são a medição.** Produzem números para o texto do TCC. Não têm critério
   de aprovação — descrevem o estado atual.
