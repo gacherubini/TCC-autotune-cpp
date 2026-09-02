@@ -76,6 +76,6 @@ lista **correções pendentes no texto do TCC 1** identificadas durante a revis�
 | Pesquisa sobre Retune Speed e "cor" | ✅ concluída — 1 decisão cancelada, 6 itens novos (K1–K6) |
 | Plano de implementação | ✅ escrito — 6 etapas |
 | **Etapa 0** — malha de correção unificada | ✅ **concluída** (2026-08-26), 17/17 casos idênticos |
-| Etapas 1–5 | ⬜ não iniciadas |
+| Etapas 1–5 | ✅ **concluídas** (2026-08-26 a 2026-08-31) |
 | Modo de baixa latência | ✅ **v3 implementada (Etapa 6)** |
 | Correções de código (§8.3) | ⏳ não medidas |

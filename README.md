@@ -73,7 +73,7 @@ No macOS/Linux, o `baseline.sh` compila com o compilador disponível (`clang++` 
 ainda confere que a saída não mudou:
 
 ```bash
-./baseline.sh conferir     # 17 casos; espera "IDENTICO — nada mudou."
+./baseline.sh conferir     # 37 casos; espera "IDENTICO — nada mudou."
 ```
 
 Gera os três executáveis. O `.bat` já força o PATH do g++ (MinGW via scoop).

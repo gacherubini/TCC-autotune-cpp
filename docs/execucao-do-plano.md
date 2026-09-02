@@ -33,10 +33,11 @@ Criada antes da Etapa 0, porque **sem ela nenhuma etapa é verificável**.
 ./baseline.sh conferir   # compara o estado atual contra a referência
 ```
 
-Compila os três executáveis, roda **17 casos** sobre `exemplo-antes.wav` e resume tudo em
+Compila os três executáveis, roda **37 casos** sobre `exemplo-antes.wav` e resume tudo em
 checksums SHA-256 do WAV de saída e do log (com tempos de execução filtrados, para que
 variação de máquina não vire ruído). Os casos cobrem bypass, correção cheia, zona morta,
-glide, look-ahead, invariância de tamanho de bloco e escalas.
+glide, look-ahead, invariância de tamanho de bloco, escalas e os dois motores de síntese
+(PSOLA e ponteiro, Etapa 6).
 
 Saída esperada quando nada mudou: **`IDENTICO — nada mudou.`**
 
