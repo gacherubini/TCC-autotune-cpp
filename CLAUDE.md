@@ -164,6 +164,9 @@ O teste com usuário reprovou dois requisitos não funcionais:
 |---|---|---|
 | **Latência** | ✅ **0,18 ms fixos com Low Latency** (+ 0..T variável, não declarada ao host) — **falta a escuta**. Com o PSOLA (padrão) continua em 71,4 ms / 57,9 ms (ver ressalva) | ver ressalva |
 | **Naturalidade** | endereçada pelas Etapas 3–5 (Retune Speed, Humanize, Natural Vibrato) — **falta a escuta** | vibrato preservado, ataque com glide |
+| **Encaixe da nota** | ✅ histerese de 30 ct + permanência de 50 ms (03/09/2026): mediana de nota **34,8 → 58,0 ms**, notas curtas **76 % → 59 %** — **falta a escuta** | a saída para em cima do semitom |
+| **Oitava errada** | ✅ guarda contra a subharmônica (03/09/2026): divergência de oitava **34,3 % → 0 %** | fora da faixa = sem voz, nos dois lados |
+| **Pipoco do TD-PSOLA** | ✅ teto na janela de re-síntese (03/09/2026): estouros do orçamento **19,6 % → 0 %** — **falta a escuta** | o motor padrão não estala |
 
 > ⚠️ **Latência sempre tem de ser citada junto com o FMIN**, senão o número não quer dizer
 > nada: a guarda do PSOLA é proporcional a `fs/FMIN`. Os 57,9 ms que circulam no texto são do

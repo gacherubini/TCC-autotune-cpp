@@ -1121,6 +1121,256 @@ melhor que `k = 1,2`, se o ataque na altura real incomoda quando o cantor entra 
 
 ---
 
+## Spec de encaixe e estabilidade — tickets 01 a 05 (2026-09-03)
+
+Implementa as decisões **D1, D2, D4, D5 e D6** de
+[`spec-encaixe-e-estabilidade.md`](spec-encaixe-e-estabilidade.md), mais a seam de teste que
+todas elas usam. Os tickets 06 (D7) e 07 (D3) estão em seções próprias, abaixo.
+
+### Antes de tudo: a linha de base não passava, e não era o motor
+
+`./baseline.sh conferir` devolvia `DIFERENTE` nesta máquina **desde antes de qualquer mudança**.
+Os 37 `wav=` batiam; divergiam só os 9 `log=` dos casos `gold_*`. A causa é
+`src/offline_causal/main.cpp:216`, que imprime o **caminho absoluto** do WAV de entrada no log,
+e o script hasheia o log — então esses nove hashes nunca bateriam fora do computador onde a
+referência foi gravada.
+
+Isso não é cosmético. Uma linha de base que diz `DIFERENTE` todo dia treina quem lê a ignorá-la,
+e era exatamente a ferramenta em que estas cinco mudanças iam se apoiar. O `sed` de limpeza do
+log agora reduz todo caminho de `.wav` ao nome do arquivo. Não dá para casar contra `$RAIZ`: o
+shell do MSYS converte `/c/Users/...` para `C:/Users/...` antes de entregar o argumento ao `.exe`,
+então as duas formas aparecem no log.
+
+Duas outras correções na mesma passada, ambas descobertas por agentes trabalhando em *worktrees*:
+
+- **`.gitattributes`.** Num *worktree* novo, `baseline/etapa2-legado.sha256` saía com CRLF, o
+  `read -r h nome` deixava o `\r` colado no nome, `g_$nome.wav` virava arquivo inexistente e os
+  19 casos falhavam de uma vez. O sintoma que distingue isso de regressão é o **hash vazio** —
+  regressão de verdade traz hash *diferente*, não ausente.
+- **Três classes de falha, separadas.** O script tratava "invariante quebrada" e "tabela da
+  Etapa 2 desatualizada" como a mesma coisa. Ver a seção seguinte.
+
+Depois disso, `IDENTICO` pela primeira vez nesta máquina. Nenhum `wav=` mudou.
+
+### A colisão que o spec não previu: a tabela da Etapa 2
+
+`baseline/etapa2-legado.sha256` era descrita como **"NUNCA regravada"** — um marco fixo no
+passado, e o script tratava qualquer divergência dela como invariante quebrada, com `exit 1`.
+
+A tabela compara a saída **de ponta a ponta**, e de ponta a ponta inclui o **detector de altura**.
+Ou seja: além da malha de correção que ela existe para proteger, ela congelava em silêncio muito
+mais do que isso. Duas decisões deste spec mexem justamente no que ela congelava sem dizer:
+
+- **D3** (ticket 07) abriu mão de propósito da equivalência incremental ≡ lote;
+- **D1** (ticket 02) corrigiu o detector de propósito.
+
+A alegação que a tabela existe para sustentar — *"a malha da Etapa 3+ com `legado=1 vibrato=0`
+reproduz a Etapa 2"* — **nunca deixou de valer**, e continua verificada **amostra a amostra** por
+`src/tests/test_retune.cpp` seção 1, contra uma cópia congelada do código da Etapa 2 e **sem
+detector no meio**. Essa prova é mais forte que a tabela e não depende dela.
+
+**Decisão do autor:** regravar o marco, documentado, e separar as classes de falha no script.
+Invariante quebrada continua sendo erro fatal. Tabela desatualizada por mudança deliberada vira
+regravação justificada, por um comando **próprio** — `./baseline.sh gravar-legado` —, separado
+justamente para que nunca aconteça por distração dentro de um `gravar`.
+
+Regravada **uma vez**, no ticket 07, em 6 dos 19 casos (`st_mix1`, `st_block64`, `st_block512`,
+`st_cmaior`, `st_glide40`, `st_tol15`) — todos streaming-PSOLA, todos pela mesma causa (a âncora
+da cadeia de marcas mudou). Os 13 casos `gold_*`/`rt_*` nunca mudaram.
+
+### Ticket 01 — a seam de altura conhecida
+
+`src/tests/test_deteccao.cpp`. É o **primeiro teste do repositório que verifica validade, e não
+reprodutibilidade**. Os outros provam que o motor continua fazendo o que fazia; nenhum provava
+que o que ele faz está certo. É por isso que os três defeitos do spec atravessaram 37 casos de
+linha de base sem serem vistos: os três são estáveis e reprodutíveis.
+
+Alimenta o núcleo com voz sintética de altura conhecida e assevera sobre as duas trilhas públicas
+(`getF0Samp`, `getFoutSamp`). Nada olha marcas de período, colunas do Viterbi ou posição de
+ponteiro. Roda no motor de ponteiro porque as trilhas são decididas no estágio 1+2, que os dois
+motores compartilham — o PSOLA levaria minutos para as ~30 passadas do arquivo.
+
+**O gerador reproduziu as tabelas do spec exatamente**, o que valida a seam antes de ela ser
+usada: `Baixo` 219/263/296/332/**174/195/219/246/260**, divergência de oitava de **34,3 %**
+(Baixo) e **16,2 %** (Low Male) sobre o take, mediana de **40,6 ms** e **76 %** abaixo de 80 ms.
+Os mesmos números que o spec cita, medidos de novo por código diferente.
+
+A terceira medição da seam é a que o ticket 02 precisava e que nenhum outro teste dava: a
+**cobertura de vozeamento dentro da faixa**, preset a preset (~99,5 %). É o denominador honesto —
+sem ele, "zero quadros na oitava errada" é o que uma guarda que rejeita *tudo* também entrega.
+
+### Ticket 02 (D1) — guarda contra a subharmônica
+
+`candidato()` em `dsp.h`. Custo zero: `calcularCMNDF()` já preenchia `dp` desde `tau = 1`, os
+dados abaixo de `tauMin` já existiam e apenas não eram consultados.
+
+Duas calibrações que **não estavam no spec** e que a medição exigiu:
+
+**1. A evidência é um vale que FECHA abaixo de `tauMin`, não um mergulho qualquer.** A regra
+ingênua do spec (`se existe tau < tauMin com dp[tau] < limiar`) rejeita a nota mais aguda que o
+preset promete cobrir: cantando o próprio `fmax` (330 Hz no `Baixo`), o período real é 133,6
+amostras contra um `tauMin` de 133, e o flanco esquerdo do vale legítimo cai dentro da região
+varrida. Seguir o vale até o fundo separa os dois casos pela física, sem constante de ajuste.
+
+**2. O limiar da guarda é o do YIN (0,10), não o do chamador.** `candidato()` é chamada 100 vezes
+por quadro com limiares varridos de uma Beta, e vários são **permissivos de propósito** — o peso
+deles na agregação é mínimo e quem decide é o HMM. Reusar esse limiar para *rejeitar* quadros é
+erro de tipo. Medido, a profundidade do vale abaixo de `tauMin` separa por duas ordens de
+grandeza:
+
+| caso | `dp` no fundo do vale |
+|---|---|
+| verdadeiro positivo (349 Hz num preset de teto 330) | **0,001** |
+| falso positivo (take real, teto de 1000 Hz) | **0,14 a 0,43** |
+
+0,10 cai no meio da lacuna, e é o limiar absoluto do YIN original (de Cheveigné e Kawahara, 2002,
+§II-D) — critério de periodicidade da literatura, não número escolhido para o take passar.
+
+**O que a segunda calibração custava.** Sem ela, três quadros de `exemplo-antes.wav` viravam
+não-vozeados por engano. Três em 854 parece desprezível e não é: um quadro não-vozeado **parte
+uma região vozeada**, a cadeia de marcas do PSOLA re-ancora, e a correlação da saída caía para
+**0,77**. Um erro de 0,35 % na trilha custava a frase inteira. Registrado porque é o mesmo
+mecanismo de amplificação que o ticket 07 explora do outro lado.
+
+**Resultado.** Divergência de oitava **34,3 % → 0 %** e **16,2 % → 0 %**; perda de vozeamento
+dentro da faixa de **0,2 a 0,5 pontos percentuais**, contra um orçamento de 2. Fora da faixa, a
+saída passa a ser "sem voz" nos dois lados — um comportamento só para lembrar.
+
+**Linha de base: nenhum caso mudou.** Os 37 e os 19 da Etapa 2 saem bit-idênticos, porque todos
+rodam no teto padrão de 1000 Hz sobre um take que chega a 444 Hz. A trilha de F0 do streaming é
+idêntica em **0 de 854 quadros**. A guarda só age onde deve.
+
+### Ticket 03 (D4) — a lista de Input Type encolhe
+
+Sete presets SATB viram quatro, com os nomes do Auto-Tune e a faixa em **notas** no rótulo.
+Padrão de fábrica de `Contralto` para `Alto-Tenor`. `Bass Instrument` fica fora: não existe no DSP.
+
+A tabela mudou de casa. Ela mora agora em `dsp.h` (`vozDaInterface`), junto da razão da ordem,
+seguindo o precedente que `montarEscala()` abriu para o combo de escala. O motivo é concreto:
+`nomeVoz()` era um `switch` sobre o índice com `default: instrumento`, e **nada ligava esse switch
+ao conteúdo do combo**. Encolher um sem o outro faria o índice 1 mostrar `Alto-Tenor` enquanto o
+DSP usava `baritono` — sem erro de compilação, sem teste falhando, e sem sintoma além de "a
+correção soa errada nesse preset".
+
+`src/tests/test_vozes.cpp` prende os dois, e vai além: confere que **cada rótulo bate com a faixa
+do preset**, comparando as notas do texto contra `hzParaNota()` dos Hz reais. Os quatro passam.
+
+**Quebra de compatibilidade, aceita.** A APVTS grava o **índice** do `AudioParameterChoice`, então
+um projeto salvo com `Contralto` (índice 3 da lista antiga) reabre no **índice 3 da lista nova**.
+Não há como preservar quando a lista encolhe. O que dá para escolher é **onde ele pousa**, e por
+isso o índice 3 é `Instrument` — a faixa mais larga, e a única imune à Causa 1. O pior pouso
+possível seria `Low Male`, cujo teto de 392 Hz corta 18,5 % do take. A razão está escrita **junto
+da tabela**, não só aqui, senão a próxima reordenação a desfaz sem perceber. Precedente: a Etapa 1
+quebrou o parâmetro `escala` do mesmo jeito, de 7 opções para 3.
+
+**Projetos de DAW salvos precisam de reajuste à mão da tessitura.**
+
+Só a interface encolheu: os nove presets continuam resolvendo por `voz=` na linha de comando, e
+isso é deliberado — eles são **dados de medição** antes de serem itens de menu. Foi com eles que
+as tabelas da Causa 1 e da §3 do spec foram levantadas, e o texto cita as duas.
+
+`docs/comparacao-antares.md` afirmava que o protótipo era *"mais granular (7 contra 5)"*, listado
+como vantagem. Na interface isso virou paridade; a granularidade passou a ser descrita como
+capacidade da linha de comando, que é onde ela continua existindo.
+
+### Ticket 04 (D2) — histerese e permanência mínima
+
+O estado mora em `CorretorAltura`, e `notaMaisProximaMidi()` continua pura — a GUI a chama do
+timer da message thread com outro argumento (o `fout`, não o `f0`), e estado ali seriam duas
+threads escrevendo a mesma variável, ainda por cima compartilhada entre os três CLIs no mesmo
+processo. O contador de permanência anda **por chamada de `proxima()`**, que roda uma vez por
+amostra emitida numa cadência comandada pelo hop: a invariância ao tamanho de bloco sai **por
+construção**, não por medição.
+
+**Os dois valores saíram de medição, e a segunda foi a que ensinou alguma coisa.**
+
+*Histerese = 30 cents.* O piso é imposto pela análise e não é escolha: a trilha de F0 vive numa
+grade de 20 cents (`RES_CENTS`), então nada abaixo disso filtraria sequer uma tremulação de um
+bin. Varrendo 25/30/35 aparece um joelho — **30 e 35 dão resultados idênticos**, ou seja, é em 30
+que o mecanismo satura. Subir mais não compra nada e arrisca nota de verdade.
+
+*Permanência mínima = 50 ms.* Quem fixou foi a **contraprova**, e vale registrar porque é uma
+armadilha de metodologia: com 100 ms, uma melodia de notas de 62 ms ainda emitia **as oito notas
+na ordem certa** — um teste que contasse presença teria aprovado. As durações emitidas eram
+**52, 58, 100, 16, 58, 58, 100 e 4 ms**: todas as notas lá, o ritmo destruído. Um cantor ouve isso
+como o plugin engasgando. A asserção passou a ser **fidelidade de duração**, e com 50 ms as mesmas
+oito saem em 52–58 ms cada, com 2,5× de margem sobre semicolcheias a 120 bpm (125 ms).
+
+| | antes | depois |
+|---|---|---|
+| notas em 5 s | 51 | 34 |
+| duração mediana | 34,8 ms | **58,0 ms** |
+| notas abaixo de 80 ms | 76 % | **59 %** |
+
+A contraprova tem dentes, e isso foi verificado: com o alvo **trancado** (permanência de 1 s), a
+seção da mediana passa lindamente — 265,5 ms, 18 % de notas curtas — e a contraprova reprova as
+três asserções. Era exatamente o modo de falha que o ticket alertava ser "pior que o defeito".
+
+**Uma constante a mais, e a honestidade sobre ela.** `SALTO_IMEDIATO_SEMITONS = 2`: salto maior
+que um tom nunca é tremulação, é nota nova, e segurar nota nova é o que a história 14 proíbe. Ela
+*também* limitaria o erro do semitom segurado a 250 cents, o que protegeria o caminho de
+identidade (`tol = 600` só devolve `alvo == f0` enquanto `|errCents| <= 600`). **Mas essa
+necessidade não foi demonstrada:** saltos de oitava a cada 40 ms e varreduras de duas oitavas em
+40 ms mantiveram `tol=600` bit-idêntico *mesmo com a constante desligada*. A proteção de hoje vem
+de outra camada — o HMM não deixa a trilha andar mais que `W_TRANS` (12 bins, 240 cents) por
+quadro, e o que é rápido demais sai como não-vozeado, que zera a escolha. A constante fica como
+seguro barato: um acoplamento entre a largura de transição do HMM e um caminho de identidade é
+frágil demais para ficar implícito.
+
+**A neutralidade.** `legado=1` passou a ligar **duas** flags (`ataqueNoAlvo` e `semHisterese`), e
+não uma. É coerente com o que `legado` sempre quis dizer — "a malha da Etapa 2" —, e aquela malha
+não tinha memória. Com isso os 19 casos da Etapa 2 continuam bit-idênticos. Escolhida a flag de
+neutralidade em vez de reescrever os oráculos, como o ticket preferia: eles existem para provar
+que as Etapas 4 e 5 são neutras, e perder essa prova para provar outra coisa seria troca ruim.
+
+> Achado lateral, que vale registrar: o oráculo de `test_retune.cpp` **passa mesmo sem a flag**.
+> A trilha sintética dele tem vibrato de ±22 cents em torno de 220 e 261,63 Hz, e nunca cruza uma
+> fronteira de semitom — então a histerese não tem o que mudar ali. A flag ficou assim mesmo, para
+> o oráculo continuar válido se a trilha mudar, mas o oráculo é mais fraco do que parecia.
+
+**Regravação de linha de base: 31 de 37 casos.** Uma causa só — a escolha de semitom ganhou
+memória, então a trilha de alvo mudou. Os **6 que não mudaram são exatamente os caminhos de
+identidade**: `gold_mix0`, `gold_tol600`, `st_mix0`, `st_tol600`, `st_lowlat_mix0`,
+`st_lowlat_tol600`. Os quatro casos de identidade do spec estão entre eles, intactos, e os 8
+invariantes independentes da referência continuam `ok`.
+
+### Ticket 05 (D5, D6) — padrões de fábrica e faixa do Retune
+
+Três mudanças de valor, nenhuma de mecanismo — e por isso **nenhum checksum se move**: os CLIs
+recebem `tol=` e `retune=` explicitamente.
+
+- **Tolerância 15 → 0.** A zona morta nunca encaixou a nota; ela empurra o desvio até a borda, e
+  com 15 uma nota 40 cents desafinada saía 15 cents desafinada (média medida: 11,8 cents fora). A
+  semântica **não mudou** e continua não sendo Flex-Tune.
+- **Retune Speed 25 → 0 ms.** Efeito duro como primeira impressão, por decisão do autor.
+- **Faixa 200 → 400 ms.** Só passou a significar algo depois do ticket 04: antes o controle
+  saturava (22,7 → 23,8 cents de erro médio entre 200 e 400 ms), porque filtro nenhum alcança um
+  alvo que troca a cada 35 ms.
+
+`test_expressao.cpp` ganhou a seção 7, que mede a **constante de tempo** em toda a faixa nova e
+afirma que 400 ms é **2,00×** 200 ms. É a asserção que sustenta ter esticado a faixa, e ela não
+depende de material de áudio. Medido: 25,0 / 100,0 / 200,0 / 299,9 / 399,9 ms.
+
+**Alargar a faixa não quebra projeto salvo, e isso foi verificado no código do JUCE, não deduzido:**
+a APVTS grava na árvore o valor **desnormalizado**
+(`juce_AudioProcessorValueTreeState.cpp:413`), e o plugin salva/restaura por
+`copyState`/`replaceState`. Um projeto salvo com 100 ms guarda `100.0` e reabre em 100 ms, com a
+faixa velha ou com a nova. Fosse normalizado, reabriria em 200 ms — quebra silenciosa e *contínua*,
+pior que a do combo, que ao menos salta de uma vez. As duas mudanças pareciam da mesma família e
+não são: a diferença está em como a APVTS serializa cada **tipo** de parâmetro.
+
+**Preço assumido, e é o que motiva o ticket 06:** com `retune = 0` de fábrica, o `Natural Vibrato`
+e o `Humanize` nascem inertes.
+
+### O que continua pendente
+
+- **Escuta.** Nada aqui foi ouvido. A naturalidade e a latência seguem pendentes de teste com
+  usuário, e é escuta que decide se 58 ms de mediana e permanência de 50 ms soam certo.
+- **Verificação visual** do combo novo, dos rótulos e dos controles desabilitados.
+- **Projetos de DAW salvos** reabrem em `Instrument` e precisam de reajuste manual da tessitura.
+
+---
+
 ## Spec de encaixe e estabilidade — ticket 06: controles inertes desabilitados e explicados
 
 Implementa a **decisão D7** do

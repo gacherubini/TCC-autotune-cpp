@@ -144,8 +144,8 @@ senão realimenta). É o jeito mais rápido de ver a GUI e ouvir o efeito.
 | parâmetro | faixa | tipo | efeito |
 |---|---|---|---|
 | **Mix** | 0–1 | ao vivo | seco/molhado: 0 = só a entrada, 1 = só o corrigido (padrão 1) |
-| **Tolerancia** | 0–50 cents | ao vivo | zona morta (preserva vibrato) |
-| **Retune Speed** | 0–200 ms | ao vivo | tempo até a nota. Padrão 25 ms (Antares: 10–50 é típico); 0 = efeito "duro" |
+| **Tolerancia** | 0–50 cents | ao vivo | zona morta. **Padrão 0** desde 03/09/2026: ela não encaixa a nota, empurra o desvio até a borda (tol 15 ⇒ resíduo de 15 ct) |
+| **Retune Speed** | 0–**400** ms | ao vivo | tempo até a nota. **Padrão 0** (efeito "duro") desde 03/09/2026; faixa até 400 ms para paridade com o Auto-Tune |
 | **Natural Vibrato** ⚠️ | 0–2 | ao vivo | 0 = remove o vibrato, 1 = preserva (padrão), 2 = dobra |
 | **Humanize** ⚠️ | 0–1 | ao vivo | afrouxa o Retune Speed na sustentação da nota (padrão 0) |
 | **Create Vibrato** 🚫 | off/sen/tri/qua | ao vivo | **gera** vibrato (≠ Natural Vibrato, que preserva) |
@@ -153,7 +153,7 @@ senão realimenta). É o jeito mais rápido de ver a GUI e ouvir o efeito.
 | **Vibrato Depth** 🚫 | 0–100 ct | ao vivo | profundidade do vibrato gerado (padrão 0 = desligado) |
 | **Amplitude Amount** 🚫 | 0–1 | ao vivo | modulação de amplitude em sincronia (±3 dB em 1) |
 | **Look-ahead** | 0–16 quadros | estrutural | latência × qualidade do Viterbi (re-prepara) |
-| **Voz** | preset | estrutural | tessitura → `fmin/fmax` (re-prepara, muda a latência) |
+| **Voz** | 4 presets | estrutural | tessitura → `fmin/fmax` (re-prepara, muda a latência). Lista do Auto-Tune desde 03/09/2026; padrão `Alto-Tenor`. Os 9 presets SATB seguem em `voz=` no CLI |
 | **Tonica** | 12 opções | estrutural | tônica da escala (Etapa 1) |
 | **Escala** | cromática / maior / menor | estrutural | grade de notas permitidas |
 | **Low Latency** (`lowlat`) | on/off | estrutural | troca o motor de síntese, Etapa 6 (ver abaixo). Padrão **desligado** |
