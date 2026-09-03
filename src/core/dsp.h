@@ -56,7 +56,109 @@ inline void calcularCMNDF(const std::vector<float>& x, long long ini, int W, int
     }
 }
 
+// ---------------------------------------------------------------------------
+//  Piso da varredura da GUARDA CONTRA A SUBHARMONICA (ver candidato(), abaixo).
+//
+//  A guarda procura evidencia de um periodo mais CURTO que o admitido pela
+//  tessitura, entao precisa de um piso proprio, abaixo do 'tauMin' da tessitura
+//  mais aguda que o projeto oferece (Instrumento, 2000 Hz -> 22 amostras a
+//  44,1 kHz). Oito amostras sao 5,5 kHz a 44,1 kHz: acima de qualquer
+//  fundamental de voz, e longe do regime tau -> 0, onde a CMNDF nao quer dizer
+//  nada -- dp[1] vale 1,0 por construcao, seja qual for o sinal.
+//
+//  E' constante do DETECTOR, nao parametro de usuario: ela nao expressa um gosto,
+//  expressa ate onde a funcao de diferenca ainda tem significado.
+// ---------------------------------------------------------------------------
+inline constexpr int TAU_GUARDA_MIN = 8;
+
+// ---------------------------------------------------------------------------
+//  Limiar da GUARDA, e por que ele NAO e' o limiar da busca principal.
+//
+//  candidato() e' chamada 100 vezes por quadro, com limiares 's' varridos de uma
+//  distribuicao Beta -- e' assim que o pYIN gera candidatos em vez de decidir de
+//  uma vez. Varios desses limiares sao PERMISSIVOS de proposito (chegam perto de
+//  1,0), porque o peso deles na agregacao e' minusculo e quem decide no fim e' o
+//  HMM. Reaproveitar esse 's' na guarda seria um erro de tipo: um limiar feito
+//  para GERAR hipoteses baratas passaria a REJEITAR quadros.
+//
+//  Medido em 03/09/2026, profundidade do vale abaixo de tauMin:
+//    verdadeiro positivo (349 Hz cantado num preset de teto 330)  ->  dp = 0,001
+//    falso positivo (take real, teto de 1000 Hz, longe de estourar) -> dp = 0,14 a 0,43
+//  Duas ordens de grandeza separam os dois casos, entao a guarda exige um vale
+//  FUNDO em termos absolutos, e nao "abaixo do limiar do momento".
+//
+//  O valor e' 0,10 porque e' o limiar absoluto do YIN original (de Cheveigne e
+//  Kawahara, 2002, secao II-D) -- o mesmo numero que aquele algoritmo usa para
+//  dizer "isto e' periodo, nao ruido". Nao e' constante escolhida a dedo para
+//  fazer este take passar: e' o criterio de periodicidade da literatura, e a
+//  medicao acima mostra que ele cai no meio da lacuna entre os dois casos.
+//
+//  Sem isto, tres quadros de exemplo-antes.wav viravam nao-vozeados por engano.
+//  Tres em 854 parece pouco, e nao e': um quadro nao-vozeado PARTE uma regiao
+//  vozeada, a cadeia de marcas do PSOLA re-ancora, e a correlacao da saida caia
+//  para 0,77. Um erro de 0,35 % na trilha custava a frase inteira.
+// ---------------------------------------------------------------------------
+inline constexpr double LIMIAR_GUARDA = 0.10;
+
+// ---------------------------------------------------------------------------
+//  candidato() — escolhe um periodo a partir da CMNDF, para um limiar 's'.
+//
+//  GUARDA CONTRA A SUBHARMONICA (D1 de docs/spec-encaixe-e-estabilidade.md).
+//
+//  A busca percorre a faixa a partir de 'tauMin', o periodo mais CURTO admitido
+//  pela tessitura. Se a altura cantada for mais aguda que o teto do preset, o
+//  periodo real cai ABAIXO de tauMin e fica invisivel para a busca -- mas o
+//  DOBRO dele nao fica, porque um sinal periodico em T tambem e' periodico em
+//  2T. A busca achava o 2T e reportava METADE da frequencia.
+//
+//  Medido em 03/09/2026: 100 % dos quadros acima do teto, com a quebra caindo
+//  exatamente no fmax de cada preset. Sobre exemplo-antes.wav, o preset Baixo
+//  divergia por uma oitava em 34,3 % dos quadros vozeados, e o Low Male em
+//  16,2 %. Os numeros estao congelados em src/tests/test_deteccao.cpp.
+//
+//  O defeito era ASSIMETRICO, e e' isso que o tornava traicoeiro:
+//    altura abaixo do fmin -> "sem voz", nao corrige. Silencioso, mas honesto.
+//    altura acima do fmax  -> uma oitava abaixo: corrige para a nota ERRADA.
+//
+//  A correcao NAO e' alargar a faixa percorrida. Isso exigiria mais bins no HMM
+//  (o espaco de estados tem binDe(FMAX)+1 posicoes, e o codigo ja descarta
+//  candidatos fora dele), ou seja, mais custo de Viterbi por quadro. A correcao
+//  e' REJEITAR o candidato quando ha evidencia de que o periodo real esta fora
+//  da faixa. O resultado passa a espelhar o que ja acontecia abaixo do piso --
+//  fora da faixa, "sem voz" -- e sobra um unico comportamento para lembrar.
+//
+//  Custo zero: calcularCMNDF() ja preenche 'dp' de tau = 1 ate tauMax. Os dados
+//  abaixo de tauMin ja existiam, apenas nao eram consultados. A guarda e' uma
+//  leitura a mais, nao um calculo a mais.
+//
+//  Devolver 0.0 nao forca o quadro a "nao-vozeado" na marra: cada limiar 's' e'
+//  um voto, e retirar o voto desloca massa do histograma de pitch para 'pUnv'.
+//  Quem decide continua sendo o HMM, com a evidencia certa na mao.
+// ---------------------------------------------------------------------------
 inline double candidato(const std::vector<double>& dp, int tauMin, int tauMax, double s, int fs) {
+    //  O que conta como evidencia: um VALE QUE FECHA abaixo de tauMin, e nao
+    //  qualquer amostra abaixo do limiar. A diferenca decide o caso de borda, e
+    //  ele nao e' raro -- e' exatamente a nota mais aguda que o preset promete
+    //  cobrir. Cantando o proprio fmax (330 Hz no Baixo), o periodo real e' 133,6
+    //  amostras e o tauMin e' 133: o vale legitimo fica CENTRADO no limite, e o
+    //  flanco esquerdo dele cai dentro da regiao que a guarda varre. Uma guarda
+    //  que dispare com "existe dp[tau] < s" rejeitaria a nota do teto -- trocando
+    //  o defeito da oitava por um buraco no agudo da propria tessitura.
+    //
+    //  Seguir o vale ate o fundo separa os dois casos pela fisica, sem constante
+    //  de ajuste: se o fundo cai abaixo de tauMin, existe mesmo um periodo mais
+    //  curto que o admitido (altura acima do fmax); se o vale so ATRAVESSA
+    //  tauMin, o que se viu foi o flanco do periodo legitimo mais grave.
+    const int guardaAte = std::min(tauMin, (int)dp.size());
+    const double sGuarda = std::min(s, LIMIAR_GUARDA);
+    for (int tau = TAU_GUARDA_MIN; tau < guardaAte; ++tau) {
+        if (dp[tau] >= sGuarda) continue;
+        int fundo = tau;   // mesma descida que a busca principal faz, abaixo
+        while (fundo + 1 < tauMax && dp[fundo + 1] < dp[fundo]) ++fundo;
+        if (fundo < tauMin) return 0.0;   // altura acima do fmax -> sem voz
+        break;                            // vale do periodo legitimo: segue
+    }
+
     int tauEst = -1;
     for (int tau = tauMin; tau < tauMax; ++tau)
         if (dp[tau] < s) { while (tau + 1 < tauMax && dp[tau + 1] < dp[tau]) tau++; tauEst = tau; break; }

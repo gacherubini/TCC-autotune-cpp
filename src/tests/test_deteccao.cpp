@@ -147,7 +147,7 @@ static std::vector<float> lerTake(int& fs) {
 // existe: a correcao vira uma linha do diff, e o comportamento anterior fica
 // registrado no codigo para poder ser descrito no texto do TCC.
 enum class AcimaDoTeto { OitavaAbaixo, SemVoz };
-static constexpr AcimaDoTeto ACIMA_DO_TETO = AcimaDoTeto::OitavaAbaixo;
+static constexpr AcimaDoTeto ACIMA_DO_TETO = AcimaDoTeto::SemVoz;
 
 // Tolerancia relativa do detector. 4 % cobre a grade de 20 cents do HMM
 // (RES_CENTS) com folga; nao e' frouxa o bastante para confundir uma oitava
@@ -300,7 +300,15 @@ static void secaoCobertura(const std::vector<float>& take, int fs) {
 
 // Medido em 03/09/2026 na configuracao do usuario (contralto, tol=15,
 // retune=0, Low Latency), sobre os 5 s de exemplo-antes.wav.
-static constexpr double MEDIANA_ANTES_MS = 40.6;
+//
+// RE-MEDIDO depois da guarda contra a subharmonica (ticket 02): 40,6 ms era o
+// valor sobre a trilha de F0 ANTIGA. A guarda muda essa trilha -- ela retira
+// quadros que reportavam altura errada -- e cada quadro retirado parte uma nota
+// em duas, entao a mediana caiu para 34,8 ms. Isso NAO e' uma piora causada
+// pela guarda: e' o mesmo piscar de sempre, agora medido sobre uma trilha que
+// deixou de mentir. O numero de referencia da estabilizacao (ticket 04) tem de
+// ser este, porque e' contra este que ela vai rodar.
+static constexpr double MEDIANA_ANTES_MS = 34.8;
 static constexpr double PCT_CURTAS_ANTES = 76.0;
 static constexpr double LIMIAR_CURTA_MS  = 80.0;
 
