@@ -242,6 +242,58 @@ int main() {
         checar(c.ultimoGanho() == 1.0, "trecho nao-vozeado devolve ganho 1,0");
     }
 
+    // -----------------------------------------------------------------------
+    //  Os LIMITES NOVOS do Retune Speed (D6 do spec de encaixe e estabilidade).
+    //
+    //  A faixa foi de 200 para 400 ms, e a faixa so vale a pena se a METADE
+    //  SUPERIOR dela fizer diferenca. Antes da estabilizacao da nota-alvo nao
+    //  fazia: o erro medio da saida ia de 22,7 para 23,8 cents entre 200 e
+    //  400 ms, porque nenhum filtro alcanca um alvo que troca a cada 35 ms. O
+    //  controle entregava numeros, nao efeito.
+    //
+    //  Aqui a diferenca e' medida onde ela existe de verdade -- na constante de
+    //  tempo do filtro, com um alvo estavel. E' a afirmacao que sustenta ter
+    //  esticado a faixa, e ela nao depende de material de audio.
+    // -----------------------------------------------------------------------
+    std::printf("\n== 7. faixa do Retune Speed ate 400 ms, com efeito na metade de cima ==\n");
+    {
+        // Tempo (ms) que a saida leva para cobrir 63 % do caminho ate a nota --
+        // uma constante de tempo. Entrada 80 cents alta, alvo constante.
+        auto tempoDeSubida = [&](double retuneMs) {
+            ParamsCorrecao p; p.tolCents = 0.0; p.retuneMs = retuneMs; p.vibrato = 0.0;
+            CorretorAltura c; c.prepare(fs);
+            const double f = 220.0 * std::pow(2.0, 40.0 / 1200.0);
+            const int N = fs * 3;
+            for (int i = 0; i < N; ++i) {
+                const double y = c.proxima(f, p);
+                const double restante = std::fabs(1200.0 * std::log2(y / 220.0));
+                if (restante <= 40.0 * (1.0 - 0.632)) return 1000.0 * (double)i / fs;
+            }
+            return 1e9;
+        };
+        // O zero e' exato: o padrao de fabrica tem de encaixar na hora.
+        {
+            ParamsCorrecao p; p.tolCents = 0.0; p.retuneMs = 0.0; p.vibrato = 0.0;
+            CorretorAltura c; c.prepare(fs);
+            const double f = 220.0 * std::pow(2.0, 40.0 / 1200.0);
+            c.proxima(f, p);                       // ataque: nasce na altura real
+            const double y = c.proxima(f, p);      // ja em regime
+            checar(std::fabs(1200.0 * std::log2(y / 220.0)) < 1e-9,
+                   "retune = 0 encaixa a nota imediatamente (padrao de fabrica)");
+        }
+        // A constante de tempo tem de seguir o valor pedido em toda a faixa.
+        for (double ms : { 25.0, 100.0, 200.0, 300.0, 400.0 }) {
+            const double medido = tempoDeSubida(ms);
+            checar(std::fabs(medido - ms) < 0.10 * ms + 1.0,
+                   "retune = %5.0f ms -> constante de tempo medida %6.1f ms", ms, medido);
+        }
+        // E a metade de cima da faixa tem de SEPARAR: 400 ms nao pode soar como
+        // 200 ms. Este e' o teste que o platô de 22,7 -> 23,8 cents reprovava.
+        const double t200 = tempoDeSubida(200.0), t400 = tempoDeSubida(400.0);
+        checar(t400 > t200 * 1.8,
+               "200 ms (%.0f) e 400 ms (%.0f) sao distinguiveis: x%.2f", t200, t400, t400 / t200);
+    }
+
     std::printf("\n%s (%d falha%s)\n", falhas ? "FALHOU" : "TUDO OK", falhas, falhas == 1 ? "" : "s");
     return falhas ? 1 : 0;
 }

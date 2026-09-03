@@ -101,14 +101,41 @@ TccAutotuneProcessor::criarParametros() {
     layout.add(std::make_unique<AudioParameterFloat>(
         ParameterID{ ids::mix, 1 }, "Mix", NormalisableRange<float>(0.0f, 1.0f), 1.0f));
     // tol 0..50 cents — zona morta (preserva vibrato/microafinacao).
+    //
+    // Padrão 0 desde a etapa "encaixe e estabilidade" (D5). A semântica NÃO
+    // mudou: a zona morta continua empurrando o desvio até a borda, e não é
+    // Flex-Tune. O que mudou é o valor de fábrica, porque o antigo (15) não
+    // encaixava a nota — ele deixava resíduo proporcional ao próprio valor. Uma
+    // nota 40 cents desafinada saía 15 cents desafinada, e a média medida na
+    // configuração do usuário era 11,8 cents fora. Quem quiser a zona morta liga.
+    //
+    // Vale a distinção, que é o que impede confundir este controle com o de
+    // baixo: a Tolerância decide SE a nota chega no lugar certo; o Retune Speed
+    // decide EM QUANTO TEMPO. Com tol = 0 a nota chega exata em qualquer Retune.
+    // Suavidade é trabalho do controle que tem dimensão de tempo.
     layout.add(std::make_unique<AudioParameterFloat>(
-        ParameterID{ ids::tol, 1 }, "Tolerancia (cents)", NormalisableRange<float>(0.0f, 50.0f), 15.0f));
-    // retune 0..200 ms — Retune Speed: quanto tempo a correcao leva para chegar
-    // a nota. Padrao 25 ms; o manual da Antares diz que "a setting between 10
-    // and 50 is typical for more natural sounding pitch correction". O ZERO
-    // precisa continuar alcancavel: e' ele que da o efeito "duro" deliberado.
+        ParameterID{ ids::tol, 1 }, "Tolerancia (cents)", NormalisableRange<float>(0.0f, 50.0f), 0.0f));
+    // retune 0..400 ms — Retune Speed: quanto tempo a correcao leva para chegar
+    // a nota. A faixa foi de 200 para 400 ms (D6) para paridade de valores com o
+    // Auto-Tune. Ela só passou a significar alguma coisa DEPOIS da estabilização
+    // da nota-alvo: antes dela o controle saturava, e o erro médio da saída ia de
+    // 22,7 para 23,8 cents entre 200 e 400 ms — mais números, não mais efeito.
+    // Um alvo que trocava a cada 35 ms não era alcançável por filtro nenhum.
+    //
+    // Padrão 0: o efeito duro como primeira impressão, por decisão do autor. O
+    // deslize continua alcançável no próprio controle.
+    //
+    // Alargar a faixa NÃO quebra projetos salvos, e isso foi verificado: a APVTS
+    // grava na árvore o valor DESNORMALIZADO
+    // (juce_AudioProcessorValueTreeState.cpp:413) e o plugin salva/restaura por
+    // copyState/replaceState. Um projeto salvo com 100 ms guarda 100.0 e reabre
+    // em 100 ms, com a faixa velha ou com a nova. Fosse normalizado, o mesmo
+    // projeto reabriria em 200 ms — uma quebra silenciosa e contínua, pior que a
+    // do combo de tessitura, que ao menos salta de uma vez. As duas mudanças
+    // pareciam da mesma família e não são; a diferença está em como a APVTS
+    // serializa cada TIPO de parâmetro.
     layout.add(std::make_unique<AudioParameterFloat>(
-        ParameterID{ ids::retune, 1 }, "Retune Speed (ms)", NormalisableRange<float>(0.0f, 200.0f), 25.0f));
+        ParameterID{ ids::retune, 1 }, "Retune Speed (ms)", NormalisableRange<float>(0.0f, 400.0f), 0.0f));
     // vibrato 0..2 — quanto do vibrato do cantor sobrevive a correcao.
     //   0 = removido (o comportamento ate a Etapa 2), 1 = preservado, 2 = dobrado.
     layout.add(std::make_unique<AudioParameterFloat>(
