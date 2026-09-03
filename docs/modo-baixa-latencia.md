@@ -1,16 +1,31 @@
 # Modo de baixa latência — especificação
 
 > **Data:** 2026-08-26
-> **Status:** ⏸️ **ESPECIFICAÇÃO SUPERADA — este caminho não foi implementado, e não será.**
-> A baixa latência foi resolvida pela **v3** (troca do motor de síntese), implementada na Etapa 6
-> em 2026-09-02; ver [especificacao-v3-ponteiro.md](especificacao-v3-ponteiro.md). O texto abaixo
-> está preservado como registro do que se pretendia fazer por **parâmetros** (v1) e por **troca
-> do detector** (v2), e do porquê de nenhum dos dois bastar.
+> **Status:** ✅ **O MODO FOI IMPLEMENTADO — por outro mecanismo.** O botão **Low Latency**
+> existe no plugin desde a Etapa 6 (2026-09-02). O que entregou a latência não foi nenhum dos
+> dois caminhos deste documento, e sim a **v3**, que troca o *motor de síntese*; ver
+> [especificacao-v3-ponteiro.md](especificacao-v3-ponteiro.md).
+>
+> Vale ler por camada, porque as três tiveram destinos diferentes:
+>
+> | Camada | O que este documento propunha | O que aconteceu |
+> |---|---|---|
+> | **O modo** | um controle que compra latência ao preço de robustez | ✅ **entregue** (botão Low Latency, Etapa 6) |
+> | **A interface (§7)** | três opções, recomendando a **B** (botão + campos derivados visíveis) | ✅ **implementada na opção B** — o slider de look-ahead fica visível e desabilitado em 0 |
+> | **O mecanismo (v1/v2)** | mexer em `look`/`nFrame` (v1), trocar o detector (v2) | ⏸️ **substituído** — os dois esbarram no piso `fs/FMIN` do PSOLA, que só a troca de motor atravessa |
+>
+> ⏸️ O **v2** (L6, CMNDF recursivo) está **parado, não descartado**: a v3 o deixou de fora porque
+> tirou o atraso da detecção do caminho do áudio, mas *"se o erro de ataque medido for
+> inaceitável, o L6 volta como trabalho futuro"* ([especificação v3](especificacao-v3-ponteiro.md),
+> escolha 1). O v1 por parâmetros é que não volta.
 >
 > ⚠️ **As seis "questões em aberto" da §8 não são mais bloqueio de implementação** — elas foram
 > escritas para um mundo de dois caminhos e a v3 dissolveu a maior parte delas; ver
 > [analise-v1-v2-v3.md §6](analise-v1-v2-v3.md). A única que segue de pé é a **questão 5** (se
 > as 37 amostras da Antares são mesmo atraso de interpolador), e ela é curiosidade, não bloqueio.
+>
+> O texto abaixo está preservado como registro do raciocínio de 26/08, com os números do preset
+> contralto — ver a ressalva logo adiante.
 >
 > Este documento existe para responder *"o que exatamente o modo de baixa latência vai fazer?"*
 > **antes** de qualquer linha de código ser escrita.
