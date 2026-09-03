@@ -263,7 +263,19 @@ encontrada publicada.
 
 ## 7. Como o controle deve aparecer na interface
 
-Três opções, ainda **não decididas**:
+> ### ✅ Esta seção foi implementada (nota de 2026-09-02)
+>
+> A **opção B** foi a escolhida e está no plugin desde a Etapa 6. A
+> [especificação v3](especificacao-v3-ponteiro.md) a adota pelo nome — *"o slider de look-ahead
+> fica visível e desabilitado, mostrando o zero — a opção B da spec §7, transparente"* — e a
+> §5.2 de lá descreve o controle como ele ficou. Um detalhe mudou na execução: o botão liga o
+> **motor de ponteiro** e força `look = 0`, em vez de reconfigurar `look` e `nFrame` como esta
+> seção supunha. O valor salvo de `look` não é sobrescrito, só ignorado enquanto o botão estiver
+> ligado, então desligar devolve o estado anterior.
+>
+> A tabela abaixo fica como registro das três alternativas consideradas e do porquê da escolha.
+
+Três opções, à época **não decididas**:
 
 | Opção | Como funciona | Prós | Contras |
 |---|---|---|---|
