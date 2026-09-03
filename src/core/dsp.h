@@ -326,6 +326,22 @@ inline int notaMaisProximaMidi(double f) {
     return alvo;
 }
 
+// A zona morta, medida contra um semitom JA ESCOLHIDO.
+//
+// Separar as duas decisoes -- "qual semitom" e "quanto empurrar em direcao a
+// ele" -- e' o que permite que a ESCOLHA ganhe memoria (EscolhaDeSemitom,
+// adiante) sem que a zona morta precise saber disso. As duas sao independentes,
+// e misturá-las de novo desfaria D2.
+inline double notaAlvoDoSemitom(double f, int alvoMidi, double tolCents) {
+    double midi = 69.0 + 12.0 * std::log2(f / 440.0);
+    double errCents = (alvoMidi - midi) * 100.0;
+    double mag = std::fabs(errCents);
+    double mov = (mag <= tolCents) ? 0.0
+                                   : (errCents > 0 ? 1.0 : -1.0) * (mag - tolCents);
+    double corrMidi = midi + mov / 100.0;
+    return 440.0 * std::pow(2.0, (corrMidi - 69.0) / 12.0);
+}
+
 // Nota-alvo: nota mais próxima da escala, com zona morta (tolCents).
 //
 // ETAPA 2 do plano: o parâmetro "forca" (0..1, fração do desvio a corrigir) foi
@@ -340,30 +356,14 @@ inline int notaMaisProximaMidi(double f) {
 // `tol=600` é o caso de teste que exercita o PSOLA inteiro em identidade —
 // exatamente a cobertura que a antiga `forca=0` dava. Ver docs/execucao-do-plano.md,
 // Etapa 2, onde a equivalência está verificada por checksum.
-// A zona morta, medida contra um semitom JA ESCOLHIDO. Separar as duas coisas --
-// "qual semitom" e "quanto empurrar em direcao a ele" -- e' o que permite que a
-// escolha ganhe memoria (EscolhaDeSemitom, abaixo) sem que a zona morta precise
-// saber disso. notaAlvo() continua sendo esta funcao com a escolha SEM memoria,
-// e continua pura: e' ela que os oraculos congelados dos testes chamam.
-inline double notaAlvoDoSemitom(double f, int alvoMidi, double tolCents) {
-    double midi = 69.0 + 12.0 * std::log2(f / 440.0);
-    double errCents = (alvoMidi - midi) * 100.0;
-    double mag = std::fabs(errCents);
-    double mov = (mag <= tolCents) ? 0.0
-                                   : (errCents > 0 ? 1.0 : -1.0) * (mag - tolCents);
-    double corrMidi = midi + mov / 100.0;
-    return 440.0 * std::pow(2.0, (corrMidi - 69.0) / 12.0);
-}
-
+//
+// Esta é a versão SEM MEMÓRIA da escolha de semitom, e continua pura: é ela que
+// os oráculos congelados dos testes chamam, e é ela que a GUI pode usar. Ela
+// delega a aritmética em vez de repeti-la — duplicar a zona morta em dois
+// lugares é exatamente o defeito que a Etapa 0 removeu do projeto quando a malha
+// de correção estava copiada em três arquivos.
 inline double notaAlvo(double f, double tolCents) {
-    double midi = 69.0 + 12.0 * std::log2(f / 440.0);
-    int alvo = notaMaisProximaMidi(f);
-    double errCents = (alvo - midi) * 100.0;
-    double mag = std::fabs(errCents);
-    double mov = (mag <= tolCents) ? 0.0
-                                   : (errCents > 0 ? 1.0 : -1.0) * (mag - tolCents);
-    double corrMidi = midi + mov / 100.0;
-    return 440.0 * std::pow(2.0, (corrMidi - 69.0) / 12.0);
+    return notaAlvoDoSemitom(f, notaMaisProximaMidi(f), tolCents);
 }
 
 // ---------------------------------------------------------------------------
