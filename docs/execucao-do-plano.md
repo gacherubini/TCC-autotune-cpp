@@ -1453,144 +1453,129 @@ padrão de fábrica passa a ser justamente essa condição, é a primeira coisa 
 
 ---
 
-## Ticket 07 — teto na janela de re-síntese do TD-PSOLA (2026-09-03)
+## Ticket 07 — teto na janela de re-síntese do TD-PSOLA: **implementado, medido e revertido** (2026-09-03)
 
-Implementa a **Causa 3** e a **decisão D3** de
-[`spec-encaixe-e-estabilidade.md`](spec-encaixe-e-estabilidade.md). É o único dos sete tickets
-que endereça o sintoma 2 do spec — o *pipoco* do motor padrão —, e o único independente dos
-outros seis.
+Endereça a **Causa 3** e a **decisão D3** de
+[`spec-encaixe-e-estabilidade.md`](spec-encaixe-e-estabilidade.md) — o *pipoco* do motor padrão.
 
-### O que foi feito
+> **Resultado: o teto foi revertido.** Ele resolveu o custo e introduziu um defeito pior no
+> motor **padrão**: um estalo por commit, quase o dobro da amplitude do próprio sinal. A
+> medição está abaixo, e ela **corrige o spec**: D3, como está escrita, não é implementável
+> sobre uma `psolaSintetiza()` pura. A Causa 3 continua **aberta**.
 
-A janela de `avancarPsola()` recuava até o início da região vozeada, **sem limite**. Numa nota
-sustentada de 3 s, no instante t = 3 s o motor refazia 3 s de marcas e de grãos para entregar
-as 128 amostras do bloco atual. O recuo agora para num teto, derivado em **períodos de FMIN**:
+### O que se tentou
+
+A janela de `avancarPsola()` recua até o início da região vozeada, **sem limite**. Numa nota
+sustentada de 3 s, no instante t = 3 s o motor refaz 3 s de marcas e de grãos para entregar as
+128 amostras do bloco atual. O teto proposto pela D3 limitava esse recuo, derivado em
+**períodos de FMIN** e não em amostras absolutas:
 
 ```
 teto = arredondar_para_multiplo_de(nHop, TETO_PERIODOS * fs / FMIN)     TETO_PERIODOS = 12
 ```
 
-com piso na `margem` atual (`nFrame`, 1024 amostras). A 44,1 kHz: `Alto-Tenor` (131 Hz) → 4096;
-`Low Male` (82 Hz) → 6400; `Soprano` (262 Hz) → 2048; o `FMIN` padrão de 80 Hz → 6656.
+A 44,1 kHz: `Alto-Tenor` (131 Hz) → 4096; `Low Male` (82 Hz) → 6400; `Soprano` (262 Hz) → 2048;
+o padrão FMIN = 80 Hz → 6656. Batia com os exemplos da D3.
 
-Duas escolhas que valem o registro:
+### O custo: o teto funcionou
 
-- **Em períodos, não em amostras absolutas.** A cadeia de marcas precisa de contexto medido em
-  períodos, e 4096 amostras são 12 períodos num baixo e 33 num soprano. Um número absoluto
-  significaria coisas diferentes conforme a tessitura.
-- **Múltiplo de `nHop`, e isso não é cosmético.** `synthFront` anda numa grade de `k·nHop`; com
-  o teto na mesma grade, `winStart` continua sendo **função pura de `synthFront`**, e a
-  invariância ao tamanho de bloco segue **estrutural**. O teto nunca pode sair do que chegou no
-  bloco atual — seria o mesmo defeito que a correção de 26/08/2026 caçou.
+Nota sustentada de 3 s, blocos de 128 amostras, orçamento de 2,90 ms, β ≠ 1:
 
-### Medição — antes e depois
-
-Nota sustentada de 3 s a 220 Hz, blocos de 128 amostras a 44,1 kHz (orçamento de 2,90 ms),
-harness novo em `src/tests/test_custo_bloco.cpp`:
-
-| | antes | depois |
+| | sem teto | com teto |
 |---|---|---|
-| p90 do bloco, início da nota | 4,96 ms | 1,20 ms |
-| p90 do bloco, fim da nota | 15,29 ms | 1,18 ms |
-| **razão fim/início** | **3,08×** | **0,99×** |
-| pior bloco | 17,18 ms (5,9× o orçamento) | **1,61 ms (0,6×)** |
-| blocos acima do orçamento | 434 de 1119 (**38,8 %**) | **0 de 1119 (0 %)** |
+| p90 início → fim da nota | 4,82 → 14,90 ms | 1,10 → 1,10 ms |
+| razão fim/início | **3,09×** | **1,00×** |
+| pior bloco | 16,52 ms (5,7×) | 1,56 ms (0,5×) |
+| blocos acima do orçamento | 435/1119 (**38,9 %**) | **0/1119 (0 %)** |
 
-Perfil no tempo, que é o que mostra o defeito e o conserto — antes, crescimento monótono com
-reset ao fim da região vozeada; depois, plano:
+Estes números continuam valendo, e são a evidência de que a **Causa 3 existe e tem tamanho**.
 
-```
-  t(s)    antes    depois
-  0,00    1,217     1,206
-  0,50    4,187     1,608
-  1,00    7,223     1,559
-  1,50    9,684     1,391
-  2,00   12,846     1,388
-  2,50   17,180     1,574
-  3,00   16,770     1,499
-```
+### O que a medição de custo não via, e o code-review viu
 
-> ⚠️ Os 17,2 ms medidos aqui são **piores** que os 12,0 ms do spec porque o sinal sintético é
-> uma nota de 3 s **continuamente vozeada**, sem as respirações que quebram a região no take
-> real. É o pior caso de propósito.
+O teto **quebra a continuidade da forma de onda**. Mesmo sinal, mesma configuração:
 
-A estimativa do spec era "custo cai da ordem de 30×, para a casa de 0,4 ms". A queda medida foi
-de **10,7×**, para **1,6 ms**. A estimativa por proporcionalidade era otimista: ela supunha
-custo proporcional só às amostras acumuladas, e há um custo fixo por chamada sobre a janela
-inteira (~7,8 mil amostras com o teto). Não muda a conclusão — 0 % de estouros contra 38,8 %.
+| | descontinuidades (> 30× a mediana de \|Δ\|) | maior \|Δ\| | razão max/p99,9 |
+|---|---|---|---|
+| sem teto | **0** | 0,116 | **1,07×** |
+| com teto | **17** | **0,535** | **4,59×** |
 
-O motor de ponteiro continua plano e intocado: 0,24 → 0,27 ms de p90, pior bloco 0,47 ms
-(0,2× o orçamento).
+O pico do sinal era **0,298** — o salto era **quase o dobro do próprio sinal**, e as 17
+descontinuidades caíam **todas** em `i % nHop == 0`. Numa nota de 4 s dão 30, na mesma
+proporção: cerca de **7 estalos por segundo**, no motor **padrão**. Pior que o pipoco que o
+teto vinha remover.
 
-### O harness de tempo por bloco
+### A causa, e por que não há meio-termo
 
-Não havia precedente no repositório: os scripts de `python/` medem **taxa agregada**, e taxa
-agregada esconde exatamente o defeito que produz o estalo. Um motor a 8× tempo real na média
-pode estourar o orçamento em um bloco a cada cinco, e o que se ouve é o estouro.
+`psolaSintetiza()` ancora a grade de síntese em `cum[0] = 0`, na **primeira marca da janela**.
+A invariância a truncamento conquistada no commit `e1ffd1d` vale para o **fim** da região, não
+para o **início** — o comentário dela em `dsp.h` diz exatamente isso: *"depende SÓ das marcas
+ATÉ ali, não de onde a região termina"*.
 
-É o **único teste da suíte sensível à máquina**, e o desenho leva isso em conta: a asserção é
-sobre a **razão** fim/início (propriedade estrutural, vale em máquina rápida ou lenta), o
-número absoluto em ms é **diagnóstico e nunca critério de falha**, e a estatística é o
-**percentil 90** e não o máximo — com `nHop = 256` e bloco de 128, só metade dos blocos faz
-trabalho, então a mediana cairia em cima dessa fronteira e oscilaria.
+Com teto, assim que a nota passa do teto o `winStart` deixa de parar no início da região e
+passa a avançar `nHop` **a cada commit**. A âncora muda a cada commit, e o deslocamento da
+grade não é múltiplo do espaçamento de síntese `T/β` — daí o salto de fase, exatamente na
+fronteira do commit.
 
-### Regravação de linha de base — os 15 casos que mudaram, e por quê
+Preservar a fase com um início móvel exige carregar a contagem acumulada de β **entre
+chamadas**. Isto é, a **cadeia de marcas incremental** — que a própria D3 registrou como
+trabalho futuro e recusou, por transformar uma função pura numa função com estado que precisa
+ser zerado na fronteira exata de cada região vozeada e de cada `reset()` do host.
 
-**Uma razão única para os 15:** todos são casos de **streaming com o motor TD-PSOLA**, e todos
-têm regiões vozeadas mais longas que o teto de 6656 amostras (151 ms). Para elas a âncora da
-cadeia de marcas passa a ser outra, e a forma de onda muda. É o preço que D3 aceita.
+**A conclusão que a medição acrescenta ao spec:** não existe terceira opção. Ou a janela recua
+até a âncora estável (custo O(n) por bloco, o defeito de hoje), ou a cadeia vira estado. Um
+teto sobre uma função pura não é um meio-termo — é a troca de um defeito por outro maior.
 
-| caso | antes | depois |
-|---|---|---|
-| `st_mix1`, `st_block64`, `st_block512`, `st_block1024` | `522ffaf32a3d6e47` | `a8604d5321c522cf` |
-| `st_retune25`, `st_humanize0`, `st_createvib_off` | `0fb713c720bed299` | `01daa41cf5837cf7` |
-| `st_cmaior` | `44af6aebec7600ce` | `20bfe97f42b46127` |
-| `st_glide40` | `d8bee84d1f4ca3f4` | `cd0b891129763be1` |
-| `st_tol15` | `42e8ad70d2356180` | `59678cd9c534d399` |
-| `st_vibrato0` | `b69b1c501f8dbf04` | `bdcbf2c9c94ea0bf` |
-| `st_vibrato2` | `e75cc8c63777a370` | `2b19d30fbc37ff98` |
-| `st_humanize1` | `303c0f61dcaaa2df` | `cb40bdde79a01842` |
-| `st_createvib_sen` | `cdbb0e34eabb7dab` | `b733ebc2368755ec` |
-| `st_createvib_amp` | `044cdeca1af6ec0a` | `45d85e52b49b99ba` |
+### Por que o teste deixou passar, e o que ele virou
 
-**Os 22 restantes não mudaram**, e a lista de quem *não* mudou é a prova de que a mudança está
-onde devia:
+`test_custo_bloco.cpp` estava verde com o teto ligado. O sinal era uma nota de **220 Hz exata**
+e, com `tolCents = 0`, o alvo de 220 Hz é o próprio 220 Hz: **β = 1**, e o TD-PSOLA rodava em
+**identidade**. As três seções cronometravam e comparavam o único caminho em que a síntese não
+desloca nada — e é justamente o caminho em que re-ancorar é inofensivo, porque `q·β` é inteiro.
 
-- os 7 `gold_*` e os 4 `rt_*` — offline e causal chamam `psolaSintetiza()` **em lote**, não
-  passam por `avancarPsola()`;
-- os 7 `st_lowlat_*` e `st_ponteiro_look4` — o motor de ponteiro não tem janela de re-síntese;
-- **`st_mix0` e `st_tol600`** — os dois caminhos de identidade do PSOLA. Com β = 1 os grãos
-  voltam para as mesmas posições, qualquer que seja a âncora.
+Um teste verde sobre o caminho de identidade não diz nada sobre o caminho que o usuário ouve.
+É a mesma família de erro que o spec descreve nas três causas: um mecanismo correto dentro da
+sua faixa de validade, aplicado fora dela sem guarda.
 
-**Os quatro casos de identidade não mudaram**, verificado: `st_mix0`, `st_tol600`,
-`st_lowlat_mix0` e `st_lowlat_tol600`. E os pares que o `baseline.sh` compara entre si
-continuam batendo — `st_block64 == st_block512 == st_block1024 == st_mix1` (invariância ao
-bloco) e `st_createvib_off == st_humanize0 == st_retune25` (os caminhos neutros).
+O arquivo foi reescrito:
 
-### ⚠️ Colisão com a não-regressão da Etapa 3, que precisa de decisão
+- o sinal é **desafinado em 45 cents** (dentro do meio semitom, para o alvo continuar sendo A3),
+  então β ≠ 1 e o PSOLA reempilha grãos de verdade;
+- ganhou uma **asserção de continuidade**, `max|Δ| ≤ 2,5 × p99,9(|Δ|)`. O critério compara o
+  maior degrau com o degrau típico do próprio sinal em vez de um limiar absoluto. Escolha
+  deliberada: o múltiplo da **mediana** que o resto do projeto usa não serve aqui, porque o
+  maior degrau **legítimo** já é 29,9× a mediana — em cima do limiar de 30×;
+- o **custo virou diagnóstico** e não reprova mais nada. A Causa 3 está aberta, e um teste que
+  falhasse por causa dela abortaria o `baseline.sh` todo dia. Os números são impressos com
+  destaque e rotulados como **defeito aberto**;
+- a invariância ao tamanho de bloco (1 a 4096) passou a rodar **em β ≠ 1**, que é o teste mais
+  forte. Ela continua valendo bit a bit, com e sem teto — o teto de fato saía de uma grade fixa,
+  como a D3 exigia. O que ele quebrou não foi a invariância ao bloco, foi a continuidade
+  **dentro** do stream.
 
-A tabela congelada `baseline/etapa2-legado.sha256` guarda o hash de 19 casos rodados com
-`legado=1 vibrato=0`, e o `baseline.sh` a descreve como **"um marco fixo no passado"**, que
-**"NUNCA"** é regravado. Seis das 19 entradas são de **streaming com PSOLA** — `st_mix1`,
-`st_block64`, `st_block512`, `st_cmaior`, `st_glide40` e `st_tol15` — e essas seis quebram com
-o teto, pela mesma razão dos 15 acima.
+Verificado nos dois sentidos: com o teto o teste **reprova** (razão 4,59× contra o teto de
+2,5×, e a linha de diagnóstico aponta 17 de 17 descontinuidades na fronteira do hop); sem o
+teto **passa** (1,07×).
 
-A colisão é de desenho, não um defeito da implementação. O que aquela tabela verifica é que a
-malha de correção da Etapa 3 generaliza a da Etapa 2; o que ela **também** trava, sem que
-ninguém tivesse escolhido isso, é a equivalência **incremental ≡ lote** — que é exatamente o
-que D3 decidiu abrir mão. As 13 entradas de `gold_*` e `rt_*` continuam passando e continuam
-provando o que a tabela existe para provar.
+### Linha de base: a reversão desfaz a regravação
 
-**Não resolvido neste ticket, de propósito:** mexer em `baseline/` estava fora do escopo, e a
-escolha entre atualizar as seis entradas ou restringir a tabela aos 13 casos em lote é decisão
-do autor. Enquanto ela não for tomada, `./baseline.sh conferir` sai com erro **antes** de
-chegar à comparação dos 37 casos.
+A regravação dos 15 casos e a da tabela da Etapa 2 foram feitas **por causa do teto**. Com ele
+revertido, os hashes voltam **exatamente** aos valores anteriores — verificado caso a caso.
 
-### Pendência que este ticket não fecha
+Isso tem uma consequência boa: a tabela `baseline/etapa2-legado.sha256` pode ser **restaurada
+intacta**, e a propriedade "nunca regravada" volta a valer. Restaurar o arquivo original também
+devolve o **cabeçalho de comentários** que a regravação apagou (a nota de 26/08/2026 sobre o
+`st_block512`).
 
-A **cadeia de marcas incremental** — manter as marcas entre chamadas em vez de redetectá-las —
-preserva a equivalência com o lote e é a resposta certa em DSP. Fica registrada como trabalho
-futuro. Não foi feita agora porque transforma uma função pura numa função com estado que
-precisa ser zerado na fronteira exata de cada região vozeada e de cada `reset()` do host, sem
-depender de onde o host cortou o bloco — a classe de bug que o commit `e1ffd1d` custou caro
-para caçar.
+### O que continua em aberto
+
+A **Causa 3** — o custo por bloco crescendo com a duração da nota, 38,9 % dos blocos estourando
+o orçamento. Os dois caminhos que restam, agora com a medição que os separa:
+
+1. **Cadeia de marcas incremental.** A resposta certa em DSP, e agora a **única** que preserva
+   a fase. O risco continua o mesmo que a D3 descreveu.
+2. **Promover o motor de ponteiro a padrão** (o plano B registrado na D3). Custo: entregar de
+   fábrica o motor que **não** preserva formantes, que é a única razão de o TD-PSOLA existir
+   neste projeto.
+
+`test_custo_bloco.cpp` agora mede os dois lados e **reprova qualquer correção que troque custo
+por estalo** — que é a armadilha em que esta tentativa caiu.
