@@ -146,8 +146,8 @@ senão realimenta). É o jeito mais rápido de ver a GUI e ouvir o efeito.
 | **Mix** | 0–1 | ao vivo | seco/molhado: 0 = só a entrada, 1 = só o corrigido (padrão 1) |
 | **Tolerancia** | 0–50 cents | ao vivo | zona morta (preserva vibrato) |
 | **Retune Speed** | 0–200 ms | ao vivo | tempo até a nota. Padrão 25 ms (Antares: 10–50 é típico); 0 = efeito "duro" |
-| **Natural Vibrato** | 0–2 | ao vivo | 0 = remove o vibrato, 1 = preserva (padrão), 2 = dobra |
-| **Humanize** | 0–1 | ao vivo | afrouxa o Retune Speed na sustentação da nota (padrão 0) |
+| **Natural Vibrato** ⚠️ | 0–2 | ao vivo | 0 = remove o vibrato, 1 = preserva (padrão), 2 = dobra |
+| **Humanize** ⚠️ | 0–1 | ao vivo | afrouxa o Retune Speed na sustentação da nota (padrão 0) |
 | **Create Vibrato** 🚫 | off/sen/tri/qua | ao vivo | **gera** vibrato (≠ Natural Vibrato, que preserva) |
 | **Vibrato Rate** 🚫 | 0,1–10 Hz | ao vivo | taxa do vibrato gerado (padrão 5,5) |
 | **Vibrato Depth** 🚫 | 0–100 ct | ao vivo | profundidade do vibrato gerado (padrão 0 = desligado) |
@@ -160,6 +160,14 @@ senão realimenta). É o jeito mais rápido de ver a GUI e ouvir o efeito.
 
 "Ao vivo" = aplicado sem realocar, a cada bloco. "Estrutural" = muda dimensões/
 latência → o núcleo é re-preparado (e o host relê `setLatencySamples`).
+
+⚠️ = **inerte com Retune Speed = 0**, e a tela diz isso. Com constante de tempo zero o
+passa-baixa sobre a altura real vira a própria altura real, o termo do Natural Vibrato vira
+exatamente zero para qualquer valor do controle, e o Humanize está atrás de uma guarda de
+constante de tempo positiva — nem chega a ser avaliado. Nessa condição os dois sliders ficam
+**desabilitados** e aparece a linha `requer Retune Speed > 0` sob eles. Os parâmetros seguem
+automatizáveis pelo host; é comunicação, não mudança de DSP. Ver a decisão **D7** do
+[`spec-encaixe-e-estabilidade.md`](../docs/spec-encaixe-e-estabilidade.md).
 
 🚫 = **existe no parâmetro, não existe na tela.** Os quatro controles do Create Vibrato saíram
 do editor em **31/08/2026** ([Decisão 8](../docs/historico-e-decisoes.md#decisão-8--create-vibrato-sai-da-interface-fica-no-dsp-2026-08-31)):

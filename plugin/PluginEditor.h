@@ -120,12 +120,24 @@ private:
     // Desenha uma caixa de grupo com o titulo "mordendo" a borda de cima.
     void desenharGrupo(juce::Graphics&, juce::Rectangle<int>, const juce::String& titulo);
 
+    // Acinzenta (e explica) o Natural Vibrato e o Humanize quando o Retune
+    // Speed esta em zero, condicao em que os dois sao INERTES por construcao.
+    // Ver a implementacao para a algebra e para a escolha do gatilho.
+    void atualizarControlesInertes();
+
     TccAutotuneProcessor& processorRef;
     TccLookAndFeel lookAndFeel;
     PainelAfinador painel;
 
     // Retangulos dos tres grupos, preenchidos por resized() e lidos por paint().
     juce::Rectangle<int> caixaEscala, caixaCorrecao, caixaMotor, faixaTitulo;
+    // Faixa do aviso "requer Retune Speed > 0", sob as duas ultimas colunas do
+    // grupo CORRECAO. E' reservada SEMPRE, mesmo com o aviso escondido: se ela
+    // aparecesse e sumisse, mover o Retune Speed pelo zero mudaria a altura dos
+    // quatro sliders e a faixa inteira "pularia".
+    juce::Rectangle<int> faixaAvisoInerte;
+    // true = Retune Speed em zero, os dois controles de expressao estao mudos.
+    bool expressaoInerte = false;
 
     juce::ComboBox vozCombo, tonicaCombo, escalaCombo;
     juce::Slider   mixSlider, tolSlider, retuneSlider, vibratoSlider, lookSlider, humanizeSlider;

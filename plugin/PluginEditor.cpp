@@ -399,6 +399,33 @@ TccAutotuneEditor::TccAutotuneEditor(TccAutotuneProcessor& p)
     // com lowlat=true abriria com o look-ahead habilitado por engano).
     lowlatButton.onStateChange();
 
+    // ------------------------------------------------------------------
+    //  Retune Speed = 0 emudece o Natural Vibrato e o Humanize (ver
+    //  atualizarControlesInertes). O gatilho e' o onValueChange do PROPRIO
+    //  slider, e nao um apvts.addParameterListener, por duas razoes:
+    //
+    //   1) COBERTURA. O SliderAttachment se registra como listener do
+    //      parametro e chama slider.setValue(..., sendNotificationSync)
+    //      quando ele muda -- venha a mudanca do mouse, da automacao do
+    //      host ou do setStateInformation ao abrir um projeto. Entao o
+    //      onValueChange cobre os tres casos, nao so o arrasto do mouse.
+    //   2) THREAD. O ParameterAttachment ja marshala para a message thread
+    //      (chama direto se ja estiver nela, senao agenda). Um
+    //      addParameterListener, ao contrario, e' chamado NA THREAD DE
+    //      AUDIO -- mexer em Component dali seria corrida de dados, e
+    //      exigiria um callAsync so para desfazer o problema que a escolha
+    //      errada de gatilho criou.
+    //
+    //  E' o mesmo mecanismo que ja sustenta o lowlatButton.onStateChange
+    //  acima, pelo ButtonAttachment.
+    // ------------------------------------------------------------------
+    retuneSlider.onValueChange = [this] { atualizarControlesInertes(); };
+    // Pelo mesmo motivo do lowlat: o attachment ja' escreveu o valor no
+    // slider antes de este lambda existir, e o onValueChange so' dispara em
+    // MUDANCA. Sem esta chamada, o plugin abriria com retune = 0 (o padrao de
+    // fabrica) e os dois controles habilitados, mentindo.
+    atualizarControlesInertes();
+
     // Formatacao das caixas de valor — TEM de vir DEPOIS dos attachments.
     // O SliderAttachment instala, no proprio construtor, um
     // 'textFromValueFunction' derivado de param.getText(), que imprime a
@@ -442,6 +469,57 @@ TccAutotuneEditor::~TccAutotuneEditor() {
     setLookAndFeel(nullptr);
 }
 
+// ----------------------------------------------------------------------------
+//  atualizarControlesInertes() — o Retune Speed em zero emudece dois controles,
+//  e a interface passa a dizer isso.
+//
+//  Com constante de tempo zero a malha de correcao degenera. Escrevendo LP para
+//  o passa-baixa de dsp.h e k para o Natural Vibrato:
+//
+//      out = LP(alvo) + k*(real - LP(real))
+//      tau = 0  ->  alpha = 0  ->  LP(x) = x  ->  out = alvo,  para QUALQUER k
+//
+//  O termo do Natural Vibrato vira exatamente zero, seja k = 0 ou k = 2. E o
+//  Humanize esta atras de uma guarda `tau > 0.0` em CorretorAltura::proxima() --
+//  ele nem chega a ser avaliado. Verificado bit a bit: a saida e' IDENTICA para
+//  vibrato 0 e 1, e para humanize 0 e 1, quando o Retune Speed e' 0.
+//
+//  Isto NAO e' para ser consertado no DSP. A Decisao 7 fixa o deslize de
+//  entrada, e mexer no ataque para dar efeito ao Natural Vibrato em Retune 0 a
+//  contrariaria. E' problema de COMUNICACAO, e e' aqui que ele se resolve.
+//
+//  Por que acinzentar nao basta, e o aviso e' obrigatorio: o padrao de fabrica
+//  passou a ser retune = 0, entao o plugin sai da caixa exibindo dois controles
+//  apagados. Apagado sem explicacao le-se "o plugin esta quebrado"; apagado com
+//  "requer Retune Speed > 0" le-se "falta destravar".
+//
+//  Nada aqui toca a arvore de parametros: o host continua podendo automatizar os
+//  dois, e com Retune Speed positivo o comportamento e' exatamente o de antes.
+// ----------------------------------------------------------------------------
+void TccAutotuneEditor::atualizarControlesInertes() {
+    const bool inerte = (retuneSlider.getValue() <= 0.0);
+
+    // Acinzenta o slider E o rotulo, para que a coluna inteira apague junto --
+    // um slider fosco sob um rotulo aceso pareceria defeito de desenho. Mesma
+    // dupla setEnabled + setAlpha(0,45) que o Low Latency ja usa no look-ahead.
+    for (auto* s : { &vibratoSlider, &humanizeSlider }) {
+        s->setEnabled(! inerte);
+        s->setAlpha(inerte ? 0.45f : 1.0f);
+    }
+    for (auto* l : { &vibratoLabel, &humanizeLabel })
+        l->setAlpha(inerte ? 0.45f : 1.0f);
+
+    // O repaint so' vai quando o estado REALMENTE vira. Este metodo roda a cada
+    // passo do arrasto do Retune Speed, e repintar o editor inteiro no ritmo do
+    // arrasto seria desperdicio -- os setters acima ja' sao idempotentes no
+    // JUCE, entao repeti-los nao custa nada, mas o repaint custa.
+    //
+    // O aviso "requer Retune Speed > 0" e' PINTADO (ver paint), nao e'
+    // componente: e' uma linha de texto, e um Label so' para ela seria mais
+    // codigo de layout do que a linha vale.
+    if (inerte != expressaoInerte) { expressaoInerte = inerte; repaint(); }
+}
+
 void TccAutotuneEditor::desenharGrupo(juce::Graphics& g, juce::Rectangle<int> caixa,
                                        const juce::String& titulo) {
     auto r = caixa.toFloat();
@@ -476,6 +554,20 @@ void TccAutotuneEditor::paint(juce::Graphics& g) {
     desenharGrupo(g, caixaEscala,   "ESCALA");
     desenharGrupo(g, caixaCorrecao, "CORRECAO");
     desenharGrupo(g, caixaMotor,    "MOTOR");
+
+    // O aviso dos controles inertes. So aparece quando o Retune Speed esta em
+    // zero -- e nesse caso ele e' obrigatorio, nao decorativo: e' a diferenca
+    // entre o usuario ler "o plugin esta quebrado" e ler "falta destravar".
+    // Fica na cor de destaque (a mesma da saida corrigida) porque precisa ser
+    // NOTADO; um cinza fraco aqui derrotaria o proposito da mensagem.
+    // drawFittedText, e nao drawText, para que a frase encolha em vez de ser
+    // cortada se a fonte do sistema for mais larga que a medida aqui.
+    if (expressaoInerte) {
+        g.setColour(tccColours::destaque.withAlpha(0.80f));
+        g.setFont(juce::Font(8.5f, juce::Font::bold));
+        g.drawFittedText("requer Retune Speed > 0", faixaAvisoInerte,
+                         juce::Justification::centred, 1, 0.7f);
+    }
 
     // Latencia real, lida do processor. Nao pode ser numero fixo: a guarda do
     // PSOLA e' proporcional a fs/FMIN, e o FMIN vem do preset de Voz -- trocar
@@ -521,10 +613,16 @@ void TccAutotuneEditor::resized() {
         linha(escalaLabel, escalaCombo);
     }
 
-    // CORRECAO: quatro colunas de slider vertical.
+    // CORRECAO: quatro colunas de slider vertical, mais a faixa do aviso.
     {
         auto dentro = caixaCorrecao.reduced(8, 0).withTrimmedTop(16).withTrimmedBottom(8);
         const int largura = dentro.getWidth() / 4;
+        // Faixa do aviso de controle inerte, sob as DUAS ULTIMAS colunas (que
+        // sao justamente Natural Vibrato e Humanize). Reservada SEMPRE, mesmo
+        // quando o aviso nao aparece: se ela fosse criada e destruida conforme o
+        // Retune Speed cruza o zero, os quatro sliders mudariam de altura no
+        // meio do arrasto e a faixa inteira "pularia".
+        faixaAvisoInerte = dentro.removeFromBottom(12).removeFromRight(largura * 2);
         auto coluna = [&](juce::Slider& s, juce::Label& l) {
             auto col = dentro.removeFromLeft(largura);
             l.setBounds(col.removeFromTop(24));

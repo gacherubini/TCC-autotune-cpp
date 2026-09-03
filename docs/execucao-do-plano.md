@@ -1118,3 +1118,85 @@ melhor que `k = 1,2`, se o ataque na altura real incomoda quando o cantor entra 
   decisão de desenho.
 - **Detune / Transpose / Tracking** — decididos como ausentes, não priorizados.
 - **Formante / Throat** — descartados com fundamentação.
+
+---
+
+## Spec de encaixe e estabilidade — ticket 06: controles inertes desabilitados e explicados
+
+Implementa a **decisão D7** do
+[`spec-encaixe-e-estabilidade.md`](spec-encaixe-e-estabilidade.md). É correção de **interface**,
+não de DSP: nenhuma linha de `src/` foi tocada, e a árvore de parâmetros ficou como estava.
+
+### O problema
+
+Com o Retune Speed em zero, o `Natural Vibrato` e o `Humanize` não fazem **nada**. Não é
+"quase nada" — é zero exato, e a álgebra explica por quê:
+
+```
+out = LP(alvo) + k*(real - LP(real))
+tau = 0  ->  alpha = 0  ->  LP(x) = x  ->  out = alvo,  para QUALQUER k
+```
+
+O termo do Natural Vibrato desaparece seja `k = 0` ou `k = 2`. O Humanize está atrás de uma
+guarda `tau > 0.0` em `CorretorAltura::proxima()` e nem chega a ser avaliado. Verificado bit a
+bit no spec: a saída é **idêntica** para vibrato 0 e 1, e para humanize 0 e 1, quando o Retune
+Speed é 0.
+
+Até agora os dois ficavam mexíveis e mudos — o usuário podia passar minutos girando controles
+sem efeito. E o problema **piora** com o ticket 05, que leva o padrão de fábrica para
+`retune = 0`: o plugin passa a sair da caixa exatamente na condição em que os dois emudecem.
+
+### O que passou a existir
+
+| | |
+|---|---|
+| Os dois sliders | `setEnabled(false)` + `setAlpha(0,45)`, junto com os rótulos, para a coluna inteira apagar de uma vez |
+| Aviso | a linha **`requer Retune Speed > 0`**, na cor de destaque, sob as duas últimas colunas do grupo **CORREÇÃO** |
+
+**Acinzentar sozinho não bastaria**, e é o ponto da decisão: um controle apagado *sem
+explicação* lê-se como "o plugin está quebrado"; com a linha, lê-se "falta destravar". Como o
+padrão de fábrica passa a ser justamente essa condição, é a primeira coisa que o usuário vê.
+
+### Duas decisões de implementação
+
+1. **O gatilho é `retuneSlider.onValueChange`, não `apvts.addParameterListener`.** Por
+   cobertura e por *thread*. O `SliderAttachment` se registra como listener do parâmetro e chama
+   `slider.setValue(..., sendNotificationSync)` quando ele muda — venha a mudança do mouse, da
+   **automação do host** ou do `setStateInformation` ao abrir um projeto. Então um único
+   callback cobre os três casos. E o `ParameterAttachment` já marshala para a *message thread*;
+   um `addParameterListener`, ao contrário, é chamado **na thread de áudio**, e mexer em
+   `Component` dali seria corrida de dados. É o mesmo mecanismo que já sustentava o
+   `lowlatButton.onStateChange` para o look-ahead.
+   Como o `onValueChange` só dispara em **mudança**, e o attachment escreve o valor no slider
+   *antes* de o lambda existir, o método é chamado uma vez à mão no construtor — a mesma
+   armadilha (e a mesma solução) que a Etapa 6 já tinha registrado para o Low Latency.
+2. **A faixa do aviso é reservada sempre, mesmo escondida.** Se ela nascesse e morresse
+   conforme o Retune Speed cruza o zero, os quatro sliders mudariam de altura no meio do
+   arrasto e a faixa inteira "pularia". O aviso é **pintado**, não é componente: é uma linha de
+   texto, e um `Label` só para ela seria mais código de layout do que a linha vale.
+
+### Verificação
+
+- **Compila**: VST3 e Standalone, MSVC 2022 / `Visual Studio 17 2022` x64, **zero erros**. Os
+  avisos que aparecem são os de depreciação de `juce::Font` que o arquivo inteiro já produzia —
+  nenhuma classe de aviso nova.
+- **`baseline.sh`**: os **37 checksums de áudio idênticos** à referência, os **8 invariantes**
+  passando, os **6 testes de unidade** passando e os **19 casos** de não-regressão da Etapa 2
+  reproduzindo bit a bit. É o que se espera de uma mudança que só toca o editor.
+- **Sem teste automatizado**: desabilitação de controle e texto de interface seguem conferidos
+  por olho humano no app Standalone, como já era o caso do layout desde a Etapa 1-bis.
+
+> ⚠️ **Duas armadilhas de ambiente encontradas ao verificar**, que valem registro porque vão
+> reaparecer:
+>
+> 1. **A linha de base não fecha nesta máquina, e não é regressão.**
+>    `src/offline_causal/main.cpp` imprime o **caminho absoluto** do WAV de entrada no log
+>    (`Compare ouvindo: entrada (%s)`), e o `baseline.sh` inclui o log no checksum. Como a
+>    referência foi gravada noutro caminho, os 9 casos `gold_*` divergem na coluna `log=` em
+>    qualquer máquina que não seja a de gravação. A coluna `wav=` — o áudio, que é o que
+>    importa — bate em todos os 37. Vale limpar o caminho no `sed` de scrub do script.
+> 2. **Em *worktree*, o `baseline/etapa2-legado.sha256` sai com CRLF** e a não-regressão da
+>    Etapa 2 falha nos 19 casos de uma vez, com o hash obtido **vazio**. Não é o motor: o
+>    `while read -r h nome` deixa o `\r` colado no nome, e `g_$nome.wav` vira um arquivo que não
+>    existe. O sintoma diagnóstico é justamente o *vazio* — uma regressão de verdade traria um
+>    hash diferente, não a ausência dele. Normalizado para LF, os 19 passam.
