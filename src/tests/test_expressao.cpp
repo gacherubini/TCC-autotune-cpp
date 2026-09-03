@@ -250,19 +250,27 @@ int main() {
     }
 
     // -----------------------------------------------------------------------
-    //  Os LIMITES NOVOS do Retune Speed (D6 do spec de encaixe e estabilidade).
+    //  O CONTRATO do Retune Speed no DSP: a constante de tempo pedida e' a
+    //  constante de tempo entregue, em toda a faixa que os CLIs aceitam.
     //
-    //  A faixa foi de 200 para 400 ms, e a faixa so vale a pena se a METADE
-    //  SUPERIOR dela fizer diferenca. Antes da estabilizacao da nota-alvo nao
-    //  fazia: o erro medio da saida ia de 22,7 para 23,8 cents entre 200 e
-    //  400 ms, porque nenhum filtro alcanca um alvo que troca a cada 35 ms. O
-    //  controle entregava numeros, nao efeito.
+    //  LEIA ISTO ANTES DE CITAR ESTE TESTE. Ele mede a resposta do filtro a um
+    //  ALVO ESTAVEL, sintetico. Nessas condicoes 200 e 400 ms de fato separam --
+    //  e ate 03/09/2026 este teste era citado como "a afirmacao que sustenta ter
+    //  esticado a faixa para 400 ms" (D6 do spec de encaixe e estabilidade).
     //
-    //  Aqui a diferenca e' medida onde ela existe de verdade -- na constante de
-    //  tempo do filtro, com um alvo estavel. E' a afirmacao que sustenta ter
-    //  esticado a faixa, e ela nao depende de material de audio.
+    //  Essa citacao estava ERRADA, e a varredura em exemplo-antes.wav mostrou por
+    //  que: com material real o alvo NAO e' estavel, e a partir de ~100 ms a saida
+    //  para de melhorar e o encaixe da nota so' piora (numeros em
+    //  plugin/PluginProcessor.cpp, no comentario do parametro `retune`). A faixa
+    //  EXPOSTA no plugin foi encolhida para 0..100 ms por causa disso.
+    //
+    //  O que este teste prova continua valendo e continua util: o DSP honra
+    //  qualquer retuneMs, entao retune=400 na linha de comando faz o que promete.
+    //  O que ele NAO prova -- e nunca provou -- e' que 400 ms seja util com voz.
+    //  Separacao de constante de tempo num alvo sintetico nao e' efeito audivel
+    //  num alvo que se mexe; foi exatamente essa troca que se fez sem perceber.
     // -----------------------------------------------------------------------
-    std::printf("\n== 7. faixa do Retune Speed ate 400 ms, com efeito na metade de cima ==\n");
+    std::printf("\n== 7. o DSP honra a constante de tempo pedida em toda a faixa ==\n");
     {
         // Tempo (ms) que a saida leva para cobrir 63 % do caminho ate a nota --
         // uma constante de tempo. Entrada 80 cents alta, alvo constante.
@@ -288,17 +296,92 @@ int main() {
             checar(std::fabs(1200.0 * std::log2(y / 220.0)) < 1e-9,
                    "retune = 0 encaixa a nota imediatamente (padrao de fabrica)");
         }
-        // A constante de tempo tem de seguir o valor pedido em toda a faixa.
-        for (double ms : { 25.0, 100.0, 200.0, 300.0, 400.0 }) {
+        // A constante de tempo tem de seguir o valor pedido. Os tres primeiros
+        // valores sao a faixa que o PLUGIN expoe (0..100 ms); os dois ultimos so'
+        // existem na linha de comando, e estao aqui porque o DSP tem de honrar o
+        // que os CLIs aceitam -- a linha de base roda retune= alto.
+        for (double ms : { 25.0, 50.0, 100.0, 200.0, 400.0 }) {
             const double medido = tempoDeSubida(ms);
             checar(std::fabs(medido - ms) < 0.10 * ms + 1.0,
                    "retune = %5.0f ms -> constante de tempo medida %6.1f ms", ms, medido);
         }
-        // E a metade de cima da faixa tem de SEPARAR: 400 ms nao pode soar como
-        // 200 ms. Este e' o teste que o platô de 22,7 -> 23,8 cents reprovava.
-        const double t200 = tempoDeSubida(200.0), t400 = tempoDeSubida(400.0);
-        checar(t400 > t200 * 1.8,
-               "200 ms (%.0f) e 400 ms (%.0f) sao distinguiveis: x%.2f", t200, t400, t400 / t200);
+        // A metade de cima da faixa EXPOSTA tem de separar: 100 ms nao pode se
+        // comportar como 50 ms. Antes este par era 200/400 -- os valores mudaram
+        // junto com o teto do plugin, a asercao e' a mesma.
+        const double t50 = tempoDeSubida(50.0), t100 = tempoDeSubida(100.0);
+        checar(t100 > t50 * 1.8,
+               "50 ms (%.0f) e 100 ms (%.0f) sao distinguiveis: x%.2f", t50, t100, t100 / t50);
+    }
+
+    // -----------------------------------------------------------------------
+    //  O TETO do tau efetivo (HUM_TAU_TETO). O Humanize estica a MESMA constante
+    //  de tempo que o Retune Speed, entao sem teto ele e' um caminho alternativo
+    //  para o regime que a faixa do slider passou a proibir: retune = 100 ms com
+    //  humanize = 1 dava tau = 400 ms, e media igual a retune = 400 ms puro nas
+    //  duas metades da nota (numeros no comentario do parametro `retune` em
+    //  plugin/PluginProcessor.cpp).
+    //
+    //  Sao tres contratos, e os tres podem regredir de formas diferentes:
+    //    a) ABAIXO do teto o Humanize continua funcionando (senao o teto matou o
+    //       controle em vez de limita-lo);
+    //    b) NO teto ele fica inerte -- bit a bit igual a humanize = 0 (e' o que
+    //       a tarja "Humanize sem efeito" do editor promete ao usuario);
+    //    c) ACIMA do teto ele continua inerte e NAO PUXA o tau para baixo, senao
+    //       um retune = 400 vindo da linha de comando viraria 100 calado.
+    // -----------------------------------------------------------------------
+    std::printf("\n== 8. o Humanize nao empurra o tau acima de HUM_TAU_TETO ==\n");
+    {
+        // Roda a malha com um tom que salta de altura DEPOIS que a rampa do
+        // Humanize ja saturou (2 s de nota sustentada, sem trecho nao-vozeado no
+        // meio -- e' isso que mantem 'desdeAtaque' correndo). Devolve a trilha.
+        auto trilha = [&](double retuneMs, double humanize) {
+            ParamsCorrecao p; p.tolCents = 0.0; p.retuneMs = retuneMs;
+            p.vibrato = 0.0; p.humanize = humanize;
+            CorretorAltura c; c.prepare(fs);
+            const double fA = 220.0;
+            const double fB = 220.0 * std::pow(2.0, 3.0 / 12.0);  // salta 3 semitons
+            // nB generoso: com retune = 400 ms meio segundo e' pouco mais de
+            // uma constante de tempo, e a medicao de 63 % sairia curta (media
+            // 240 em vez de 400) por falta de trecho, nao por causa do teto.
+            const int nA = fs * 2, nB = fs * 3;
+            std::vector<double> saida;
+            saida.reserve(nA + nB);
+            for (int i = 0; i < nA; ++i) saida.push_back(c.proxima(fA, p));
+            for (int i = 0; i < nB; ++i) saida.push_back(c.proxima(fB, p));
+            return saida;
+        };
+        // Constante de tempo medida no salto, ja com a rampa saturada.
+        auto tauNoSalto = [&](double retuneMs, double humanize) {
+            const auto s = trilha(retuneMs, humanize);
+            const int ini = fs * 2;
+            const double c0 = 1200.0 * std::log2(s[ini - 1] / 220.0);
+            const double c1 = 1200.0 * std::log2(s.back()   / 220.0);
+            const double alvo = c0 + (c1 - c0) * 0.632;
+            for (size_t i = ini; i < s.size(); ++i)
+                if (std::fabs(1200.0 * std::log2(s[i] / 220.0) - c0) >= std::fabs(alvo - c0))
+                    return 1000.0 * (double)(i - ini) / fs;
+            return 1e9;
+        };
+        const double teto = HUM_TAU_TETO * 1000.0;
+
+        // (a) abaixo do teto o Humanize ainda estica: 25 ms x 4 = 100 = o teto.
+        const double t25h0 = tauNoSalto(25.0, 0.0), t25h1 = tauNoSalto(25.0, 1.0);
+        checar(t25h1 > t25h0 * 2.0,
+               "retune=25: humanize estica de %.0f para %.0f ms (x%.2f)", t25h0, t25h1, t25h1 / t25h0);
+        checar(t25h1 <= teto * 1.15,
+               "retune=25 humanize=1 para no teto: %.0f ms (teto %.0f)", t25h1, teto);
+
+        // (b) e (c): no teto e acima dele o Humanize nao muda UMA AMOSTRA.
+        for (double ms : { 100.0, 400.0 }) {
+            const auto a = trilha(ms, 0.0), b = trilha(ms, 1.0);
+            bool igual = (a.size() == b.size());
+            for (size_t i = 0; igual && i < a.size(); ++i) igual = (a[i] == b[i]);
+            checar(igual, "retune=%3.0f ms: humanize=1 e' bit a bit igual a humanize=0", ms);
+        }
+        // E o de cima nao foi puxado para baixo: 400 ms continua sendo 400 ms.
+        const double t400 = tauNoSalto(400.0, 1.0);
+        checar(t400 > teto * 2.0,
+               "retune=400 humanize=1 continua lento (%.0f ms), o teto nao o grampeou", t400);
     }
 
     std::printf("\n%s (%d falha%s)\n", falhas ? "FALHOU" : "TUDO OK", falhas, falhas == 1 ? "" : "s");

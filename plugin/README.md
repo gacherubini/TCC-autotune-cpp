@@ -29,9 +29,10 @@ O que existe hoje, em `PluginEditor.h/.cpp`, sem uma linha de DSP nova:
   `Tolerancia` desenhada dentro, e uma faixa com o **histórico dos últimos 2,5 s** da correção
   aplicada. A quantidade de correção virou um número na tela, no lugar do vão entre duas
   agulhas.
-- **Nove controles embaixo, em três grupos:** **Escala** | **Correção** | **Motor**. Os quatro
-  widgets do Create Vibrato saíram na [Decisão 8](../docs/historico-e-decisoes.md#decisão-8--create-vibrato-sai-da-interface-fica-no-dsp-2026-08-31);
-  é o que fez 13 caberem em 9.
+- **Oito controles embaixo, em três grupos:** **Escala** | **Correção** | **Motor**. Os quatro
+  widgets do Create Vibrato saíram na [Decisão 8](../docs/historico-e-decisoes.md#decisão-8--create-vibrato-sai-da-interface-fica-no-dsp-2026-08-31)
+  e a `Tolerancia` saiu na [Decisão 10](../docs/historico-e-decisoes.md#decisão-10--o-usuário-não-pode-alcançar-o-som-ruim-2026-09-03);
+  é o que fez 13 caberem em 8.
 - **Tema verde escuro** (`TccLookAndFeel`). Duas cores carregam significado e não são gosto:
   `destaque` é **sempre** o sinal corrigido e `cantado` é **sempre** a altura crua do cantor.
   Elas são de famílias de matiz diferentes de propósito, senão a leitura do arco se perde.
@@ -144,10 +145,10 @@ senão realimenta). É o jeito mais rápido de ver a GUI e ouvir o efeito.
 | parâmetro | faixa | tipo | efeito |
 |---|---|---|---|
 | **Mix** | 0–1 | ao vivo | seco/molhado: 0 = só a entrada, 1 = só o corrigido (padrão 1) |
-| **Tolerancia** | 0–50 cents | ao vivo | zona morta. **Padrão 0** desde 03/09/2026: ela não encaixa a nota, empurra o desvio até a borda (tol 15 ⇒ resíduo de 15 ct) |
-| **Retune Speed** | 0–**400** ms | ao vivo | tempo até a nota. **Padrão 0** (efeito "duro") desde 03/09/2026; faixa até 400 ms para paridade com o Auto-Tune |
+| **Tolerancia** 🚫 | 0–50 cents | ao vivo | zona morta. **Padrão 0**, e **fora da tela** desde 03/09/2026: ela não encaixa a nota, empurra o desvio até a borda (tol 15 ⇒ resíduo de 15 ct) |
+| **Retune Speed** | 0–**100** ms | ao vivo | tempo até a nota. **Padrão 0** (efeito "duro"). Faixa encolhida de 400 para 100 ms em 03/09/2026: acima disso a medição mostra platô, não efeito |
 | **Natural Vibrato** ⚠️ | 0–2 | ao vivo | 0 = remove o vibrato, 1 = preserva (padrão), 2 = dobra |
-| **Humanize** ⚠️ | 0–1 | ao vivo | afrouxa o Retune Speed na sustentação da nota (padrão 0) |
+| **Humanize** ⚠️ | 0–1 | ao vivo | afrouxa o Retune Speed na sustentação da nota (padrão 0), **até o teto de 100 ms** (`HUM_TAU_TETO`). Inerte com Retune Speed já em 100 |
 | **Create Vibrato** 🚫 | off/sen/tri/qua | ao vivo | **gera** vibrato (≠ Natural Vibrato, que preserva) |
 | **Vibrato Rate** 🚫 | 0,1–10 Hz | ao vivo | taxa do vibrato gerado (padrão 5,5) |
 | **Vibrato Depth** 🚫 | 0–100 ct | ao vivo | profundidade do vibrato gerado (padrão 0 = desligado) |
@@ -169,11 +170,22 @@ constante de tempo positiva — nem chega a ser avaliado. Nessa condição os do
 automatizáveis pelo host; é comunicação, não mudança de DSP. Ver a decisão **D7** do
 [`spec-encaixe-e-estabilidade.md`](../docs/spec-encaixe-e-estabilidade.md).
 
+O **Humanize tem um segundo estado inerte**, desde 03/09/2026: com o **Retune Speed já em
+100 ms** ele não tem para onde crescer, porque o τ efetivo é limitado a `HUM_TAU_TETO`
+(100 ms, `src/core/dsp.h`). Nessa condição só o slider dele apaga, e a linha vira
+`Humanize sem efeito: Retune Speed no teto`. É o mesmo tratamento de D7 para uma causa nova.
+
 🚫 = **existe no parâmetro, não existe na tela.** Os quatro controles do Create Vibrato saíram
 do editor em **31/08/2026** ([Decisão 8](../docs/historico-e-decisoes.md#decisão-8--create-vibrato-sai-da-interface-fica-no-dsp-2026-08-31)):
-é um **gerador** num protótipo que se declara **corretor**. Eles continuam automatizáveis pelo
-host, salvos no estado e alcançáveis pelos CLIs (`vibforma=`, `vibtaxa=`, `vibprof=`,
-`vibamp=`). Não é widget esquecido — não "conserte".
+é um **gerador** num protótipo que se declara **corretor**. A **Tolerancia** saiu em
+**03/09/2026** ([Decisão 10](../docs/historico-e-decisoes.md#decisão-10--o-usuário-não-pode-alcançar-o-som-ruim-2026-09-03))
+pelo argumento vizinho: é o único controle cujo efeito é deixar a saída desafinada de propósito,
+e o padrão de fábrica já era 0. Os cinco continuam automatizáveis pelo host, salvos no estado e
+alcançáveis pelos CLIs (`tol=`, `vibforma=`, `vibtaxa=`, `vibprof=`, `vibamp=`). Não é widget
+esquecido — não "conserte".
+
+O **arco da zona morta continua desenhado** no `PainelAfinador`, guardado por `if (tol > 0)`:
+no padrão ele some sozinho, e reaparece se o host automatizar o parâmetro.
 
 **O Mix aparece na tela em %**, e não em 0–1 (desde 31/08/2026). O parâmetro em si continua
 0–1: quem muda é só a formatação do texto do slider.

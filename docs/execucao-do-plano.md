@@ -1644,3 +1644,83 @@ o orçamento. Os dois caminhos que restam, agora com a medição que os separa:
 
 `test_custo_bloco.cpp` agora mede os dois lados e **reprova qualquer correção que troque custo
 por estalo** — que é a armadilha em que esta tentativa caiu.
+
+---
+
+## Revisão de interface — faixas que o usuário não deveria alcançar (2026-09-03)
+
+Implementa a [Decisão 10](historico-e-decisoes.md#decisão-10--o-usuário-não-pode-alcançar-o-som-ruim-2026-09-03).
+Origem: relato do autor usando o plugin — *"tem como mudar tanto o retune speed que acaba ficando
+ruim a voz, fica lento e desafinada se colocar no máximo"*, mais a dúvida sobre a Tolerância e o
+Look-ahead serem controles que um cantor saiba operar.
+
+### O que foi feito
+
+| # | Mudança | Arquivo | Muda áudio? |
+|---|---|---|---|
+| 1 | Retune Speed 0–400 → **0–100 ms** | `plugin/PluginProcessor.cpp` | não (faixa de parâmetro) |
+| 2 | `Tolerancia` sai do editor (fica no DSP/APVTS/CLI); grupo CORREÇÃO de 4 para 3 colunas | `plugin/PluginEditor.cpp/.h` | não |
+| 3 | Teto `HUM_TAU_TETO = 100 ms` no τ efetivo do Humanize | `src/core/dsp.h` | **sim**, mas não na linha de base — ver abaixo |
+| 4 | Segundo estado inerte do Humanize, com aviso próprio | `plugin/PluginEditor.cpp/.h` | não |
+| 5 | Comentário da seção 7 corrigido; seção 8 nova prendendo o teto | `src/tests/test_expressao.cpp` | não |
+
+### O achado que motivou tudo
+
+**O Retune Speed satura em ~50 ms, não em 200.** A D6 tinha esticado a faixa para 400 ms apostando
+que a estabilização da nota-alvo faria a metade de cima valer alguma coisa. Rodei a varredura
+*depois* da estabilização e a aposta não se confirmou — os números estão na
+[Decisão 10](historico-e-decisoes.md#decisão-10--o-usuário-não-pode-alcançar-o-som-ruim-2026-09-03)
+e no comentário do parâmetro `retune`.
+
+Vale registrar o **erro de método** que isso expõe, porque ele é reaproveitável no texto do TCC.
+A D6 foi justificada pelo `test_expressao.cpp` seção 7, que mede a constante de tempo do filtro
+contra um **alvo estável e sintético**. Nessas condições 200 e 400 ms de fato separam, com folga
+(×2,00), e o teste passa. Mas com voz o alvo **se mexe**, e um filtro de 400 ms nunca alcança um
+alvo que troca a cada poucas dezenas de milissegundos. O teste media uma propriedade verdadeira e
+irrelevante, e foi citado como se medisse a útil.
+
+O teste continua no lugar — o DSP *tem* de honrar `retune=400` vindo do CLI — mas o comentário
+dele agora diz o que ele prova e o que **não** prova, com aquela distinção escrita.
+
+### O alçapão do Humanize
+
+Este não estava na queixa. Ao verificar se encolher a faixa do Retune fecharia mesmo o problema,
+percebi que o Humanize estica a **mesma** constante de tempo, por até 4× (`HUM_FATOR = 3`).
+
+Escrevi primeiro um contra-argumento — *"Humanize mantém o ataque rápido e só afrouxa a
+sustentação, então não é a mesma coisa"* — e ele **está errado**. Separando os quadros por tempo
+desde o ataque da nota, `retune=100 humanize=1` e `retune=400 humanize=0` dão o mesmo erro nas
+**duas** metades (ataque 25,7 vs 26,1 ct; sustentação 21,2 vs 21,2 ct). Era o mesmo som por outro
+botão. Sem a medição eu teria deixado o alçapão aberto com uma justificativa plausível.
+
+Daí saiu também um defeito **separado e ainda em aberto**: o Humanize degrada o ataque
+(17,2 → 24,2 ct com retune=25), porque `HUM_SUSTENTACAO = 0,200 s` põe a rampa em 39 % já aos
+100 ms. A promessa do manual da Antares e do comentário do `dsp.h` é *"only during the sustained
+portion"*, e a implementação não a cumpre. Escolher a constante nova pede a própria varredura;
+não foi feita.
+
+### O Natural Vibrato foi medido e está limpo
+
+Mesma suspeita, resultado oposto — e por isso ficou como está. Com `retune = 25 ms`:
+
+| Vibrato | ganho do gesto rápido | excursão da saída |
+|---|---|---|
+| 0 | 0,64× | 9,4 ct |
+| 0,5 | 0,73× | 10,6 ct |
+| **1,0 (padrão)** | **1,01×** | 14,7 ct |
+| 1,5 | 1,38× | 20,1 ct |
+| 2,0 | 1,78× | 25,9 ct |
+
+Monótono de ponta a ponta, sem platô, e o padrão de fábrica cai exatamente no 1,0× que a
+documentação promete. O desvio ao semitom cresce junto, mas aqui isso é o controle funcionando:
+vibrato preservado **é** desvio. Medir "encaixe" neste eixo penalizaria o acerto.
+
+### Verificação
+
+- `./baseline.sh conferir` → **`IDENTICO`** antes e depois de cada uma das três mudanças, incluindo
+  a de DSP. O teto do Humanize é no-op no padrão de fábrica (25 × 4 = 100 = o próprio teto), então
+  `st_humanize1` e `gold_humanize1` seguem bit a bit iguais e **não houve regravação**.
+- `plugin/build.sh` → compila e o `pluginval` passa com `SUCCESS`.
+- `test_expressao.cpp` seção 8, nova, prende os três contratos do teto: abaixo dele o Humanize
+  ainda estica (25 → 100 ms, ×4,00); **no** teto ele é bit a bit igual a `humanize=0`; **acima**
+  dele também, e sem puxar o τ para baixo (`retune=400 humanize=1` mede 399 ms).

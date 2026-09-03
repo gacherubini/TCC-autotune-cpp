@@ -514,6 +514,15 @@ inline float misturar(float seco, float molhado, double mix) {
 //  proprio Humanize. Ficam nomeados aqui para poderem ser discutidos no texto.
 inline constexpr double HUM_SUSTENTACAO = 0.200;  // s: constante da rampa ataque->sustentacao
 inline constexpr double HUM_FATOR       = 3.0;    // humanize=1 -> tau ate 4x na sustentacao
+// Teto do tau EFETIVO (s). O Humanize pode desacelerar a sustentacao ate aqui e
+// nao alem -- e' o mesmo 100 ms que o slider do Retune Speed expoe como maximo,
+// de proposito: os dois controles esticam a MESMA constante de tempo, entao um
+// teto que valesse so' para um deles seria uma porta dos fundos para o outro. A
+// justificativa do numero (a varredura que acha o joelho em ~50 ms e o plato
+// acima de 100) esta no comentario do parametro `retune` em
+// plugin/PluginProcessor.cpp. Ver o uso em CorretorAltura::proxima() para a
+// razao de o teto ser max(tau, HUM_TAU_TETO) e nao HUM_TAU_TETO puro.
+inline constexpr double HUM_TAU_TETO    = 0.100;  // s: 100 ms, o teto do Retune Speed
 
 //  ETAPA 5 -- Create Vibrato. Aqui o plugin deixa de so CORRIGIR e passa a
 //  GERAR: um vibrato sintetico somado a altura de saida, com forma, taxa e
@@ -769,7 +778,29 @@ public:
         if (p.humanize > 0.0 && tau > 0.0) {
             const double t     = (double)desdeAtaque / fs;
             const double rampa = 1.0 - std::exp(-t / HUM_SUSTENTACAO);
-            tau *= 1.0 + p.humanize * HUM_FATOR * rampa;
+            // O TETO. Sem ele o Humanize e' um atalho para o regime que a
+            // interface acabou de proibir: com o Retune Speed no maximo exposto
+            // (100 ms) e Humanize em 1, o tau efetivo dava 400 ms -- exatamente
+            // o valor que a varredura reprovou e que saiu da faixa do slider em
+            // 03/09/2026. Medido em exemplo-antes.wav, `retune=100 humanize=1` e
+            // `retune=400 humanize=0` davam o MESMO erro nas duas metades da
+            // nota (ataque 25,7 vs 26,1 ct; sustentacao 21,2 vs 21,2 ct). Nao
+            // eram parecidos: eram a mesma coisa por outro botao.
+            //
+            // O teto e' max(tau, HUM_TAU_TETO), e nao HUM_TAU_TETO puro, por uma
+            // razao de contrato: os CLIs aceitam retune= acima de 100 ms, e o
+            // DSP tem de honrar o que lhe pedem (test_expressao secao 7 prende
+            // isso, e a linha de base roda valores altos). Com essa forma o
+            // Humanize nunca EMPURRA o tau acima de 100 ms, e tambem nunca
+            // PUXA para baixo o que o usuario ja pediu -- com tau >= 100 ms ele
+            // simplesmente nao faz nada, que e' a leitura honesta.
+            //
+            // No padrao de fabrica isto nao muda nada: com retune = 25 ms o
+            // crescimento maximo e' 25 x 4 = 100 ms, que e' o proprio teto. Por
+            // isso os casos st_humanize1/gold_humanize1 da linha de base seguem
+            // bit a bit iguais -- o teto so' passa a agir acima de 25 ms.
+            const double teto = std::max(tau, HUM_TAU_TETO);
+            tau = std::min(tau * (1.0 + p.humanize * HUM_FATOR * rampa), teto);
         }
         const double alpha     = (tau > 0.0) ? std::exp(-1.0 / (tau * fs)) : 0.0;
 

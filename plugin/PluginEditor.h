@@ -138,17 +138,18 @@ private:
     juce::Rectangle<int> faixaAvisoInerte;
     // true = Retune Speed em zero, os dois controles de expressao estao mudos.
     bool expressaoInerte = false;
+    bool humanizeInerte  = false;
 
     juce::ComboBox vozCombo, tonicaCombo, escalaCombo;
-    juce::Slider   mixSlider, tolSlider, retuneSlider, vibratoSlider, lookSlider, humanizeSlider;
-    juce::Label    vozLabel, tonicaLabel, escalaLabel, mixLabel, tolLabel, retuneLabel,
+    juce::Slider   mixSlider, retuneSlider, vibratoSlider, lookSlider, humanizeSlider;
+    juce::Label    vozLabel, tonicaLabel, escalaLabel, mixLabel, retuneLabel,
                    vibratoLabel, lookLabel, humanizeLabel;
     juce::ToggleButton lowlatButton { "Low Latency" };
 
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ComboAttachment  = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
     using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
-    std::unique_ptr<SliderAttachment> mixAttach, tolAttach, retuneAttach, vibratoAttach,
+    std::unique_ptr<SliderAttachment> mixAttach, retuneAttach, vibratoAttach,
                                       lookAttach, humanizeAttach;
     std::unique_ptr<ComboAttachment>  vozAttach, tonicaAttach, escalaAttach;
     std::unique_ptr<ButtonAttachment> lowlatAttach;
