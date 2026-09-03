@@ -55,7 +55,7 @@ static std::vector<double> trilha(int fs, int N) {
         if (t < 0.10 || (t > 0.95 && t < 1.10) || t > 2.60) continue;
         const double base = (t < 1.10) ? 220.0 : 261.63;
         const double dv   = (t < 1.10) ? (-30.0 + 20.0*t) : (18.0 - 6.0*t);
-        f0[(size_t)i] = base * std::pow(2.0, (dv + 22.0*std::sin(2*M_PI*5.5*t)) / 1200.0);
+        f0[(size_t)i] = base * std::pow(2.0, (dv + 22.0*std::sin(2*PI*5.5*t)) / 1200.0);
     }
     return f0;
 }
@@ -69,7 +69,7 @@ static double amplitudeCents(const ParamsCorrecao& p, int fs, double ini, double
     const int N = (int)(fim * fs) + 1;
     for (int i = 0; i < N; ++i) {
         const double t = (double)i / fs;
-        const double y = c.proxima(220.0 * std::pow(2.0, ampEntrada*std::sin(2*M_PI*fv*t)/1200.0), p);
+        const double y = c.proxima(220.0 * std::pow(2.0, ampEntrada*std::sin(2*PI*fv*t)/1200.0), p);
         if (t < ini) continue;
         const double yc = 1200.0 * std::log2(y / 220.0);
         lo = std::fmin(lo, yc); hi = std::fmax(hi, yc);

@@ -67,7 +67,7 @@ static std::vector<double> trilhaF0(int fs, int N) {
         if (t < 0.10 || (t > 0.95 && t < 1.10) || t > 2.60) continue;   // nao-vozeado
         const double base   = (t < 1.10) ? 220.0 : 261.63;              // A3 -> C4
         const double deriva = (t < 1.10) ? (-30.0 + 20.0 * t) : (18.0 - 6.0 * t);
-        const double vib    = 22.0 * std::sin(2.0 * M_PI * 5.5 * t);
+        const double vib    = 22.0 * std::sin(2.0 * PI * 5.5 * t);
         f0[(size_t)i] = base * std::pow(2.0, (deriva + vib) / 1200.0);
     }
     return f0;
@@ -153,7 +153,7 @@ int main() {
             double lo = 1e9, hi = -1e9;
             for (int i = 0; i < N; ++i) {
                 const double t = (double)i / fs;
-                const double cents = amp * std::sin(2.0 * M_PI * fv * t);
+                const double cents = amp * std::sin(2.0 * PI * fv * t);
                 const double y = c.proxima(220.0 * std::pow(2.0, cents / 1200.0), p);
                 if (t < 1.5) continue;          // descarta o transitorio do filtro
                 const double yc = 1200.0 * std::log2(y / 220.0);
@@ -162,7 +162,7 @@ int main() {
             return (hi - lo) / 2.0;             // amplitude em cents
         };
         for (double tauMs : {10.0, 25.0, 100.0}) {
-            const double fc = 1.0 / (2.0 * M_PI * (tauMs / 1000.0));
+            const double fc = 1.0 / (2.0 * PI * (tauMs / 1000.0));
             const double G  = fv / std::sqrt(fv * fv + fc * fc);
             const double medido = amplitudeSaida(tauMs, 1.0);
             const double teorico = amp * G;

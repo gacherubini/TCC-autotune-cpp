@@ -82,10 +82,10 @@ int main() {
         // Sinal vozeado sintetico: 200 Hz com harmonicos e envelope, para que o
         // pYIN encontre pitch de verdade e o PSOLA rode (e nao um caso trivial).
         for (int i = 0; i < N; ++i) {
-            double t = (double)i / fs, env = 0.5 * (1.0 - std::cos(2.0 * M_PI * t));
-            x[(size_t)i] = (float)(env * (0.6 * std::sin(2*M_PI*200*t)
-                                        + 0.3 * std::sin(2*M_PI*400*t)
-                                        + 0.1 * std::sin(2*M_PI*600*t)));
+            double t = (double)i / fs, env = 0.5 * (1.0 - std::cos(2.0 * PI * t));
+            x[(size_t)i] = (float)(env * (0.6 * std::sin(2*PI*200*t)
+                                        + 0.3 * std::sin(2*PI*400*t)
+                                        + 0.1 * std::sin(2*PI*600*t)));
         }
 
         StreamParams p0; p0.mix = 0.0;
@@ -114,7 +114,7 @@ int main() {
         std::vector<float> x((size_t)N);
         for (int i = 0; i < N; ++i) {
             double t = (double)i / fs;
-            x[(size_t)i] = (float)(0.5 * std::sin(2*M_PI*220*t) + 0.2 * std::sin(2*M_PI*440*t));
+            x[(size_t)i] = (float)(0.5 * std::sin(2*PI*220*t) + 0.2 * std::sin(2*PI*440*t));
         }
         // Se o seco fosse lido "de agora" em vez de pelo indice absoluto, o
         // resultado passaria a depender de onde caem as bordas dos blocos.

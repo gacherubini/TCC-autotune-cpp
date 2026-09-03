@@ -334,7 +334,7 @@ enum class FormaVibrato { Nenhuma = 0, Senoide = 1, Triangular = 2, Quadrada = 3
 
 inline double formaVibrato(FormaVibrato f, double fase) {
     switch (f) {
-        case FormaVibrato::Senoide:    return std::sin(2.0 * M_PI * fase);
+        case FormaVibrato::Senoide:    return std::sin(2.0 * PI * fase);
         // Triangular: sobe de -1 a 1 na primeira metade, desce na segunda.
         case FormaVibrato::Triangular: return (fase < 0.5) ? (4.0 * fase - 1.0)
                                                            : (3.0 - 4.0 * fase);
