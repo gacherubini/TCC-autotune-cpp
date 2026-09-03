@@ -50,8 +50,20 @@ namespace ids {
 
 // Listas dos combos. A ORDEM define o índice salvo — manter em sincronia com
 // nomeVoz()/textoEscala() abaixo.
-const juce::StringArray kVozes  {
-    "Baixo", "Baritono", "Tenor", "Contralto", "Mezzo", "Soprano", "Instrumento" };
+//
+// Etapa "encaixe e estabilidade" (D4): a lista de tessituras ENCOLHEU de 7 para
+// 4 e passou a ser a do Auto-Tune. Ela não é mais montada aqui: a tabela mora em
+// dsp.h (vozDaInterface), junto da razão da ordem e do rótulo com a faixa em
+// notas, para que a GUI e os testes leiam a MESMA fonte. Ver o comentário longo
+// lá — em especial por que o índice 3 é `Instrument`.
+//
+// Os nove presets de presetVoz() continuam alcançáveis por `voz=` na linha de
+// comando. Só a interface encolheu.
+const juce::StringArray kVozes = [] {
+    juce::StringArray a;
+    for (int i = 0; i < N_VOZES_UI; ++i) a.add(vozDaInterface(i).rotulo);
+    return a;
+}();
 // Etapa 1: 12 tonicas x 3 modos = 24 tonalidades + cromatico, no lugar dos
 // 6 combos fixos que existiam antes (ver docs/execucao-do-plano.md).
 const juce::StringArray kTonicas {
@@ -62,12 +74,13 @@ const juce::StringArray kEscalas {
 // FormaVibrato de dsp.h -- o indice do combo e' convertido direto.
 const juce::StringArray kFormasVib { "Off", "Senoide", "Triangular", "Quadrada" };
 
+// Era um switch sobre o índice, com `default: instrumento`. Isso é exatamente o
+// que não sobrevive a uma lista que muda de tamanho: encolher o combo sem
+// encolher o switch faria o menu mostrar uma tessitura e o DSP usar outra, sem
+// erro de compilação. Agora as duas coisas saem da mesma tabela em dsp.h, e
+// src/tests/test_vozes.cpp prende uma à outra.
 const char* TccAutotuneProcessor::nomeVoz(int idx) {
-    switch (idx) {
-        case 0: return "baixo";    case 1: return "baritono"; case 2: return "tenor";
-        case 3: return "contralto";case 4: return "mezzo";    case 5: return "soprano";
-        default: return "instrumento";
-    }
+    return vozDaInterface(idx).preset;
 }
 // A tabela mora em dsp.h (montarEscala), para que GUI e testes usem a mesma.
 std::string TccAutotuneProcessor::textoEscala(int tonica, int escala) {
@@ -123,9 +136,11 @@ TccAutotuneProcessor::criarParametros() {
     // a linha de base mede o motor padrao. Ver docs/especificacao-v3-ponteiro.md.
     layout.add(std::make_unique<AudioParameterBool>(
         ParameterID{ ids::lowlat, 1 }, "Low Latency", false));
-    // voz — preset de tessitura (define fmin/fmax). ESTRUTURAL. Default Contralto.
+    // voz — preset de tessitura (define fmin/fmax). ESTRUTURAL.
+    // Padrão de fábrica Alto-Tenor (índice 1): é o único dos quatro que cobre o
+    // take medido inteiro. Ver VOZ_UI_PADRAO em dsp.h para a medição e o preço.
     layout.add(std::make_unique<AudioParameterChoice>(
-        ParameterID{ ids::voz, 1 }, "Voz (tessitura)", kVozes, 3));
+        ParameterID{ ids::voz, 1 }, "Voz (tessitura)", kVozes, VOZ_UI_PADRAO));
     // escala — cromatica ou tonica maior/menor. ESTRUTURAL (re-prepare por simplicidade).
     layout.add(std::make_unique<AudioParameterChoice>(
         ParameterID{ ids::tonica, 1 }, "Tonica", kTonicas, 0));
@@ -221,7 +236,7 @@ void TccAutotuneProcessor::aplicarParametros() {
 
     // Preset de tessitura -> fmin/fmax (a grade de pitch do núcleo).
     double fmin = FMIN, fmax = FMAX;
-    presetVoz(nomeVoz(pVoz ? (int) pVoz->load() : 3), fmin, fmax);
+    presetVoz(nomeVoz(pVoz ? (int) pVoz->load() : VOZ_UI_PADRAO), fmin, fmax);
     p.fmin = fmin; p.fmax = fmax;
 
     // Escala é global (g_permitida via definirEscala), lida por notaAlvo.

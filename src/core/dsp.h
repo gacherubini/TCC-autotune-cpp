@@ -197,6 +197,62 @@ inline bool presetVoz(std::string nome, double& fmin, double& fmax) {
     return true;
 }
 
+// ---------------------------------------------------------------------------
+//  A lista de tessituras EXPOSTA NA INTERFACE (o "Input Type" do Auto-Tune).
+//
+//  Ela e' MENOR que presetVoz(): quatro itens contra nove. Os nove continuam
+//  resolvendo pela linha de comando, e isso e' deliberado -- eles sao DADOS DE
+//  MEDICAO antes de serem itens de menu. Foi com os presets SATB que a tabela de
+//  erro de oitava e a de cobertura de tessitura do spec foram levantadas, e o
+//  texto do TCC cita as duas: jogar os nove fora destruiria a capacidade de
+//  reproduzir numeros que o trabalho afirma.
+//
+//  A tabela mora AQUI, e nao na GUI, pela mesma razao que montarEscala() mora
+//  aqui: para que a interface e os testes leiam a MESMA fonte. O modo de falha
+//  concreto que isso evita ja existia -- nomeVoz() era um switch sobre o indice
+//  do combo, com 'default: instrumento'. Encolher a lista sem encolher o switch
+//  faria o indice 1 devolver "baritono" enquanto o combo mostrava outra coisa:
+//  o menu diria uma tessitura e o DSP usaria outra, sem erro de compilacao e sem
+//  teste falhando, porque nao havia nada ligando os dois.
+//
+//  A ORDEM E' DELIBERADA, e a razao precisa ficar junto da tabela senao a
+//  proxima reordenacao a desfaz sem perceber. A lista encolheu de 7 para 4, e a
+//  APVTS grava o indice do AudioParameterChoice: um projeto salvo com
+//  'Contralto' (indice 3 da lista antiga) reabre no indice 3 da lista NOVA. Por
+//  isso o indice 3 e' 'Instrument', a faixa mais larga e a unica imune ao erro
+//  de oitava. O pior pouso possivel seria 'Low Male', cujo teto de 392 Hz corta
+//  18,5 % do take medido. Isto nao e' sorte a herdar em silencio: e' escolha.
+//
+//  Os rotulos trazem a faixa em NOTAS, nao em Hz, porque e' a leitura que o
+//  cantor consegue usar ("minha nota mais grave e' um Mi2, entao Low Male
+//  serve"). src/tests/test_vozes.cpp confere que cada rotulo bate com o
+//  presetVoz() correspondente -- e' o que prende o texto ao numero.
+// ---------------------------------------------------------------------------
+struct VozDaInterface {
+    const char* rotulo;   // o que o combo mostra
+    const char* preset;   // o nome que presetVoz() entende
+};
+
+inline constexpr int N_VOZES_UI = 4;
+
+// Padrao de fabrica: Alto-Tenor. A medicao da §3 do spec mostra que ele cobre
+// 100 % do take do autor, contra 98,6 % do Contralto (o padrao ate 03/09/2026),
+// que cortava 1,4 % dos graves. Preco registrado: preset mais largo significa
+// fs/FMIN maior, logo mais latencia no PSOLA -- 337 amostras de guarda contra
+// 252 do Contralto.
+inline constexpr int VOZ_UI_PADRAO = 1;
+
+inline const VozDaInterface& vozDaInterface(int idx) {
+    static const VozDaInterface tabela[N_VOZES_UI] = {
+        { "Soprano (C4-C6)",    "soprano"     },
+        { "Alto-Tenor (C3-F5)", "altotenor"   },   // padrao de fabrica
+        { "Low Male (E2-G4)",   "lowmale"     },
+        { "Instrument (G1-B6)", "instrumento" },   // indice 3: ver acima
+    };
+    if (idx < 0 || idx >= N_VOZES_UI) idx = N_VOZES_UI - 1;
+    return tabela[idx];
+}
+
 inline std::string hzParaNota(double f) {
     if (f <= 0.0) return "-";
     static const char* nomes[12] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};

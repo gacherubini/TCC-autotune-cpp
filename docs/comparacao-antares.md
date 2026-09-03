@@ -28,7 +28,7 @@ Controles do Auto-Tune Artist (view ADVANCED) contra os do protótipo
 
 | Auto-Tune Artist | Protótipo hoje | Situação |
 |---|---|---|
-| **INPUT TYPE** (Soprano / Alto-Tenor / Low Male / Instrument / Bass Inst.) | `Voz` — 7 presets SATB | ✅ equivalente, e o protótipo é **mais granular** (7 contra 5) |
+| **INPUT TYPE** (Soprano / Alto-Tenor / Low Male / Instrument / Bass Inst.) | `Voz` — 4 presets, os mesmos nomes | ✅ **paridade** na interface (4 contra 5; falta `Bass Instrument`, que não existe no DSP). A granularidade extra passou a ser capacidade da **linha de comando**: os 9 presets SATB continuam em `presetVoz()` e alcançáveis por `voz=` |
 | **KEY** (12 tônicas) + **SCALE** | `Escala` — 7 combos fixos | ⚠️ **lacuna** — ver §3 |
 | **RETUNE SPEED** (ms) | `Glide` (ms) | ⚠️ estrutura certa, sinal errado — ver §4 |
 | **FLEX-TUNE** (cents) | `Tolerancia` (cents) | 🔴 **NÃO são equivalentes** — mecanismos opostos, ver nota abaixo |
