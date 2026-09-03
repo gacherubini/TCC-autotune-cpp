@@ -81,7 +81,7 @@ int main() {
     std::printf("== 1. k=0 + ataqueNoAlvo reproduz a Etapa 2 amostra a amostra ==\n");
     for (double glide : {0.0, 15.0, 40.0, 120.0}) {
         ParamsCorrecao p; p.tolCents = 15.0; p.retuneMs = glide;
-        p.vibrato = 0.0; p.ataqueNoAlvo = true;
+        p.vibrato = 0.0; p.ataqueNoAlvo = true; p.semHisterese = true;
         CorretorAltura novo; novo.prepare(fs);
         CorretorEtapa2 velho; velho.fs = fs;
 

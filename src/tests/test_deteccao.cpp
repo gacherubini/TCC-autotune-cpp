@@ -321,7 +321,7 @@ static constexpr double PCT_TOL        = 6.0;
 
 // Ligada pelo ticket 04: as afirmacoes deixam de ser "reproduz o defeito" e
 // passam a ser "melhorou contra o defeito congelado acima".
-static constexpr bool HISTERESE_ATIVA = false;
+static constexpr bool HISTERESE_ATIVA = true;
 
 // Duracao (ms) de cada nota emitida: trecho maximo de amostras vozeadas em que
 // notaMaisProximaMidi(fout) nao muda. Com retune = 0 o fout E' o alvo, entao
@@ -371,6 +371,153 @@ static void secaoPiscar(const std::vector<float>& take, int fs) {
     }
 }
 
+// ---------------------------------------------------------------------------
+//  SECAO 4 — a CONTRAPROVA, sem a qual a secao 3 nao vale nada.
+//
+//  "Duracao mediana de nota subiu" e' passavel por uma implementacao que
+//  simplesmente TRANQUE a nota-alvo, e isso seria pior que o defeito: o plugin
+//  deixaria de seguir a melodia. Por isso a estabilizacao precisa ser cobrada
+//  dos dois lados, e este e' o lado que dói.
+//
+//  O criterio e' FIDELIDADE DE DURACAO, e nao a presenca das notas. A diferenca
+//  nao e' teorica -- ela apareceu na calibracao. Com permanencia minima de
+//  100 ms, uma melodia de notas de 62 ms ainda emitia as oito notas na ordem
+//  certa, e um teste que so contasse presenca teria aprovado. As duracoes
+//  emitidas eram 52, 58, 100, 16, 58, 58, 100 e 4 ms: todas as notas la, e o
+//  ritmo destruido. Um cantor ouviria isso como o plugin engasgando, nao como
+//  correcao. Com 50 ms as mesmas oito saem em 52-58 ms cada, seguindo a entrada.
+// ---------------------------------------------------------------------------
+
+// Voz sintetica que segue uma trajetoria de altura arbitraria (f0 por amostra),
+// com fase continua -- e' o que permite montar melodia e glissando.
+static std::vector<float> vozDeTrajetoria(int fs, const std::vector<double>& f0) {
+    std::vector<float> x(f0.size(), 0.0f);
+    double fase = 0.0;
+    const double T = (double)f0.size() / fs;
+    for (size_t i = 0; i < f0.size(); ++i) {
+        if (f0[i] <= 0.0) continue;
+        fase += f0[i] / fs;
+        if (fase >= 1.0) fase -= std::floor(fase);
+        double s = 0.0, norm = 0.0;
+        const int nHarm = std::min(20, std::max(1, (int)((0.45 * fs) / f0[i])));
+        for (int h = 1; h <= nHarm; ++h) {
+            const double a = 1.0 / std::pow((double)h, 1.2);
+            s += a * std::sin(2.0 * PI * h * fase); norm += a;
+        }
+        const double t = (double)i / fs;
+        const double env = (1.0 - std::exp(-t / 0.020))
+                         * std::max(0.0, 1.0 - std::exp(-(T - t) / 0.020));
+        x[i] = (float)(0.7 * (s / norm) * env);
+    }
+    return x;
+}
+
+// Semitons emitidos, em ordem, com a duracao de cada trecho.
+static void notasEmitidas(const std::vector<float>& fout, int fs,
+                          std::vector<int>& seq, std::vector<double>& ms) {
+    size_t i = 0; const size_t n = fout.size();
+    while (i < n) {
+        while (i < n && fout[i] <= 0.0f) ++i;
+        if (i >= n) break;
+        const int nota = notaMaisProximaMidi((double)fout[i]);
+        const size_t ini = i;
+        while (i < n && fout[i] > 0.0f
+               && notaMaisProximaMidi((double)fout[i]) == nota) ++i;
+        seq.push_back(nota);
+        ms.push_back(1000.0 * (double)(i - ini) / (double)fs);
+    }
+}
+
+static void secaoContraprova(int fs) {
+    std::printf("\n== 4. contraprova: melodia rapida legitima e glissando ==\n");
+
+    // Escala de C subindo, oito notas. 125 ms e' a semicolcheia a 120 bpm -- o
+    // caso realista mais rapido. 62 ms e' o dobro disso, e esta aqui para
+    // registrar a MARGEM que a permanencia minima de 50 ms deixa.
+    for (double durMs : { 125.0, 62.5 }) {
+        const int nNotas = 8, passo[8] = { 0, 2, 4, 5, 7, 9, 11, 12 };
+        const int porNota = (int)(durMs / 1000.0 * fs);
+        std::vector<double> traj((size_t)(nNotas * porNota));
+        std::vector<int> esperado;
+        for (int k = 0; k < nNotas; ++k) {
+            const int midi = 60 + passo[k];
+            esperado.push_back(midi);
+            const double f = 440.0 * std::pow(2.0, (midi - 69) / 12.0);
+            for (int j = 0; j < porNota; ++j) traj[(size_t)(k * porNota + j)] = f;
+        }
+        const auto tr = rodarNucleo(vozDeTrajetoria(fs, traj), fs, "altotenor", 0.0, 0.0);
+        std::vector<int> seq; std::vector<double> ms;
+        notasEmitidas(tr.fout, fs, seq, ms);
+
+        // 1) as oito notas, na ordem, e SO elas -- nem trecho a mais nem a menos.
+        bool ordemOk = (seq.size() == (size_t)nNotas);
+        for (size_t k = 0; ordemOk && k < seq.size(); ++k)
+            ordemOk = (seq[k] == esperado[k]);
+        // 2) e com a duracao da ENTRADA. E' esta linha que reprova o alvo
+        //    trancado, e foi ela que reprovou a permanencia de 100 ms.
+        double piorDesvio = 0.0;
+        for (double d : ms) piorDesvio = std::fmax(piorDesvio, std::fabs(d - durMs) / durMs);
+
+        checar(ordemOk && piorDesvio < 0.35,
+               "melodia de %5.1f ms: %zu trechos (esperado %d), pior desvio de duracao %.0f%%",
+               durMs, seq.size(), nNotas, 100.0 * piorDesvio);
+    }
+
+    // Glissando de uma oitava: tem de virar uma escada que SOBE. Se a
+    // estabilizacao travasse, o span encolheria; se ela oscilasse, apareceriam
+    // descidas. Nenhum dos dois pode acontecer.
+    {
+        const int N = (int)(1.5 * fs);
+        std::vector<double> traj((size_t)N);
+        for (int i = 0; i < N; ++i)
+            traj[(size_t)i] = 220.0 * std::pow(2.0, (double)i / N);
+        const auto tr = rodarNucleo(vozDeTrajetoria(fs, traj), fs, "altotenor", 0.0, 0.0);
+        std::vector<int> seq; std::vector<double> ms;
+        notasEmitidas(tr.fout, fs, seq, ms);
+        int descidas = 0;
+        for (size_t k = 1; k < seq.size(); ++k) if (seq[k] < seq[k - 1]) ++descidas;
+        const int span = seq.empty() ? 0 : (seq.back() - seq.front());
+        checar(span >= 11 && descidas == 0 && seq.size() >= 10,
+               "glissando de uma oitava: %zu degraus, span %d semitons, %d descidas",
+               seq.size(), span, descidas);
+    }
+
+    // O CAMINHO DE IDENTIDADE, no pior caso que a estabilizacao inventou.
+    //
+    // Com tol = 600 a zona morta so devolve alvo == f0 enquanto |errCents| <=
+    // 600. Antes da histerese isso era trivial: o alvo era sempre o semitom mais
+    // proximo, entao o erro nunca passava de 50 cents. Com um semitom SEGURADO o
+    // erro deixou de ser limitado por construcao, e um salto de oitava dentro da
+    // janela de permanencia poderia leva-lo a 1200 -- quebrando 'tol=600 ==
+    // mix=0', que e' o controle do experimento deste projeto inteiro.
+    //
+    // SALTO_IMEDIATO_SEMITONS existe para fechar isso por construcao. Medido, a
+    // protecao de hoje vem de outro lugar: o caso passa mesmo com aquele teto
+    // desligado, porque o HMM nao deixa a trilha andar mais que 240 cents por
+    // quadro e o que foge disso sai como nao-vozeado, que zera a escolha. Este
+    // caso nao prova a necessidade do teto, entao -- prova que o caminho de
+    // identidade sobreviveu a estabilizacao, que e' o que precisa ser vigiado.
+    {
+        const int porNota = (int)(0.040 * fs);
+        std::vector<double> traj((size_t)(10 * porNota));
+        for (int k = 0; k < 10; ++k) {
+            const double f = (k % 2 == 0) ? 220.0 : 440.0;
+            for (int j = 0; j < porNota; ++j) traj[(size_t)(k * porNota + j)] = f;
+        }
+        const auto tr = rodarNucleo(vozDeTrajetoria(fs, traj), fs, "altotenor", 600.0, 0.0);
+        double piorCents = 0.0;
+        const size_t n = std::min(tr.f0.size(), tr.fout.size());
+        for (size_t i = 0; i < n; ++i) {
+            if (tr.f0[i] <= 0.0f || tr.fout[i] <= 0.0f) continue;
+            piorCents = std::fmax(piorCents,
+                std::fabs(1200.0 * std::log2((double)tr.fout[i] / (double)tr.f0[i])));
+        }
+        checar(piorCents < 1e-6,
+               "salto de oitava a cada 40 ms com tol=600: alvo == f0 (pior desvio %.2e ct)",
+               piorCents);
+    }
+}
+
 int main() {
     definirEscala("crom");
 
@@ -384,6 +531,7 @@ int main() {
     secaoVarredura(44100);
     secaoCobertura(take, fs);
     secaoPiscar(take, fs);
+    secaoContraprova(fs);
 
     std::printf("\n%s (%d falha%s)\n", falhas ? "FALHOU" : "TUDO OK",
                 falhas, falhas == 1 ? "" : "s");

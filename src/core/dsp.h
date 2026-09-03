@@ -340,6 +340,21 @@ inline int notaMaisProximaMidi(double f) {
 // `tol=600` é o caso de teste que exercita o PSOLA inteiro em identidade —
 // exatamente a cobertura que a antiga `forca=0` dava. Ver docs/execucao-do-plano.md,
 // Etapa 2, onde a equivalência está verificada por checksum.
+// A zona morta, medida contra um semitom JA ESCOLHIDO. Separar as duas coisas --
+// "qual semitom" e "quanto empurrar em direcao a ele" -- e' o que permite que a
+// escolha ganhe memoria (EscolhaDeSemitom, abaixo) sem que a zona morta precise
+// saber disso. notaAlvo() continua sendo esta funcao com a escolha SEM memoria,
+// e continua pura: e' ela que os oraculos congelados dos testes chamam.
+inline double notaAlvoDoSemitom(double f, int alvoMidi, double tolCents) {
+    double midi = 69.0 + 12.0 * std::log2(f / 440.0);
+    double errCents = (alvoMidi - midi) * 100.0;
+    double mag = std::fabs(errCents);
+    double mov = (mag <= tolCents) ? 0.0
+                                   : (errCents > 0 ? 1.0 : -1.0) * (mag - tolCents);
+    double corrMidi = midi + mov / 100.0;
+    return 440.0 * std::pow(2.0, (corrMidi - 69.0) / 12.0);
+}
+
 inline double notaAlvo(double f, double tolCents) {
     double midi = 69.0 + 12.0 * std::log2(f / 440.0);
     int alvo = notaMaisProximaMidi(f);
@@ -501,6 +516,135 @@ inline double formaVibrato(FormaVibrato f, double fase) {
     }
 }
 
+// ---------------------------------------------------------------------------
+//  ESTABILIZACAO DA NOTA-ALVO (D2 do spec de encaixe e estabilidade).
+//
+//  Ate 03/09/2026 a trilha de altura detectada chegava CRUA a escolha de
+//  semitom. Ruido de poucos cents na estimativa fazia a nota-alvo trocar de
+//  semitom, e a malha perseguia cada troca. Medido na configuracao do usuario:
+//  51 notas em 5 s, duracao MEDIANA de 34,8 ms, 76 % delas abaixo de 80 ms.
+//
+//  O efeito audivel nao e' "troca de nota": e' a saida nunca PARAR em cima de um
+//  semitom. E ele explica um segundo sintoma que parecia independente -- o
+//  Retune Speed "enjoado". Um filtro de constante 200 ms nunca alcanca um alvo
+//  que troca a cada 35 ms: ele corre atras e nao chega, e o que se ouve e' um
+//  deslizar permanente entre notas. E' por isso que no Auto-Tune (alvo estavel)
+//  um Retune lento soa como bypass limpo, e aqui soava como enjoo.
+//
+//  POR QUE AQUI, e nao filtrando a trilha de altura: filtrar a altura destruiria
+//  o vibrato do cantor, que e' exatamente o que a malha existe para preservar, e
+//  desfaria o trabalho da Etapa 3. O que precisa de memoria e' a DECISAO, nao a
+//  medida.
+//
+//  POR QUE NAO EM notaMaisProximaMidi(): aquilo e' funcao livre e pura, e a GUI
+//  a chama do timer da message thread com um argumento diferente (o fout, nao o
+//  f0). Estado ali seriam duas threads escrevendo na mesma variavel, com
+//  entradas diferentes, e ainda compartilhado entre os tres CLIs no mesmo
+//  processo. O estado mora em CorretorAltura, que ja e' a casa do estado da
+//  malha, ja tem reset() e ja e' membro de cada motor.
+//
+//  INVARIANCIA AO TAMANHO DE BLOCO, por construcao. O contador de permanencia
+//  anda por CHAMADA de proxima(), que roda uma vez por amostra emitida, e a
+//  emissao e' comandada pelo hop -- nunca pelo callback do host. Contar tempo
+//  por callback, ou por quantas amostras chegaram no bloco, quebraria a
+//  invariancia na hora. E' a mesma exigencia que o teto da janela do PSOLA
+//  declara inegociavel, e pela mesma razao.
+// ---------------------------------------------------------------------------
+
+//  Histerese, em cents. Tem um PISO imposto pela analise, e ele nao e' escolha:
+//  a trilha de F0 emitida vive numa grade de RES_CENTS = 20 cents, que e' a
+//  resolucao dos bins do HMM. Uma tremulacao de UM BIN ja sao 20 cents, entao
+//  uma histerese menor que isso nao filtraria nem o menor ruido possivel. A
+//  faixa util comeca em 25 e o valor saiu de medicao (ver o diario).
+//
+//  Vale registrar a amarracao, porque ela nao e' obvia: a resolucao da ANALISE
+//  poe um piso na resolucao da DECISAO. Baixar RES_CENTS para 10 foi considerado
+//  e rejeitado -- W_TRANS e SIGMA_TRANS estao em BINS, nao em cents, entao
+//  reescalar dobraria o numero de bins E a largura da janela de transicao, o que
+//  custa da ordem de 4x no Viterbi por quadro.
+#ifndef HISTERESE_CENTS
+inline constexpr double HISTERESE_CENTS = 30.0;
+#endif
+
+//  Permanencia minima, em segundos. A histerese sozinha nao pega a troca rapida
+//  quando o cantor esta de fato perto do meio do caminho entre dois semitons:
+//  ali as duas distancias ficam parecidas o tempo todo, e a margem nao decide.
+//
+//  O teto e' obvio e e' o contraponto: precisa ser curta o bastante para nao
+//  arrastar melodia rapida. Semicolcheias a 120 bpm duram 125 ms, entao a
+//  permanencia tem de ficar bem abaixo disso -- o valor escolhido e' o
+//  compromisso entre "nao piscar" e "nao engolir ornamento", e as duas pontas
+//  sao medidas no teste.
+#ifndef PERMANENCIA_MIN_S
+inline constexpr double PERMANENCIA_MIN_S = 0.050;
+#endif
+
+//  Sao CONSTANTES DE DESENHO, nao controles de usuario, pela mesma razao
+//  registrada para as constantes do Humanize: elas definem o que "nota" QUER
+//  DIZER, e isso e' decisao de projeto, nao gosto. Ficam nomeadas aqui para
+//  poderem ser discutidas no texto do TCC.
+//  Salto que dispensa as duas travas. Tremulacao de estimativa e' de poucos
+//  cents e nunca passa de um semitom vizinho; um salto MAIOR que um tom e' nota
+//  nova, e segurar nota nova e' o defeito que a historia 14 do spec proibe.
+//
+//  Ele tem um segundo efeito, que vale registrar com honestidade sobre o quanto
+//  ele e' necessario. Sem um teto, o semitom SEGURADO pode em principio ficar
+//  arbitrariamente longe da altura cantada durante a permanencia, e isso
+//  ameacaria o CAMINHO DE IDENTIDADE do projeto: com tol = 600 a zona morta so
+//  devolve alvo == f0 enquanto |errCents| <= 600, e um salto de oitava dentro da
+//  janela levaria o erro a 1200. Com o teto, o semitom segurado nunca fica a
+//  mais de 2 semitons + meio semitom da altura real -- 250 cents, folga de 2,4x.
+//
+//  Na pratica esse caso nao foi alcancado. Tentou-se: saltos de oitava a cada
+//  40 ms e varreduras de duas oitavas em 40 ms mantiveram tol=600 bit-identico
+//  MESMO com o teto desligado. A razao esta noutra camada -- o HMM nao deixa a
+//  trilha emitida andar mais que W_TRANS (12 bins, 240 cents) por quadro, e o
+//  que e' rapido demais para ele sai como NAO-VOZEADO, que zera esta escolha.
+//  Ou seja: hoje a identidade e' protegida por uma propriedade do Viterbi, e nao
+//  por esta constante. Ela fica como seguro barato contra essa protecao mudar,
+//  porque um acoplamento entre a largura da transicao do HMM e um caminho de
+//  identidade e' fragil demais para ficar implicito -- e porque, mesmo sem esse
+//  argumento, seguir nota nova depressa e' o comportamento certo.
+inline constexpr int SALTO_IMEDIATO_SEMITONS = 2;
+
+struct EscolhaDeSemitom {
+    void reset() { tem = false; atual = 0; desdeTroca = 0; }
+
+    // Semitom (numero MIDI) que deve valer como alvo para esta amostra.
+    int escolher(double f0Hz, double fs) {
+        const int candidato = notaMaisProximaMidi(f0Hz);
+        if (!tem) { atual = candidato; tem = true; desdeTroca = 0; return atual; }
+
+        ++desdeTroca;
+        if (candidato == atual) return atual;
+
+        // Salto grande: nota nova, sem discussao. Ver o comentario acima.
+        if (std::abs(candidato - atual) > SALTO_IMEDIATO_SEMITONS) {
+            atual = candidato; desdeTroca = 0; return atual;
+        }
+
+        // Permanencia minima: um semitom recem-escolhido nao troca tao cedo.
+        if ((double)desdeTroca < PERMANENCIA_MIN_S * fs) return atual;
+
+        // Histerese: o novo tem de estar MAIS PERTO QUE O ATUAL POR UMA MARGEM,
+        // e nao apenas mais perto. E' o que mata a oscilacao na fronteira: ali
+        // as duas distancias sao ~50 cents e a diferenca entre elas ronda zero,
+        // enquanto uma nota de verdade chega com a diferenca perto de 100.
+        const double midi = 69.0 + 12.0 * std::log2(f0Hz / 440.0);
+        const double distAtual = std::fabs(midi - (double)atual)     * 100.0;
+        const double distNovo  = std::fabs(midi - (double)candidato) * 100.0;
+        if (distAtual - distNovo < HISTERESE_CENTS) return atual;
+
+        atual = candidato; desdeTroca = 0;
+        return atual;
+    }
+
+private:
+    int  atual = 0;
+    bool tem = false;
+    long long desdeTroca = 0;   // chamadas de escolher() desde a ultima troca
+};
+
 struct ParamsCorrecao {
     // Etapa 2: 'forca' saiu daqui. Ela nao era um parametro da MALHA (nao tem
     // dimensao de tempo, nem decide o alvo) -- era uma dosagem de efeito, e
@@ -521,13 +665,25 @@ struct ParamsCorrecao {
     // a saida e' identica a da Etapa 2 amostra a amostra -- e' o que torna a
     // Etapa 3 verificavel por nao-regressao. Ver test_retune.cpp, secao 1.
     bool   ataqueNoAlvo = false;
+
+    // Flag INTERNA, irma da de cima e pela mesma razao. A escolha de semitom
+    // ganhou memoria (EscolhaDeSemitom), e memoria e' justamente o que a malha
+    // da Etapa 2 nao tinha. Sem uma neutralizacao, os oraculos congelados de
+    // test_retune.cpp e test_expressao.cpp -- que comparam bit a bit contra
+    // reimplementacoes das Etapas 2 e 3 -- passariam a falhar por medir OUTRA
+    // coisa, e perder essa prova para provar uma diferente seria troca ruim.
+    //
+    // 'legado=1' liga as duas, porque 'legado' sempre quis dizer "a malha da
+    // Etapa 2", e reproduzir aquela malha exige hoje tres valores neutros:
+    // vibrato = 0, ataqueNoAlvo e semHisterese.
+    bool   semHisterese = false;
 };
 
 class CorretorAltura {
 public:
     void prepare(double fsHz) { fs = fsHz; reset(); }
     void reset() { lpAlvo = 0.0; lpReal = 0.0; tinhaNota = false; desdeAtaque = 0;
-                   fase = 0.0; ganho = 1.0; }
+                   fase = 0.0; ganho = 1.0; semitom.reset(); }
 
     // Ganho de amplitude da ULTIMA amostra calculada por proxima() (Etapa 5).
     // Fica separado do retorno porque proxima() devolve ALTURA, e altura e
@@ -538,10 +694,16 @@ public:
     // Devolve o pitch-alvo em Hz para uma amostra cujo F0 detectado e f0Hz.
     // f0Hz <= 0 marca trecho nao-vozeado: devolve 0 e rearma o ataque.
     double proxima(double f0Hz, const ParamsCorrecao& p) {
-        if (f0Hz <= 0.0) { tinhaNota = false; ganho = 1.0; return 0.0; }
+        if (f0Hz <= 0.0) { tinhaNota = false; ganho = 1.0; semitom.reset(); return 0.0; }
 
         const double realCents = 1200.0 * std::log2(f0Hz / FMIN);
-        const double alvoCents = 1200.0 * std::log2(notaAlvo(f0Hz, p.tolCents) / FMIN);
+        // A escolha de semitom tem memoria (ver EscolhaDeSemitom). A zona morta
+        // continua sendo aplicada depois dela, sobre o semitom escolhido: as
+        // duas decisoes sao independentes e ficam separadas.
+        const double alvoHz = p.semHisterese
+            ? notaAlvo(f0Hz, p.tolCents)
+            : notaAlvoDoSemitom(f0Hz, semitom.escolher(f0Hz, fs), p.tolCents);
+        const double alvoCents = 1200.0 * std::log2(alvoHz / FMIN);
         // Etapa 4: o tau EFETIVO cresce com o tempo desde o ataque, se Humanize
         // estiver ligado. O ramo humanize==0 e' exato de proposito: ele tem de
         // devolver a Etapa 3 bit a bit, e nao "praticamente igual".
@@ -613,6 +775,7 @@ private:
     long long desdeAtaque = 0; // amostras desde o ataque da nota atual (Etapa 4)
     double fase   = 0.0;       // fase do LFO do Create Vibrato, em [0,1) (Etapa 5)
     double ganho  = 1.0;       // ganho de amplitude da ultima amostra (Etapa 5)
+    EscolhaDeSemitom semitom;  // escolha de semitom com memoria (D2)
 };
 
 // ---------------------------------------------------------------------------
@@ -645,7 +808,13 @@ inline bool lerFlagCorrecao(const std::string& a, ParamsCorrecao& p) {
     }
     // Flag INTERNA de teste (ver ParamsCorrecao::ataqueNoAlvo). Fica aqui, e nao
     // escondida, porque o baseline.sh precisa dela nos tres CLIs.
-    else if (a.rfind("legado=",   0) == 0) p.ataqueNoAlvo = (std::atoi(a.c_str() + 7) != 0);
+    else if (a.rfind("legado=",   0) == 0) {
+        // 'legado' quer dizer "a malha da Etapa 2", e reproduzir aquela malha
+        // exige HOJE tres valores neutros, nao um: vibrato = 0 (passado a parte),
+        // o ataque no alvo e a escolha de semitom sem memoria.
+        const bool v = (std::atoi(a.c_str() + 7) != 0);
+        p.ataqueNoAlvo = v; p.semHisterese = v;
+    }
     else return false;
     return true;
 }
