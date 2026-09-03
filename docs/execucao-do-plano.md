@@ -1284,10 +1284,13 @@ construção**, não por medição.
 
 **Os dois valores saíram de medição, e a segunda foi a que ensinou alguma coisa.**
 
-*Histerese = 30 cents.* O piso é imposto pela análise e não é escolha: a trilha de F0 vive numa
-grade de 20 cents (`RES_CENTS`), então nada abaixo disso filtraria sequer uma tremulação de um
-bin. Varrendo 25/30/35 aparece um joelho — **30 e 35 dão resultados idênticos**, ou seja, é em 30
-que o mecanismo satura. Subir mais não compra nada e arrisca nota de verdade.
+*Histerese = 30 cents.* ⚠️ Esta calibração foi **refeita** depois da revisão de código: a primeira
+comparava a diferença crua das duas distâncias, que vale o **dobro** do deslocamento da fronteira,
+então "30" valia 15 na prática — abaixo do piso de 20 que a própria análise impõe (a trilha de F0
+vive numa grade de `RES_CENTS` = 20 cents, e uma tremulação de um bin já são 20). Corrigido o
+fator 2 e re-varrido nas unidades certas: 15/20/25 são indistinguíveis porque a permanência
+domina, 30 melhora a mediana, e **35 começa a comer o glissando** (span de 11 semitons em vez de
+12). O valor tem agora piso *e* teto medidos, e 30 fica entre os dois.
 
 *Permanência mínima = 50 ms.* Quem fixou foi a **contraprova**, e vale registrar porque é uma
 armadilha de metodologia: com 100 ms, uma melodia de notas de 62 ms ainda emitia **as oito notas
@@ -1299,8 +1302,8 @@ oito saem em 52–58 ms cada, com 2,5× de margem sobre semicolcheias a 120 bpm 
 | | antes | depois |
 |---|---|---|
 | notas em 5 s | 51 | 34 |
-| duração mediana | 34,8 ms | **58,0 ms** |
-| notas abaixo de 80 ms | 76 % | **59 %** |
+| duração mediana | 34,8 ms | **63,9 ms** |
+| notas abaixo de 80 ms | 76 % | **56 %** |
 
 A contraprova tem dentes, e isso foi verificado: com o alvo **trancado** (permanência de 1 s), a
 seção da mediana passa lindamente — 265,5 ms, 18 % de notas curtas — e a contraprova reprova as
@@ -1362,10 +1365,72 @@ não são: a diferença está em como a APVTS serializa cada **tipo** de parâme
 **Preço assumido, e é o que motiva o ticket 06:** com `retune = 0` de fábrica, o `Natural Vibrato`
 e o `Humanize` nascem inertes.
 
+### Revisão de código — sete achados, e o que a medição fez com eles
+
+Uma revisão sobre o intervalo inteiro (`655fb92..HEAD`) encontrou sete defeitos. Seis viraram
+correção; um derrubou uma etapa inteira. Vale registrar porque **quatro deles eram invisíveis
+para a suíte de testes que esta mesma etapa acabara de escrever** — e três eram invisíveis
+porque o teste media a coisa errada.
+
+**O ticket 07 foi revertido.** É o achado que importa, e está detalhado na seção dele, abaixo.
+Resumo: o teto zerava os estouros de orçamento e criava, no motor **padrão**, um estalo de
+\|Δ\| **0,434** contra um pico de sinal de **0,269** — ~7 por segundo, todos na fronteira do
+commit. Trocava um defeito por outro maior.
+
+**O teste do ticket 07 rodava em β = 1.** A nota sintética era exatamente 220 Hz com `tol = 0`,
+então alvo = entrada e o PSOLA não deslocava nada. Justamente o único caso em que re-ancorar é
+inofensivo. Um teste verde sobre o caminho de identidade aprovou uma mudança que estala.
+
+**Duas calibrações minhas estavam erradas, e nos dois casos o número medido era o pior da
+varredura.**
+
+- `LIMIAR_GUARDA = 0,10` foi escolhido com um argumento bonito (é o limiar absoluto do YIN) e
+  calibrado contra o preset mais **largo**, onde a guarda varre pouco. Nos presets estreitos ela
+  varre muito mais e encontra vales rasos legítimos: a perda de vozeamento chegava a **97,0 %**,
+  estourando o orçamento de 2 pontos. Varrendo, 0,04 dá 99,3 % com a oitava ainda em 0 % e 40× de
+  folga sobre o verdadeiro positivo. **A literatura deu o número; a medição disse que ele não
+  servia aqui.**
+- A histerese tinha **fator 2**. As duas distâncias se movem em sentidos opostos, então a
+  diferença crua vale o dobro do deslocamento da fronteira: 30 cents de constante moviam a
+  fronteira em 15, **abaixo do piso de 20** que o comentário ao lado declarava obrigatório.
+  Corrigido, e re-calibrado nas unidades certas — e aí apareceu um **teto** que a primeira
+  varredura não via: em 35 o glissando perde um degrau.
+
+**Um oráculo passava por acidente.** A seção 1 de `test_expressao.cpp` comparava malha com estado
+contra malha sem, e passava porque a trilha sintética chega a −49,3 cents contra uma fronteira em
+−50. Faltava um centésimo de semitom para virar falha espúria.
+
+**Dois defeitos no próprio `baseline.sh`, ambos introduzidos por mim nesta etapa:**
+
+- `gravar-legado` saía com `exit 0` **antes** da checagem de invariante, então congelaria os
+  hashes de um motor que deixou de ser identidade em β = 1 e ainda devolveria sucesso — o oposto
+  exato do que o cabeçalho que eu tinha acabado de escrever promete. Agora recusa.
+- O laço de testes de unidade usava glob e execução **relativos ao diretório de chamada**. Rodado
+  de fora da raiz, o glob não casava nada e **todos** os testes eram pulados em silêncio. Uma
+  suíte que se desliga sozinha conforme o diretório é pior que uma que falha. Ancorados em
+  `$RAIZ`.
+
+**A regravação da tabela da Etapa 2 foi DESFEITA.** Ela só existiu por causa do teto; sem ele, os
+19 casos voltam aos hashes originais. O marco recupera a propriedade de nunca ter sido regravado,
+e junto voltam os comentários de proveniência que a regravação tinha apagado em silêncio — entre
+eles a nota de 26/08/2026 sobre o `st_block512`. O `gravar-legado` agora preserva esses
+comentários, o que deveria ter feito desde o início.
+
+**O que fica para o texto do TCC.** As três causas do spec tinham a mesma forma — mecanismo
+correto aplicado fora da sua faixa de validade. Os achados desta revisão têm outra, e ela é sobre
+*método*: **quatro dos sete só existiam porque a asserção media o lado fácil**. β = 1 em vez de
+β ≠ 1; presença de nota em vez de duração; preset largo em vez de estreito; diferença de
+distâncias em vez de deslocamento de fronteira. Em todos, o teste estava verde e o defeito
+intacto. É o argumento mais forte do trabalho a favor da contraprova obrigatória: não basta medir
+que melhorou, é preciso medir **o que a melhora pode ter quebrado**.
+
 ### O que continua pendente
 
+- **Causa 3 (custo do TD-PSOLA) segue ABERTA**, e agora com o caminho fechado por medição: não há
+  teto possível sobre uma `psolaSintetiza()` pura. Ou O(n) por bloco, ou cadeia de marcas com
+  estado. Não há terceira opção.
 - **Escuta.** Nada aqui foi ouvido. A naturalidade e a latência seguem pendentes de teste com
-  usuário, e é escuta que decide se 58 ms de mediana e permanência de 50 ms soam certo.
+  usuário, e é escuta que decide se 63,9 ms de mediana e permanência de 50 ms soam certo.
 - **Verificação visual** do combo novo, dos rótulos e dos controles desabilitados.
 - **Projetos de DAW salvos** reabrem em `Instrument` e precisam de reajuste manual da tessitura.
 

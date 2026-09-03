@@ -164,10 +164,17 @@ O teste com usuário reprovou dois requisitos não funcionais:
 |---|---|---|
 | **Latência** | ✅ **0,18 ms fixos com Low Latency** (+ 0..T variável, não declarada ao host) — **falta a escuta**. Com o PSOLA (padrão) continua em 71,4 ms / 57,9 ms (ver ressalva) | ver ressalva |
 | **Naturalidade** | endereçada pelas Etapas 3–5 (Retune Speed, Humanize, Natural Vibrato) — **falta a escuta** | vibrato preservado, ataque com glide |
-| **Encaixe da nota** | ✅ histerese de 30 ct + permanência de 50 ms (03/09/2026): mediana de nota **34,8 → 58,0 ms**, notas curtas **76 % → 59 %** — **falta a escuta** | a saída para em cima do semitom |
-| **Oitava errada** | ✅ guarda contra a subharmônica (03/09/2026): divergência de oitava **34,3 % → 0 %** | fora da faixa = sem voz, nos dois lados |
-| **Pipoco do TD-PSOLA** | ✅ teto na janela de re-síntese (03/09/2026): estouros do orçamento **19,6 % → 0 %** — **falta a escuta** | o motor padrão não estala |
+| **Encaixe da nota** | ✅ histerese de 30 ct + permanência de 50 ms (03/09/2026): mediana de nota **34,8 → 63,9 ms**, notas curtas **76 % → 56 %** — **falta a escuta** | a saída para em cima do semitom |
+| **Oitava errada** | ✅ guarda contra a subharmônica (03/09/2026): divergência de oitava **34,3 % → 0 %**, com perda de vozeamento de 0,3 pp | fora da faixa = sem voz, nos dois lados |
+| **Pipoco do TD-PSOLA** | 🔴 **ABERTO.** O teto na janela foi implementado, medido e **revertido**: ele zerava os estouros mas criava um estalo de \|Δ\| 0,434 (pico do sinal: 0,269) na fronteira de cada bloco. Ver abaixo | o motor padrão não estala |
 
+> 🔴 **A Causa 3 (custo do TD-PSOLA) continua aberta, e o caminho está fechado por medição.**
+> `psolaSintetiza()` ancora a grade de síntese na PRIMEIRA marca da janela, e a invariância a
+> truncamento do commit `e1ffd1d` vale para o FIM da região, não para o INÍCIO. Qualquer teto
+> move a âncora a cada commit e produz estalo. **Não há meio-termo**: ou a janela recua até a
+> âncora estável (custo O(n) por bloco, o defeito de hoje), ou a cadeia de marcas vira estado.
+> `src/tests/test_custo_bloco.cpp` mede os dois lados e reprova quem trocar custo por estalo.
+>
 > ⚠️ **Latência sempre tem de ser citada junto com o FMIN**, senão o número não quer dizer
 > nada: a guarda do PSOLA é proporcional a `fs/FMIN`. Os 57,9 ms que circulam no texto são do
 > preset contralto.
