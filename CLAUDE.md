@@ -34,6 +34,7 @@ que fundamentou a escolha do pYIN.
 | Entender a **tela do plugin** | [`plugin/README.md`](plugin/README.md#a-tela-gui-custom-31082026) + [Redesenho da interface](docs/execucao-do-plano.md#redesenho-da-interface-2026-08-31--fora-do-plano) |
 | Mexer no **motor v3 / Low Latency** | [`docs/especificacao-v3-ponteiro.md`](docs/especificacao-v3-ponteiro.md) + [Etapa 6 do diário](docs/execucao-do-plano.md#etapa-6--motor-v3-de-ponteiro-móvel-low-latency) |
 | Citar qualquer coisa no texto do TCC | [`docs/pesquisa-bibliografica.md`](docs/pesquisa-bibliografica.md) — e confira a [errata](docs/historico-e-decisoes.md#errata--afirmações-corrigidas-pela-pesquisa-bibliográfica-2026-08-26) antes de citar o doc técnico |
+| Mexer na **detecção de altura**, na **escolha de nota-alvo** ou na **janela do PSOLA** | [`docs/spec-encaixe-e-estabilidade.md`](docs/spec-encaixe-e-estabilidade.md) — ⚠️ três defeitos medidos que a linha de base **não pega**, porque são estáveis e reprodutíveis |
 
 **Não reimplemente nada antes de checar `historico-e-decisoes.md`** — vários bugs sutis
 (drift de fase do PSOLA, cliques, compressão temporal) já foram caçados e resolvidos, e as

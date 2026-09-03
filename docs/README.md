@@ -19,6 +19,7 @@
 | **[especificacao-v3-ponteiro.md](especificacao-v3-ponteiro.md)** | Especificação do motor v3 — ponteiro móvel sobre um anel, no lugar do TD-PSOLA: interface, fiação no streaming, controles (`motor=`/`lowlat=`/botão **Low Latency**), verificação e medição. | Mexer no motor v3 / Low Latency, ou entender a Etapa 6. |
 | **[plano-v3-ponteiro.md](plano-v3-ponteiro.md)** | 📐 Plano de execução da Etapa 6, por tarefa — o que a [execucao-do-plano.md](execucao-do-plano.md) registra como feito. | Só para reconstruir a ordem em que a Etapa 6 foi implementada. |
 | **[analise-v1-v2-v3.md](analise-v1-v2-v3.md)** | ⚠️ Compara os três caminhos de baixa latência **por estágio do pipeline**, mostra onde cada um corta e qual é o piso de cada um. **Corrige dois números de latência errados** em [modo-baixa-latencia.md](modo-baixa-latencia.md) e [pesquisa-latencia-antares.md](pesquisa-latencia-antares.md), e marca a §8 da especificação v3 como desatualizada. | **Antes de citar qualquer número de latência**, e antes de discutir v1/v2/v3. |
+| **[spec-encaixe-e-estabilidade.md](spec-encaixe-e-estabilidade.md)** | 🐛 Spec das três causas medidas em 03/09/2026: a detecção reporta **uma oitava abaixo** acima do `fmax` (100 % dos quadros), a nota-alvo **pisca** (mediana de 41 ms), e o TD-PSOLA **estoura o orçamento de tempo real** em 19,6 % dos blocos. Com as decisões de implementação, a seam de teste e a ordem. | Antes de mexer na detecção de altura, na escolha de nota-alvo ou na janela do PSOLA. |
 
 ## Mapa rápido
 
@@ -34,6 +35,7 @@
                   ├─ especificacao-v3-ponteiro.md ─ o motor v3, implementado na Etapa 6
                   ├─ plano-v3-ponteiro.md ──────── o plano da Etapa 6, por tarefa
                   ├─ analise-v1-v2-v3.md ──────── os numeros de latencia, por estagio
+                  ├─ spec-encaixe-e-estabilidade.md ─ os tres defeitos medidos e como corrigir
                   ├─ pesquisa-bibliografica.md ── as fontes de tudo acima
                   ├─ pesquisa-retune-speed-e-cor.md ─ Retune Speed e a origem da "cor"
                   └─ pesquisa-latencia-antares.md ─ por que o Auto-Tune tem 37 amostras

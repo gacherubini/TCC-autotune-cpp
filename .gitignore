@@ -41,3 +41,6 @@ baseline/*.wav
 
 # Ambiente Python local (numpy/soundfile para os scripts de medicao em python/).
 .venv/
+
+# Notas de trabalho de sessoes de agente (tickets, rascunhos). Nao sao entrega.
+.scratch/
