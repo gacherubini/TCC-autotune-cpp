@@ -41,7 +41,7 @@ Automática de Afinação Vocal*.
 | [`docs/diagnostico-block512.md`](docs/diagnostico-block512.md) | 🔬 A invariância ao tamanho de bloco: causa raiz, medições e as três correções avaliadas |
 | [`docs/pesquisa-bibliografica.md`](docs/pesquisa-bibliografica.md) | As fontes: artigos, a patente do Auto-Tune, manuais |
 | [`docs/pesquisa-retune-speed-e-cor.md`](docs/pesquisa-retune-speed-e-cor.md) | O que é o Retune Speed, e por que **formante não dá "cor"** a um corretor |
-| [`tcc-texto/`](tcc-texto/) | O texto do TCC em LaTeX |
+| [`gacherubini/TCC-TEXT`](https://github.com/gacherubini/TCC-TEXT) | O texto do TCC em LaTeX — **repositório separado** |
 
 > **Estado atual:** o pipeline funciona ponta a ponta e o plugin roda no Ableton. O teste de
 > usuário original reprovou dois requisitos — **latência** e **naturalidade** ("duro, robótico").
@@ -301,7 +301,6 @@ baseline.sh                         VERIFICAÇÃO: 37 casos + 8 invariantes + 19
 exemplo-antes.wav                   excerto de voz cantada (Vocadito, CC-BY 4.0)
 
 docs/                               DOCUMENTAÇÃO — comece por docs/README.md
-tcc-texto/                          texto do TCC em LaTeX (classe EP-TCC / PUCRS)
 
 python/medir_qualidade.py           MEDIÇÃO: latência, xRT, correlação, F0, cliques, bloco
 python/medir_formante_resample.py   MEDIÇÃO: o formante que a reamostragem custa    (v3)

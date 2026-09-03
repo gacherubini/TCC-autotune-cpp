@@ -138,15 +138,22 @@ python python\bench_latencia.py  REM latência × qualidade × xRT, e contagem d
 - **A janela de re-síntese cresce sem limite** durante notas longas (`autotune_stream.h:481`
   recua até o início da região vozeada). Custo quadrático por frase. Ver §8.3, Achado 1.
 - **`*.wav` está no `.gitignore`.** Áudio gerado fica fora do repo (exceção versionada:
-  `exemplo-antes.wav`). O texto do TCC **é** versionado, em `tcc-texto/` — só os artefatos de
-  compilação do LaTeX (`.aux`, `.bbl`, `.pdf`…) ficam de fora.
+  `exemplo-antes.wav`).
 
-## Texto do TCC
+## Texto do TCC — não está aqui
 
-O LaTeX está em `tcc-texto/`, versionado. O Overleaf (conta gratuita, sem integração Git) é
-onde o autor escreve; a sincronização é via ZIP com `tcc-texto/sync-overleaf.sh` — veja
-`tcc-texto/README.md`. **Não edite `tcc-texto/` sem avisar que isso vai precisar ser subido
-manualmente no Overleaf** (`./tcc-texto/sync-overleaf.sh --alterados` lista o que subir).
+O LaTeX do trabalho vive em **repositório próprio**:
+[`gacherubini/TCC-TEXT`](https://github.com/gacherubini/TCC-TEXT) (localmente em
+`../TCC/`). Este repositório é **só o código**.
+
+O Overleaf (conta gratuita, sem integração Git) é onde o autor escreve; a sincronização é
+via ZIP com o `sync-overleaf.sh` **daquele** repositório. **Não edite o texto do TCC sem
+avisar que isso vai precisar ser subido manualmente no Overleaf** — e, sobretudo, **não
+commite o texto**: o autor revisa e commita a redação ele mesmo.
+
+O que este repositório oferece ao texto é a **documentação técnica** de `docs/`, que é o
+material de apoio para a redação: números medidos, registro do teste de usuário e histórico
+de decisões.
 
 ## Problemas em aberto
 

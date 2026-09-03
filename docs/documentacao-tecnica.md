@@ -8,7 +8,8 @@ problemas encontrados no teste de usuário e das alternativas de solução para 
 
 **Documento complementar:** [`teste-de-usuario.md`](teste-de-usuario.md) —
 registro do teste de usuário, sem soluções.
-**Texto do TCC:** [`../tcc-texto/`](../tcc-texto/) — fonte LaTeX.
+**Texto do TCC:** [`gacherubini/TCC-TEXT`](https://github.com/gacherubini/TCC-TEXT) —
+fonte LaTeX, em repositório separado.
 
 ### Posição no cronograma
 
@@ -1480,19 +1481,21 @@ percebida (§9.1, L1).
 | `scripts/06_realtime_benchmark.py` | 204 | **viabilidade em tempo real**: ms/quadro, latência, estabilidade pós-suavização |
 | `tests/` | 5 arquivos | pytest sobre synth, datasets, metrics, swipe, reference |
 
-### `TCC-texto`
+### `TCC-TEXT`
 
-Fonte LaTeX do TCC (classe `tcc.cls` da Escola Politécnica / PUCRS).
+Fonte LaTeX do TCC (classe `tcc.cls` da Escola Politécnica / PUCRS), em
+**repositório separado**: [`gacherubini/TCC-TEXT`](https://github.com/gacherubini/TCC-TEXT).
 
 | Arquivo | Papel |
 |---|---|
 | `tcc1.tex` | documento principal, resumo, inclusão dos capítulos |
 | `tcc1-intro.tex` | Capítulo 1 — Introdução |
-| `tcc1-sections.tex` | Capítulos 2–10 — contexto, problema, proposta, conceitos, algoritmos, estudo comparativo, resultados, implementação, conclusão, cronograma |
+| `tcc1-sections.tex` | Capítulos 2–11 — contexto, problema, proposta, conceitos, algoritmos, estudo comparativo, resultados, implementação, avaliação com usuário, conclusão, cronograma |
 | `apendice-formulas.tex` | apêndice de fórmulas |
 | `tcc.bib` | bibliografia |
 | `fig/` | figuras (plugin, Ableton, Auto-Tune, PSOLA, exemplo antes/depois) |
 | `Makefile` · `sort.sh` | compilação |
+| `sync-overleaf.sh` | sincronização com o Overleaf via ZIP |
 
 ### Bibliografia do que está implementado
 

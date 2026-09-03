@@ -61,8 +61,9 @@ Os dois requisitos reprovados no teste de usuário, e onde ler sobre cada um:
 
 ## Texto do TCC
 
-O LaTeX do trabalho está em [`../tcc-texto/`](../tcc-texto/). A §10 do documento técnico
-lista **correções pendentes no texto do TCC 1** identificadas durante a revisão.
+O LaTeX do trabalho está em **repositório separado**:
+[`gacherubini/TCC-TEXT`](https://github.com/gacherubini/TCC-TEXT). A §10 do documento
+técnico lista **correções pendentes no texto do TCC 1** identificadas durante a revisão.
 
 **Backlog priorizado e plano por sprint:** [documentacao-tecnica.md §10](documentacao-tecnica.md#10-backlog-priorizado-e-plano-por-sprint)
 — com a repriorização registrada na [errata](historico-e-decisoes.md#errata--afirmações-corrigidas-pela-pesquisa-bibliográfica-2026-08-26) (item 4: L6 sobe para o topo).
