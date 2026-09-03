@@ -9,8 +9,32 @@
 #
 #    ./baseline.sh gravar          -> grava a referencia em baseline/
 #    ./baseline.sh conferir        -> compara o estado atual contra a referencia
+#    ./baseline.sh gravar-legado   -> regrava a tabela da Etapa 2 (raro, ver abaixo)
 #
 #  Saida esperada de 'conferir' quando nada mudou: "IDENTICO".
+#
+#  TRES CLASSES DE FALHA, e elas nao querem dizer a mesma coisa. Ate 03/09/2026 o
+#  script tratava as duas ultimas como uma so, e isso escondia a diferenca que
+#  mais importa na hora de decidir se um resultado e' defeito ou resultado:
+#
+#    1. INVARIANTE quebrada  -> DEFEITO, sempre. Um motor deixou de ser
+#       identidade em beta = 1, ou a saida passou a depender do tamanho de bloco.
+#       Nao se resolve com 'gravar'. O script para aqui.
+#    2. TABELA DA ETAPA 2 desatualizada -> pode ser defeito OU consequencia
+#       documentada. Ela congela a saida da malha da Etapa 2 DE PONTA A PONTA, e
+#       de ponta a ponta inclui o DETECTOR de altura. Uma mudanca deliberada na
+#       deteccao (a guarda contra a subharmonica, 03/09/2026) muda a tabela sem
+#       que a alegacao dela tenha deixado de valer. Regravavel de proposito, por
+#       'gravar-legado', que e' um comando separado justamente para nao acontecer
+#       por distracao dentro de um 'gravar'.
+#    3. RESUMO diferente -> o esperado a cada etapa que muda audio. Regravavel
+#       por 'gravar', com a lista dos casos e a razao de cada um no diario.
+#
+#  O que a tabela da Etapa 2 continua provando, e o que ela nunca provou sozinha:
+#  a alegacao "a malha da Etapa 3+ com legado=1 vibrato=0 reproduz a Etapa 2" e'
+#  verificada AMOSTRA A AMOSTRA por src/tests/test_retune.cpp secao 1, contra uma
+#  copia congelada do codigo da Etapa 2 e SEM detector no meio. Essa prova e' mais
+#  forte que a tabela e nao depende dela.
 # ---------------------------------------------------------------------------
 set -u
 RAIZ="$(cd "$(dirname "$0")" && pwd)"
@@ -71,9 +95,17 @@ rodar() {  # $1 = nome do caso, $@ = comando
     ( cd "$TMP" && "$@" ) > "$TMP/$nome.log" 2>&1
     local h_wav="ausente" h_log
     [[ -f "$TMP/$nome.wav" ]] && h_wav=$(shasum -a 256 "$TMP/$nome.wav" | cut -d' ' -f1)
-    # o log traz tempos de execucao; remove numeros de ms/xRT para nao virar ruido
-    h_log=$(sed -E 's/[0-9]+[.,][0-9]+ *(ms|s|xRT)?//g; s/[0-9]+ *ms//g' "$TMP/$nome.log" \
-            | shasum -a 256 | cut -d' ' -f1)
+    # O log traz tempos de execucao; remove numeros de ms/xRT para nao virar ruido.
+    # Reduz todo caminho de .wav ao nome do arquivo: o autotune offline imprime o
+    # caminho do WAV de ENTRADA ("Compare ouvindo: entrada (...)"), o que tornava
+    # os 9 hashes 'log=' dos casos gold_* dependentes da MAQUINA -- eles nunca
+    # batiam fora do computador onde a referencia foi gravada, e um 'DIFERENTE'
+    # permanente treina quem le a ignorar o script inteiro. Nao da para casar
+    # contra $RAIZ: o shell do MSYS converte /c/Users/... para C:/Users/... antes
+    # de entregar o argumento ao .exe, entao as duas formas aparecem no log.
+    h_log=$(sed -E 's#[^ ()]*[\\/]([^ ()\\/]*\.wav)#\1#g;
+                    s/[0-9]+[.,][0-9]+ *(ms|s|xRT)?//g; s/[0-9]+ *ms//g' \
+            "$TMP/$nome.log" | shasum -a 256 | cut -d' ' -f1)
     printf '%-28s wav=%s log=%s\n' "$nome" "${h_wav:0:16}" "${h_log:0:16}"
 }
 
@@ -169,11 +201,26 @@ par "invariancia ao bloco no ponteiro: 64 == 512"        st_lowlat_block64.wav s
 #  antigo -- ele vira o caso particular k=0 (mais a flag de ataque). Aqui essa
 #  afirmacao deixa de ser afirmacao e vira teste: cada caso roda de novo com
 #  'legado=1 vibrato=0' e tem de bater com o hash da Etapa 2, gravado em
-#  baseline/etapa2-legado.sha256 e NUNCA regravado.
+#  baseline/etapa2-legado.sha256.
 #
 #  Isso e' diferente do resumo.txt: aquele e' uma fotografia do estado atual e
-#  muda a cada etapa. Este e' um marco fixo no passado. Se as etapas 4 e 5
-#  quebrarem a generalizacao, e' aqui que aparece.
+#  muda a cada etapa. Este e' um marco no passado. Se as etapas 4 e 5 quebrarem
+#  a generalizacao, e' aqui que aparece.
+#
+#  ATE 03/09/2026 esta tabela era descrita como "NUNCA regravada", e o script
+#  tratava uma divergencia dela como invariante quebrada. Isso confundia duas
+#  coisas. A tabela compara a saida DE PONTA A PONTA, e de ponta a ponta inclui
+#  o DETECTOR de altura -- entao ela congelava, sem dizer, muito mais do que a
+#  malha de correcao que ela existe para proteger. Quando a guarda contra a
+#  subharmonica (D1) corrigiu a deteccao de proposito, 14 dos 19 casos mudaram
+#  sem que a alegacao da tabela tivesse deixado de valer um dia.
+#
+#  A alegacao continua provada, e melhor, por src/tests/test_retune.cpp secao 1:
+#  ele compara CorretorAltura contra uma copia CONGELADA do codigo da Etapa 2,
+#  amostra a amostra, sem detector no meio. E' essa prova que sustenta a Etapa 3.
+#  A tabela aqui vale como rede de seguranca de ponta a ponta, e e' regravavel de
+#  proposito por './baseline.sh gravar-legado' -- comando separado justamente
+#  para que a regravacao nunca aconteca por distracao dentro de um 'gravar'.
 # ---------------------------------------------------------------------------
 LEG="$REF/etapa2-legado.sha256"
 if [[ -f "$LEG" ]]; then
@@ -201,17 +248,38 @@ if [[ -f "$LEG" ]]; then
       "$BIN/stream_test" "$WAV" g_st_block512.wav    1.0 crom block=512 "${L[@]}"
       "$BIN/stream_test" "$WAV" g_st_cmaior.wav      1.0 C "${L[@]}"
     ) > /dev/null 2>&1
-    nLeg=0; nBad=0
+    nLeg=0; nBad=0; LEGADO_FALHOU=0
     while read -r h nome; do
         [[ "$h" == \#* || -z "$h" ]] && continue
         got=$(shasum -a 256 "$TMP/g_$nome.wav" 2>/dev/null | cut -d\  -f1)
         nLeg=$((nLeg+1))
         if [[ "$got" != "$h" ]]; then
             echo "  FALHA $nome  (esperado ${h:0:16}, obtido ${got:0:16})"
-            nBad=$((nBad+1)); INVAR_FALHOU=1
+            # Hash obtido VAZIO nao e' regressao, e' o arquivo nao ter sido lido.
+            # Acontece quando este .sha256 vem com fim de linha CRLF (um clone ou
+            # um worktree novo no Windows): o 'read' deixa o \r colado no nome e
+            # o g_$nome.wav procurado nao existe. Ver .gitattributes.
+            [[ -z "$got" ]] && echo "        (hash vazio: confira o fim de linha deste arquivo)"
+            nBad=$((nBad+1)); LEGADO_FALHOU=1
         fi
     done < "$LEG"
     [[ $nBad -eq 0 ]] && echo "  ok    $nLeg casos reproduzem a Etapa 2 bit a bit"
+    if [[ "$ACAO" == "gravar-legado" ]]; then
+        # Regravacao DELIBERADA da tabela da Etapa 2. Comando proprio, e nao um
+        # efeito colateral de 'gravar', porque esta tabela e' um marco no passado:
+        # ela so deve mudar quando alguem decidiu mudar a deteccao ou a sintese e
+        # sabe dizer por que. A razao vai no diario, caso a caso.
+        : > "$LEG"
+        for nome in gold_mix1 gold_mix0 gold_tol600 gold_tol30 gold_glide120 \
+                    gold_cmaior gold_aminor rt_look4 rt_look0 rt_glide0 rt_tol0 \
+                    st_mix1 st_mix0 st_tol600 st_glide40 st_tol15 st_block64 \
+                    st_block512 st_cmaior; do
+            printf '%s %s\n' "$(shasum -a 256 "$TMP/g_$nome.wav" | cut -d' ' -f1)" "$nome" >> "$LEG"
+        done
+        echo; echo "TABELA DA ETAPA 2 REGRAVADA ($(wc -l < "$LEG" | tr -d ' ') casos)."
+        echo "Registre no diario a razao de cada caso que mudou."
+        exit 0
+    fi
 else
     echo; echo "  AVISO: sem $LEG — nao-regressao da Etapa 3 nao verificada."
 fi
@@ -220,8 +288,25 @@ fi
 # de gravar uma referencia nova por cima de um resultado errado.
 if [[ "$INVAR_FALHOU" == "1" ]]; then
     echo; echo "ERRO: invariante quebrada. Isso NAO se resolve com 'gravar' —"
-    echo "      significa que um motor deixou de ser identidade em beta=1."
+    echo "      significa que um motor deixou de ser identidade em beta=1,"
+    echo "      ou que a saida passou a depender do tamanho de bloco do host."
     exit 1
+fi
+
+# A tabela da Etapa 2 e' de outra natureza (ver o cabecalho): ela pode divergir
+# por defeito OU por mudanca deliberada de deteccao/sintese. O script nao tem
+# como distinguir as duas, entao ele NAO decide -- reporta e devolve a decisao a
+# quem fez a mudanca. Nao para o 'gravar': a fotografia dos 37 casos e a tabela
+# da Etapa 2 sao independentes, e travar uma na outra so' produziria um impasse.
+if [[ "${LEGADO_FALHOU:-0}" == "1" ]]; then
+    echo
+    echo "AVISO: a tabela da Etapa 2 divergiu."
+    echo "  Se a deteccao ou a sintese mudou DE PROPOSITO nesta etapa, isto e'"
+    echo "  consequencia esperada: confira caso a caso, registre a razao no"
+    echo "  diario e regrave com './baseline.sh gravar-legado'."
+    echo "  Se nada devia ter mudado, e' regressao — e a malha de correcao tem"
+    echo "  prova propria em src/tests/test_retune.cpp secao 1, que roda sem"
+    echo "  detector no meio e diz qual das duas coisas quebrou."
 fi
 
 if [[ "$ACAO" == "gravar" ]]; then
@@ -241,6 +326,10 @@ elif [[ "$ACAO" == "conferir" ]]; then
         echo; echo "Para ver onde a onda diverge, compare os .wav em baseline/ com os gerados."
         exit 1
     fi
+elif [[ "$ACAO" == "gravar-legado" ]]; then
+    # So chega aqui se a tabela nao existir; com ela presente, o bloco da
+    # nao-regressao regrava e sai antes.
+    echo; echo "ERRO: nao achei $LEG para regravar."; exit 1
 else
-    echo "Uso: $0 [gravar|conferir]"; exit 1
+    echo "Uso: $0 [gravar|conferir|gravar-legado]"; exit 1
 fi
