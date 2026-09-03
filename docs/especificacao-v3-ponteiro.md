@@ -1,8 +1,10 @@
 # Motor v3 — ponteiro móvel no lugar do TD-PSOLA — especificação
 
 > **Data:** 2026-09-01
-> **Status:** 📐 **ESPECIFICAÇÃO APROVADA — implementação em curso.** O diário da implementação
-> está em [execucao-do-plano.md](execucao-do-plano.md), Etapa 6. A decisão de escopo está
+> **Status:** ✅ **ESPECIFICAÇÃO IMPLEMENTADA.** A Etapa 6 foi concluída em 2026-09-02; o que
+> foi construído, medido e ficou pendente está no
+> [diário](execucao-do-plano.md#etapa-6--motor-v3-de-ponteiro-móvel-low-latency) — inclusive a
+> ressalva de que a latência declarada ao host é só a parte fixa (§3.4). A decisão de escopo está
 > registrada como [Decisão 9](historico-e-decisoes.md#decisão-9--motor-v3-de-ponteiro-móvel-como-motor-paralelo-2026-09-01).
 > **Leia antes:** [analise-v1-v2-v3.md](analise-v1-v2-v3.md) (o enquadramento por estágios e
 > os números corrigidos) · [pesquisa-latencia-antares.md](pesquisa-latencia-antares.md) §3.2

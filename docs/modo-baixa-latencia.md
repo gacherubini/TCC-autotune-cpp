@@ -1,10 +1,19 @@
 # Modo de baixa latência — especificação
 
 > **Data:** 2026-08-26
-> **Status:** ⚠️ **ESPECIFICAÇÃO — NADA IMPLEMENTADO.**
+> **Status:** ⏸️ **ESPECIFICAÇÃO SUPERADA — este caminho não foi implementado, e não será.**
+> A baixa latência foi resolvida pela **v3** (troca do motor de síntese), implementada na Etapa 6
+> em 2026-09-02; ver [especificacao-v3-ponteiro.md](especificacao-v3-ponteiro.md). O texto abaixo
+> está preservado como registro do que se pretendia fazer por **parâmetros** (v1) e por **troca
+> do detector** (v2), e do porquê de nenhum dos dois bastar.
+>
+> ⚠️ **As seis "questões em aberto" da §8 não são mais bloqueio de implementação** — elas foram
+> escritas para um mundo de dois caminhos e a v3 dissolveu a maior parte delas; ver
+> [analise-v1-v2-v3.md §6](analise-v1-v2-v3.md). A única que segue de pé é a **questão 5** (se
+> as 37 amostras da Antares são mesmo atraso de interpolador), e ela é curiosidade, não bloqueio.
+>
 > Este documento existe para responder *"o que exatamente o modo de baixa latência vai fazer?"*
-> **antes** de qualquer linha de código ser escrita. Nenhuma decisão de implementação deve ser
-> tomada sem que as questões em aberto da §8 estejam resolvidas.
+> **antes** de qualquer linha de código ser escrita.
 > **Referências:** [comparacao-antares.md](comparacao-antares.md) ·
 > [pesquisa-bibliografica.md](pesquisa-bibliografica.md) ·
 > [documentacao-tecnica.md §8.1 e §9.1](documentacao-tecnica.md)

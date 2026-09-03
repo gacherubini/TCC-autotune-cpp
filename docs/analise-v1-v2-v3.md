@@ -1,8 +1,11 @@
 # v1, v2 e v3 — o que cada um troca, e duas correções de número
 
 > **Data:** 2026-08-31
-> **Status:** 📐 **ANÁLISE.** Nada implementado, e a decisão entre as rotas segue **em aberto**
-> (§9). Este documento não substitui a [especificação](modo-baixa-latencia.md) nem a
+> **Status:** 📐 **ANÁLISE — a decisão que ela pedia já foi tomada.** A rota escolhida foi a
+> **v3**, implementada na Etapa 6 em 2026-09-02 (ver a atualização ao fim deste cabeçalho). O
+> corpo do documento foi escrito **antes** dessa escolha e está preservado como registro do
+> raciocínio que levou a ela: onde a §9 diz que a decisão segue em aberto, leia **"em aberto em
+> 31/08"**. Este documento não substitui a [especificação](modo-baixa-latencia.md) nem a
 > [pesquisa](pesquisa-latencia-antares.md); ele **corrige dois números dos dois** e acrescenta o
 > enquadramento que faltava.
 > **Leia antes:** [modo-baixa-latencia.md](modo-baixa-latencia.md) ·

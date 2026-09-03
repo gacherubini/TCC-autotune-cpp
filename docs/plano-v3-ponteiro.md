@@ -4,7 +4,11 @@
 > sessão) ou `superpowers:subagent-driven-development`. Os passos usam caixas (`- [ ]`) para
 > acompanhamento.
 >
-> **Data:** 2026-09-01 · **Status:** 📐 plano escrito, **nada executado**.
+> **Data:** 2026-09-01 · **Status:** ✅ **EXECUTADO** — a Etapa 6 foi concluída em 2026-09-02, e
+> o que aconteceu ao executar está no
+> [diário](execucao-do-plano.md#etapa-6--motor-v3-de-ponteiro-móvel-low-latency). As caixas
+> abaixo ficam como foram escritas, sem marcar: este documento é o **previsto**, o diário é o
+> **acontecido**, e a comparação entre os dois só existe enquanto nenhum dos dois for reescrito.
 > **Branch:** `docs/antares-parity-and-low-latency` — todo o trabalho fica nela; **sem merge**.
 > **Commits:** mensagens em **inglês**, uma por tarefa, **sem trailer de co-autoria**.
 
