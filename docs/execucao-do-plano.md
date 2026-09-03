@@ -1200,3 +1200,147 @@ padrão de fábrica passa a ser justamente essa condição, é a primeira coisa 
 >    `while read -r h nome` deixa o `\r` colado no nome, e `g_$nome.wav` vira um arquivo que não
 >    existe. O sintoma diagnóstico é justamente o *vazio* — uma regressão de verdade traria um
 >    hash diferente, não a ausência dele. Normalizado para LF, os 19 passam.
+
+---
+
+## Ticket 07 — teto na janela de re-síntese do TD-PSOLA (2026-09-03)
+
+Implementa a **Causa 3** e a **decisão D3** de
+[`spec-encaixe-e-estabilidade.md`](spec-encaixe-e-estabilidade.md). É o único dos sete tickets
+que endereça o sintoma 2 do spec — o *pipoco* do motor padrão —, e o único independente dos
+outros seis.
+
+### O que foi feito
+
+A janela de `avancarPsola()` recuava até o início da região vozeada, **sem limite**. Numa nota
+sustentada de 3 s, no instante t = 3 s o motor refazia 3 s de marcas e de grãos para entregar
+as 128 amostras do bloco atual. O recuo agora para num teto, derivado em **períodos de FMIN**:
+
+```
+teto = arredondar_para_multiplo_de(nHop, TETO_PERIODOS * fs / FMIN)     TETO_PERIODOS = 12
+```
+
+com piso na `margem` atual (`nFrame`, 1024 amostras). A 44,1 kHz: `Alto-Tenor` (131 Hz) → 4096;
+`Low Male` (82 Hz) → 6400; `Soprano` (262 Hz) → 2048; o `FMIN` padrão de 80 Hz → 6656.
+
+Duas escolhas que valem o registro:
+
+- **Em períodos, não em amostras absolutas.** A cadeia de marcas precisa de contexto medido em
+  períodos, e 4096 amostras são 12 períodos num baixo e 33 num soprano. Um número absoluto
+  significaria coisas diferentes conforme a tessitura.
+- **Múltiplo de `nHop`, e isso não é cosmético.** `synthFront` anda numa grade de `k·nHop`; com
+  o teto na mesma grade, `winStart` continua sendo **função pura de `synthFront`**, e a
+  invariância ao tamanho de bloco segue **estrutural**. O teto nunca pode sair do que chegou no
+  bloco atual — seria o mesmo defeito que a correção de 26/08/2026 caçou.
+
+### Medição — antes e depois
+
+Nota sustentada de 3 s a 220 Hz, blocos de 128 amostras a 44,1 kHz (orçamento de 2,90 ms),
+harness novo em `src/tests/test_custo_bloco.cpp`:
+
+| | antes | depois |
+|---|---|---|
+| p90 do bloco, início da nota | 4,96 ms | 1,20 ms |
+| p90 do bloco, fim da nota | 15,29 ms | 1,18 ms |
+| **razão fim/início** | **3,08×** | **0,99×** |
+| pior bloco | 17,18 ms (5,9× o orçamento) | **1,61 ms (0,6×)** |
+| blocos acima do orçamento | 434 de 1119 (**38,8 %**) | **0 de 1119 (0 %)** |
+
+Perfil no tempo, que é o que mostra o defeito e o conserto — antes, crescimento monótono com
+reset ao fim da região vozeada; depois, plano:
+
+```
+  t(s)    antes    depois
+  0,00    1,217     1,206
+  0,50    4,187     1,608
+  1,00    7,223     1,559
+  1,50    9,684     1,391
+  2,00   12,846     1,388
+  2,50   17,180     1,574
+  3,00   16,770     1,499
+```
+
+> ⚠️ Os 17,2 ms medidos aqui são **piores** que os 12,0 ms do spec porque o sinal sintético é
+> uma nota de 3 s **continuamente vozeada**, sem as respirações que quebram a região no take
+> real. É o pior caso de propósito.
+
+A estimativa do spec era "custo cai da ordem de 30×, para a casa de 0,4 ms". A queda medida foi
+de **10,7×**, para **1,6 ms**. A estimativa por proporcionalidade era otimista: ela supunha
+custo proporcional só às amostras acumuladas, e há um custo fixo por chamada sobre a janela
+inteira (~7,8 mil amostras com o teto). Não muda a conclusão — 0 % de estouros contra 38,8 %.
+
+O motor de ponteiro continua plano e intocado: 0,24 → 0,27 ms de p90, pior bloco 0,47 ms
+(0,2× o orçamento).
+
+### O harness de tempo por bloco
+
+Não havia precedente no repositório: os scripts de `python/` medem **taxa agregada**, e taxa
+agregada esconde exatamente o defeito que produz o estalo. Um motor a 8× tempo real na média
+pode estourar o orçamento em um bloco a cada cinco, e o que se ouve é o estouro.
+
+É o **único teste da suíte sensível à máquina**, e o desenho leva isso em conta: a asserção é
+sobre a **razão** fim/início (propriedade estrutural, vale em máquina rápida ou lenta), o
+número absoluto em ms é **diagnóstico e nunca critério de falha**, e a estatística é o
+**percentil 90** e não o máximo — com `nHop = 256` e bloco de 128, só metade dos blocos faz
+trabalho, então a mediana cairia em cima dessa fronteira e oscilaria.
+
+### Regravação de linha de base — os 15 casos que mudaram, e por quê
+
+**Uma razão única para os 15:** todos são casos de **streaming com o motor TD-PSOLA**, e todos
+têm regiões vozeadas mais longas que o teto de 6656 amostras (151 ms). Para elas a âncora da
+cadeia de marcas passa a ser outra, e a forma de onda muda. É o preço que D3 aceita.
+
+| caso | antes | depois |
+|---|---|---|
+| `st_mix1`, `st_block64`, `st_block512`, `st_block1024` | `522ffaf32a3d6e47` | `a8604d5321c522cf` |
+| `st_retune25`, `st_humanize0`, `st_createvib_off` | `0fb713c720bed299` | `01daa41cf5837cf7` |
+| `st_cmaior` | `44af6aebec7600ce` | `20bfe97f42b46127` |
+| `st_glide40` | `d8bee84d1f4ca3f4` | `cd0b891129763be1` |
+| `st_tol15` | `42e8ad70d2356180` | `59678cd9c534d399` |
+| `st_vibrato0` | `b69b1c501f8dbf04` | `bdcbf2c9c94ea0bf` |
+| `st_vibrato2` | `e75cc8c63777a370` | `2b19d30fbc37ff98` |
+| `st_humanize1` | `303c0f61dcaaa2df` | `cb40bdde79a01842` |
+| `st_createvib_sen` | `cdbb0e34eabb7dab` | `b733ebc2368755ec` |
+| `st_createvib_amp` | `044cdeca1af6ec0a` | `45d85e52b49b99ba` |
+
+**Os 22 restantes não mudaram**, e a lista de quem *não* mudou é a prova de que a mudança está
+onde devia:
+
+- os 7 `gold_*` e os 4 `rt_*` — offline e causal chamam `psolaSintetiza()` **em lote**, não
+  passam por `avancarPsola()`;
+- os 7 `st_lowlat_*` e `st_ponteiro_look4` — o motor de ponteiro não tem janela de re-síntese;
+- **`st_mix0` e `st_tol600`** — os dois caminhos de identidade do PSOLA. Com β = 1 os grãos
+  voltam para as mesmas posições, qualquer que seja a âncora.
+
+**Os quatro casos de identidade não mudaram**, verificado: `st_mix0`, `st_tol600`,
+`st_lowlat_mix0` e `st_lowlat_tol600`. E os pares que o `baseline.sh` compara entre si
+continuam batendo — `st_block64 == st_block512 == st_block1024 == st_mix1` (invariância ao
+bloco) e `st_createvib_off == st_humanize0 == st_retune25` (os caminhos neutros).
+
+### ⚠️ Colisão com a não-regressão da Etapa 3, que precisa de decisão
+
+A tabela congelada `baseline/etapa2-legado.sha256` guarda o hash de 19 casos rodados com
+`legado=1 vibrato=0`, e o `baseline.sh` a descreve como **"um marco fixo no passado"**, que
+**"NUNCA"** é regravado. Seis das 19 entradas são de **streaming com PSOLA** — `st_mix1`,
+`st_block64`, `st_block512`, `st_cmaior`, `st_glide40` e `st_tol15` — e essas seis quebram com
+o teto, pela mesma razão dos 15 acima.
+
+A colisão é de desenho, não um defeito da implementação. O que aquela tabela verifica é que a
+malha de correção da Etapa 3 generaliza a da Etapa 2; o que ela **também** trava, sem que
+ninguém tivesse escolhido isso, é a equivalência **incremental ≡ lote** — que é exatamente o
+que D3 decidiu abrir mão. As 13 entradas de `gold_*` e `rt_*` continuam passando e continuam
+provando o que a tabela existe para provar.
+
+**Não resolvido neste ticket, de propósito:** mexer em `baseline/` estava fora do escopo, e a
+escolha entre atualizar as seis entradas ou restringir a tabela aos 13 casos em lote é decisão
+do autor. Enquanto ela não for tomada, `./baseline.sh conferir` sai com erro **antes** de
+chegar à comparação dos 37 casos.
+
+### Pendência que este ticket não fecha
+
+A **cadeia de marcas incremental** — manter as marcas entre chamadas em vez de redetectá-las —
+preserva a equivalência com o lote e é a resposta certa em DSP. Fica registrada como trabalho
+futuro. Não foi feita agora porque transforma uma função pura numa função com estado que
+precisa ser zerado na fronteira exata de cada região vozeada e de cada `reset()` do host, sem
+depender de onde o host cortou o bloco — a classe de bug que o commit `e1ffd1d` custou caro
+para caçar.

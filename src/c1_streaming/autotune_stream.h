@@ -35,6 +35,14 @@
 // o esticamento e' feito, nao QUANTO. Ver docs/especificacao-v3-ponteiro.md.
 enum class MotorSintese { PSOLA, Ponteiro };
 
+// Quantos periodos de FMIN de historico a janela de re-sintese do TD-PSOLA pode
+// olhar para tras (D3 do spec de encaixe e estabilidade). E' uma CONSTANTE DE
+// DESENHO, nao um controle de usuario, pela mesma razao registrada para as
+// constantes do Humanize em dsp.h: ela define quanto contexto a cadeia de marcas
+// precisa para estabilizar, e isso e' decisao de projeto. Fica nomeada aqui para
+// poder ser discutida no texto do TCC. Ver prepare(), onde ela vira amostras.
+inline constexpr double TETO_PERIODOS = 12.0;
+
 // ----------------------------------------------------------------------------
 //  Parâmetros do streaming. Espelham as flags de linha de comando do
 //  autotune_rt (mix, escala já é global via definirEscala/g_permitida,
@@ -90,6 +98,46 @@ public:
         // alcança a região já finalizada -> streaming == lote. Usada IGUAL no
         // orçamento de latência e em avancarPsola() (devem casar exatamente).
         psolaGuard = 2 * (int)std::llround((double)fs / FMIN);
+
+        // -----------------------------------------------------------------
+        //  TETO DA JANELA DE RE-SINTESE (D3 do spec de encaixe e estabilidade).
+        //
+        //  Ate 03/09/2026 a janela de avancarPsola() recuava ate o INICIO da
+        //  regiao vozeada, sem limite. Numa nota sustentada de 3 s, no instante
+        //  t = 3 s o motor refazia 3 s de marcas e de graos para entregar as 128
+        //  amostras do bloco atual -- custo por bloco crescendo linearmente com
+        //  a duracao da nota, medido em 17,2 ms contra um orcamento de 2,90 ms.
+        //  Cada estouro e' um dropout no host: era o "pipoco" do teste de
+        //  usuario.
+        //
+        //  O teto e' derivado em PERIODOS DE FMIN, e nao em amostras absolutas.
+        //  A razao e' que a cadeia de marcas precisa de contexto medido em
+        //  periodos, e um numero absoluto significa coisas diferentes conforme a
+        //  tessitura: 4096 amostras sao 12 periodos num baixo e 33 num soprano.
+        //  Doze periodos e' contexto de sobra para a correlacao estabilizar a
+        //  cadeia, em qualquer preset.
+        //
+        //  O arredondamento para multiplo de nHop nao e' cosmetico. 'synthFront'
+        //  anda numa grade de k*nHop; com o teto tambem na grade, o piso
+        //  'synthFront - tetoJanela' cai na mesma grade, e 'winStart' continua
+        //  sendo FUNCAO PURA de 'synthFront'. E' isso que preserva a invariancia
+        //  ao tamanho de bloco -- ela segue estrutural, nao empirica. O teto NAO
+        //  pode, em hipotese alguma, ser derivado do que chegou no bloco atual:
+        //  seria o mesmo defeito que a correcao de 26/08/2026 caçou (ver o
+        //  comentario dentro de avancarPsola).
+        //
+        //  Piso na 'margem' (nFrame): a janela nunca fica menor que o historico
+        //  de um quadro que ela ja usava antes deste teto existir.
+        //
+        //  Exemplos a 44,1 kHz: Alto-Tenor (131 Hz) -> 4096; Low Male (82 Hz) ->
+        //  6400; Soprano (262 Hz) -> 2048; o padrao FMIN = 80 Hz -> 6656.
+        // -----------------------------------------------------------------
+        {
+            const double emPeriodos = TETO_PERIODOS * (double)fs / FMIN;
+            const long long naGrade =
+                (long long)std::llround(emPeriodos / (double)p.nHop) * (long long)p.nHop;
+            tetoJanela = (int)std::max(naGrade, (long long)p.nFrame);
+        }
 
         // Orçamento de latência. Com PSOLA: quadro + look-ahead + guarda, os
         // tres termos de docs/modo-baixa-latencia.md §2. Com Ponteiro: so a
@@ -628,7 +676,45 @@ private:
         // lote. Como a síntese só COMETE [synthFront, alvo), o resto da região
         // (ainda não finalizado) será re-sintetizado na próxima janela com a
         // mesma âncora — overlap-save consistente.
-        while (winStart > 0 && f0samp[winStart - 1] > 0.0f) --winStart;
+        //
+        // ---------------------------------------------------------------
+        //  ...ATE UM TETO (D3, 03/09/2026). O paragrafo acima descreve por
+        //  que o recuo existe, e continua valendo. O que mudou e' que ele
+        //  agora PARA em 'limite'.
+        //
+        //  Sem teto, o recuo e' ilimitado e o custo por bloco cresce com a
+        //  duracao da nota: numa nota de 3 s o motor refazia 3 s de marcas
+        //  para entregar 128 amostras (17,2 ms medidos contra 2,90 ms de
+        //  orcamento, 38,8 % dos blocos estourando). Aumentar o buffer do
+        //  host nao resolvia, porque o custo e' proporcional as amostras
+        //  ACUMULADAS e nao aos blocos.
+        //
+        //  PRECO, aceito e decidido no spec: para notas mais longas que o
+        //  teto, a sintese incremental deixa de bater com a sintese em
+        //  LOTE, porque a ancora passa a ser outra. A equivalencia
+        //  incremental == lote e' criterio de TESTE, nao requisito de
+        //  produto -- ninguem canta pedindo que o streaming bata com o
+        //  offline. Ela existia porque era barata, e deixou de ser. O
+        //  TD-PSOLA vale pela preservacao de formantes, e e' isso que o
+        //  teto protege: sem ele, a saida era ligar o Low Latency e abrir
+        //  mao dos formantes.
+        //
+        //  A alternativa tecnicamente superior -- manter a cadeia de marcas
+        //  ENTRE chamadas, em vez de redetecta-la -- preserva a
+        //  equivalencia e fica registrada como trabalho futuro. Nao foi
+        //  feita agora porque transforma uma funcao PURA numa funcao com
+        //  estado que precisa ser zerado na fronteira exata de cada regiao
+        //  vozeada e de cada reset() do host, sem depender de onde o host
+        //  cortou o bloco. E' a classe de bug que o commit e1ffd1d caçou em
+        //  agosto, quando um deslocamento de 1 a 7 amostras numa marca se
+        //  propagou pela cadeia inteira.
+        //
+        //  'limite' e' funcao pura de 'synthFront' (tetoJanela e' constante
+        //  para um preset e multiplo de nHop), entao 'winStart' tambem
+        //  continua sendo -- e a invariancia ao tamanho de bloco sobrevive.
+        // ---------------------------------------------------------------
+        long long limite = std::max(0LL, synthFront - (long long)tetoJanela);
+        while (winStart > limite && f0samp[winStart - 1] > 0.0f) --winStart;
 
         long long winEnd   = std::min(decis, alvo + guarda);
         long long len = winEnd - winStart;
@@ -649,6 +735,7 @@ private:
     int fs = 44100;        // taxa de amostragem (Hz)
     int latSamples = 0;    // latência algorítmica total (amostras)
     int psolaGuard = 0;    // folga (look-ahead) do PSOLA online = 2*fs/FMIN
+    int tetoJanela = 0;    // D3: recuo maximo da janela de re-sintese (multiplo de nHop)
     int defasagem = 0;     // Etapa 6: nFrame + look*nHop (defasagem da correcao no ponteiro)
     MotorPonteiro ponteiro; // Etapa 6: motor v3 (so usado com p.motor == Ponteiro)
     StreamParams p;        // cópia dos parâmetros recebidos em prepare()
