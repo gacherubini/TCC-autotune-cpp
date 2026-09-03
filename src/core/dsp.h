@@ -87,18 +87,41 @@ inline constexpr int TAU_GUARDA_MIN = 8;
 //  Duas ordens de grandeza separam os dois casos, entao a guarda exige um vale
 //  FUNDO em termos absolutos, e nao "abaixo do limiar do momento".
 //
-//  O valor e' 0,10 porque e' o limiar absoluto do YIN original (de Cheveigne e
-//  Kawahara, 2002, secao II-D) -- o mesmo numero que aquele algoritmo usa para
-//  dizer "isto e' periodo, nao ruido". Nao e' constante escolhida a dedo para
-//  fazer este take passar: e' o criterio de periodicidade da literatura, e a
-//  medicao acima mostra que ele cai no meio da lacuna entre os dois casos.
+//  A primeira versao usou 0,10, o limiar absoluto do YIN original (de Cheveigne
+//  e Kawahara, 2002, secao II-D). O argumento era bonito -- "o criterio de
+//  periodicidade da literatura" -- e a medicao o derrubou: 0,10 foi o PIOR dos
+//  quatro valores varridos. Ele so parecia bom porque tinha sido calibrado
+//  contra o preset mais LARGO (teto de 1000 Hz), onde a guarda varre pouco. Nos
+//  presets estreitos ela varre muito mais e encontra vales rasos legitimos.
 //
-//  Sem isto, tres quadros de exemplo-antes.wav viravam nao-vozeados por engano.
-//  Tres em 854 parece pouco, e nao e': um quadro nao-vozeado PARTE uma regiao
-//  vozeada, a cadeia de marcas do PSOLA re-ancora, e a correlacao da saida caia
-//  para 0,77. Um erro de 0,35 % na trilha custava a frase inteira.
+//  Varredura sobre exemplo-antes.wav, perda de quadros vozeados DENTRO da faixa
+//  (o orcamento e' 2 pontos percentuais), com a divergencia de oitava em 0 % nos
+//  quatro casos:
+//
+//    limiar | tenor | contralto | altotenor | dentro do orcamento?
+//     0,10  | 97,0  |   97,1    |   97,1    | NAO -- estourava
+//     0,06  | 99,0  |   99,0    |   99,0    | sim
+//     0,04  | 99,3  |   99,3    |   99,3    | sim   <-- escolhido
+//     0,02  | 99,6  |   99,6    |   99,6    | sim (colateral zero)
+//
+//  0,04 e' o compromisso, e a assimetria e' deliberada. Errar para MENOS traz de
+//  volta a oitava errada, que e' o defeito audivel que tudo isto existe para
+//  remover; errar para MAIS custa um quadro sem correcao, que e' barato. Entao
+//  nao se escolhe o valor de colateral zero: escolhe-se o que mantem folga sobre
+//  o verdadeiro positivo (0,001, ou seja 40x) com colateral de 0,3 pp.
+//
+//  E ele vale INCONDICIONALMENTE, sem min() com o 's' do chamador -- ver o
+//  comentario dentro de candidato(), onde essa tentacao e o buraco que ela abre
+//  estao registrados.
+//
+//  O que este limiar custava quando estava frouxo: tres quadros de
+//  exemplo-antes.wav viravam nao-vozeados por engano. Tres em 854 parece pouco,
+//  e nao e': um quadro nao-vozeado PARTE uma regiao vozeada, a cadeia de marcas
+//  do PSOLA re-ancora, e a correlacao da saida caia para 0,77. Um erro de 0,35 %
+//  na trilha custava a frase inteira. O mesmo mecanismo de amplificacao derrubou
+//  o teto da janela do PSOLA (ver avancarPsola em autotune_stream.h).
 // ---------------------------------------------------------------------------
-inline constexpr double LIMIAR_GUARDA = 0.10;
+inline constexpr double LIMIAR_GUARDA = 0.04;
 
 // ---------------------------------------------------------------------------
 //  candidato() — escolhe um periodo a partir da CMNDF, para um limiar 's'.
@@ -149,10 +172,18 @@ inline double candidato(const std::vector<double>& dp, int tauMin, int tauMax, d
     //  de ajuste: se o fundo cai abaixo de tauMin, existe mesmo um periodo mais
     //  curto que o admitido (altura acima do fmax); se o vale so ATRAVESSA
     //  tauMin, o que se viu foi o flanco do periodo legitimo mais grave.
+    //  O limiar da guarda e' o dela, NAO o 's' do chamador -- nem sequer o menor
+    //  dos dois. Uma primeira versao usava min(s, LIMIAR_GUARDA) por parecer
+    //  "conservadora nos dois sentidos", e isso contradizia o argumento acima
+    //  justamente onde ele importa: para os limiares BAIXOS da varredura Beta,
+    //  min() devolve o 's' do chamador e a guarda volta a ser refem dele. O
+    //  buraco e' concreto -- com s = 0,02, periodo real 100 abaixo de um tauMin
+    //  de 133, dp[100] = 0,05 e dp[200] = 0,001, a busca principal vota a metade
+    //  da frequencia e a guarda nao dispara, porque 0,05 >= 0,02. Esses votos
+    //  pesam pouco na agregacao, mas "pesa pouco" nao e' o mesmo que "nao existe".
     const int guardaAte = std::min(tauMin, (int)dp.size());
-    const double sGuarda = std::min(s, LIMIAR_GUARDA);
     for (int tau = TAU_GUARDA_MIN; tau < guardaAte; ++tau) {
-        if (dp[tau] >= sGuarda) continue;
+        if (dp[tau] >= LIMIAR_GUARDA) continue;
         int fundo = tau;   // mesma descida que a busca principal faz, abaixo
         while (fundo + 1 < tauMax && dp[fundo + 1] < dp[fundo]) ++fundo;
         if (fundo < tauMin) return 0.0;   // altura acima do fmax -> sem voz
@@ -551,11 +582,28 @@ inline double formaVibrato(FormaVibrato f, double fase) {
 //  declara inegociavel, e pela mesma razao.
 // ---------------------------------------------------------------------------
 
-//  Histerese, em cents. Tem um PISO imposto pela analise, e ele nao e' escolha:
-//  a trilha de F0 emitida vive numa grade de RES_CENTS = 20 cents, que e' a
-//  resolucao dos bins do HMM. Uma tremulacao de UM BIN ja sao 20 cents, entao
-//  uma histerese menor que isso nao filtraria nem o menor ruido possivel. A
-//  faixa util comeca em 25 e o valor saiu de medicao (ver o diario).
+//  Histerese, em cents de DESLOCAMENTO DA FRONTEIRA de troca -- ver o fator 2
+//  dentro de escolher(), que e' onde a primeira versao disto errou.
+//
+//  PISO, imposto pela analise e nao por gosto: a trilha de F0 emitida vive numa
+//  grade de RES_CENTS = 20 cents, que e' a resolucao dos bins do HMM. Uma
+//  tremulacao de UM BIN ja sao 20 cents, entao abaixo disso a histerese nao
+//  filtraria nem o menor ruido possivel.
+//
+//  TETO, medido: em 35 cents o glissando comeca a perder degraus (12 em vez de
+//  13, span de 11 semitons em vez de 12) -- a estabilizacao passa a engolir
+//  movimento legitimo, que e' o defeito oposto.
+//
+//  Varredura com permanencia de 50 ms, sobre exemplo-antes.wav:
+//
+//     histerese | mediana | <80ms | glissando
+//        15     | 58,0 ms |  60 % | 13 degraus, span 12
+//        20     | 58,0 ms |  60 % | 13 degraus, span 12
+//        25     | 58,0 ms |  60 % | 13 degraus, span 12
+//        30     | 63,9 ms |  56 % | 13 degraus, span 12   <-- escolhido
+//        35     | 64,8 ms |  56 % | 12 degraus, span 11   (degrada)
+//
+//  Abaixo de 30 a permanencia minima domina e a histerese nao acrescenta nada.
 //
 //  Vale registrar a amarracao, porque ela nao e' obvia: a resolucao da ANALISE
 //  poe um piso na resolucao da DECISAO. Baixar RES_CENTS para 10 foi considerado
@@ -630,10 +678,20 @@ struct EscolhaDeSemitom {
         // e nao apenas mais perto. E' o que mata a oscilacao na fronteira: ali
         // as duas distancias sao ~50 cents e a diferenca entre elas ronda zero,
         // enquanto uma nota de verdade chega com a diferenca perto de 100.
+        //
+        // O FATOR 2 NAO E' DETALHE, e a primeira versao disto errou por causa
+        // dele. As duas distancias se movem em sentidos OPOSTOS quando a altura
+        // anda: passando o ponto medio entre dois semitons por x cents, tem-se
+        // distAtual = 50 + x e distNovo = 50 - x, ou seja a diferenca vale 2x.
+        // Comparar a diferenca crua contra HISTERESE_CENTS faria a constante
+        // valer METADE do que o nome promete -- 30 cents de constante moveriam a
+        // fronteira de troca em apenas 15 cents, abaixo do piso de 20 que a
+        // propria analise impoe (um bin do HMM). Dividindo por 2, a constante
+        // passa a ser o que ela diz ser: DESLOCAMENTO DA FRONTEIRA, em cents.
         const double midi = 69.0 + 12.0 * std::log2(f0Hz / 440.0);
         const double distAtual = std::fabs(midi - (double)atual)     * 100.0;
         const double distNovo  = std::fabs(midi - (double)candidato) * 100.0;
-        if (distAtual - distNovo < HISTERESE_CENTS) return atual;
+        if (0.5 * (distAtual - distNovo) < HISTERESE_CENTS) return atual;
 
         atual = candidato; desdeTroca = 0;
         return atual;

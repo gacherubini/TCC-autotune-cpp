@@ -84,7 +84,14 @@ int main() {
 
     std::printf("== 1. Etapa 4 neutra: humanize=0 == Etapa 3, bit a bit ==\n");
     for (double ret : {0.0, 25.0, 120.0}) for (double k : {0.0, 1.0, 2.0}) {
+        // semHisterese: CorretorEtapa3 chama notaAlvo(), que escolhe o semitom
+        // SEM memoria. Sem esta flag, este laco compararia uma malha com estado
+        // contra uma sem, e passaria por acidente -- a trilha de trilha() chega a
+        // -49,3 cents contra uma fronteira em -50, ou seja, quase a cruza. Um
+        // ajuste qualquer naquele sinal transformaria a prova de identidade bit a
+        // bit numa falha espuria, ou pior, num verde que nao prova nada.
         ParamsCorrecao p; p.tolCents = 15.0; p.retuneMs = ret; p.vibrato = k; p.humanize = 0.0;
+        p.semHisterese = true;
         CorretorAltura nv; nv.prepare(fs);
         CorretorEtapa3 vl; vl.fs = fs;
         long long d = 0;

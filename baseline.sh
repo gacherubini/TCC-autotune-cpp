@@ -65,12 +65,23 @@ done
 #  ou o script para aqui).
 # ---------------------------------------------------------------------------
 echo "== testes de unidade =="
-for t in src/tests/*.cpp; do
+# O glob e a execucao sao ancorados em $RAIZ, e nao no diretorio de onde o script
+# foi chamado. Os dois importam, por razoes diferentes:
+#
+#   - o GLOB, porque 'src/tests/*.cpp' relativo nao casa nada quando o script e'
+#     chamado de outro lugar, e o '[[ -e ]] || break' entao pula TODOS os testes
+#     em silencio. Uma suite que se auto-desliga conforme o diretorio de chamada
+#     e' pior que uma suite que falha;
+#   - a EXECUCAO (o subshell com cd), porque test_deteccao.cpp le
+#     exemplo-antes.wav por caminho relativo. Ele e' o unico teste que precisa de
+#     um arquivo, e sem o cd ele derruba a linha de base inteira com "nao achei
+#     exemplo-antes.wav" quando o script roda de fora da raiz.
+for t in "$RAIZ"/src/tests/*.cpp; do
     [[ -e "$t" ]] || break
     nome=$(basename "$t" .cpp)
-    "$CXX" -std=c++17 -O2 -I "$RAIZ/external" "$RAIZ/$t" -o "$BIN/$nome" || {
+    "$CXX" -std=c++17 -O2 -I "$RAIZ/external" "$t" -o "$BIN/$nome" || {
         echo "ERRO ao compilar $t"; exit 1; }
-    if "$BIN/$nome" > "$TMP/$nome.out" 2>&1; then
+    if ( cd "$RAIZ" && "$BIN/$nome" ) > "$TMP/$nome.out" 2>&1; then
         echo "  ok    $nome"
     else
         echo "  FALHA $nome:"; cat "$TMP/$nome.out"; exit 1
@@ -269,13 +280,35 @@ if [[ -f "$LEG" ]]; then
         # efeito colateral de 'gravar', porque esta tabela e' um marco no passado:
         # ela so deve mudar quando alguem decidiu mudar a deteccao ou a sintese e
         # sabe dizer por que. A razao vai no diario, caso a caso.
-        : > "$LEG"
-        for nome in gold_mix1 gold_mix0 gold_tol600 gold_tol30 gold_glide120 \
-                    gold_cmaior gold_aminor rt_look4 rt_look0 rt_glide0 rt_tol0 \
-                    st_mix1 st_mix0 st_tol600 st_glide40 st_tol15 st_block64 \
-                    st_block512 st_cmaior; do
-            printf '%s %s\n' "$(shasum -a 256 "$TMP/g_$nome.wav" | cut -d' ' -f1)" "$nome" >> "$LEG"
-        done
+        #
+        # A checagem de invariante mora LA EMBAIXO, depois deste bloco, e este
+        # bloco sai com 'exit 0'. Sem a guarda abaixo, 'gravar-legado' congelaria
+        # hashes de um motor que deixou de ser identidade em beta = 1 e ainda
+        # devolveria sucesso -- o oposto exato do que o cabecalho deste arquivo
+        # promete ("INVARIANTE quebrada -> DEFEITO, sempre"). Uma tabela de
+        # referencia gravada por cima de um resultado errado e' pior que nenhuma.
+        if [[ "$INVAR_FALHOU" == "1" ]]; then
+            echo
+            echo "ERRO: invariante quebrada — NAO vou regravar a tabela da Etapa 2."
+            echo "      Um motor deixou de ser identidade em beta=1, ou a saida"
+            echo "      passou a depender do tamanho de bloco. Conserte primeiro."
+            exit 1
+        fi
+        # Os comentarios do arquivo antigo SOBREVIVEM. Eles carregam a
+        # proveniencia da tabela — inclusive a nota de 26/08/2026 explicando que
+        # um dos hashes originais estava errado e por que —, e uma regravacao que
+        # os apagasse trocaria historia por numeros. Erro cometido na primeira
+        # versao deste comando, notado quando a regravacao teve de ser desfeita.
+        grep '^#' "$LEG" > "$TMP/leg_hdr.txt" 2>/dev/null || : > "$TMP/leg_hdr.txt"
+        { cat "$TMP/leg_hdr.txt"
+          printf '# REGRAVADA em %s. A razao, caso a caso, esta no diario.\n' "$(date +%d/%m/%Y)"
+          for nome in gold_mix1 gold_mix0 gold_tol600 gold_tol30 gold_glide120 \
+                      gold_cmaior gold_aminor rt_look4 rt_look0 rt_glide0 rt_tol0 \
+                      st_mix1 st_mix0 st_tol600 st_glide40 st_tol15 st_block64 \
+                      st_block512 st_cmaior; do
+              printf '%s  %s\n' "$(shasum -a 256 "$TMP/g_$nome.wav" | cut -d' ' -f1)" "$nome"
+          done
+        } > "$LEG"
         echo; echo "TABELA DA ETAPA 2 REGRAVADA ($(wc -l < "$LEG" | tr -d ' ') casos)."
         echo "Registre no diario a razao de cada caso que mudou."
         exit 0
