@@ -49,6 +49,87 @@ TccLookAndFeel::TccLookAndFeel() {
     setColour(juce::PopupMenu::highlightedTextColourId,       tccColours::fundoJanela);
 }
 
+// O V4 pinta o balao com o 'currentColourScheme' -- inalcancavel pelos
+// setColour acima. Esta versao repete a estrutura dele (sombra em cache, corpo,
+// contorno) trocando so as cores, com uma diferenca deliberada: o corpo e'
+// OPACO, e nao 0,8 como no original. O balao cobre sliders e o grafico do
+// afinador, e translucido sobre eles o texto ficaria ilegivel.
+void TccLookAndFeel::drawCallOutBoxBackground(juce::CallOutBox& balao, juce::Graphics& g,
+                                              const juce::Path& contorno, juce::Image& cache) {
+    if (cache.isNull()) {
+        cache = { juce::Image::ARGB, balao.getWidth(), balao.getHeight(), true };
+        juce::Graphics gCache(cache);
+        juce::DropShadow(juce::Colours::black.withAlpha(0.7f), 8, { 0, 2 })
+            .drawForPath(gCache, contorno);
+    }
+    g.setColour(juce::Colours::black);
+    g.drawImageAt(cache, 0, 0);
+
+    g.setColour(tccColours::fundoPainel);
+    g.fillPath(contorno);
+    g.setColour(tccColours::destaque.withAlpha(0.55f));
+    g.strokePath(contorno, juce::PathStrokeType(1.5f));
+}
+
+// ----------------------------------------------------------------------------
+//  BotaoInfo — o "i" redondo ao lado de um controle.
+// ----------------------------------------------------------------------------
+BotaoInfo::BotaoInfo() : juce::Button("ajuda") {
+    setMouseCursor(juce::MouseCursor::PointingHandCursor);
+}
+
+void BotaoInfo::definirTexto(juce::String tituloNovo, juce::String corpoNovo) {
+    titulo = std::move(tituloNovo);
+    corpo  = std::move(corpoNovo);
+    // O que o leitor de tela anuncia. Sem isto os sete botoes se chamariam
+    // todos "ajuda" e nao daria para saber ajuda de que.
+    setTitle("Ajuda: " + titulo);
+}
+
+void BotaoInfo::paintButton(juce::Graphics& g, bool destacado, bool pressionado) {
+    auto r = getLocalBounds().toFloat();
+    const float d = juce::jmin(r.getWidth(), r.getHeight());
+    juce::Rectangle<float> circulo(0.0f, 0.0f, d, d);
+    circulo.setCentre(r.getCentre());
+
+    // Apagado em repouso para nao competir com o controle que ele explica;
+    // acende na cor da saida quando o mouse chega, que e' o convite ao clique.
+    g.setColour(pressionado ? tccColours::destaque
+              : destacado   ? tccColours::destaque.withAlpha(0.85f)
+                            : tccColours::textoSecundario);
+    g.drawEllipse(circulo.reduced(0.5f), 1.0f);
+
+    // O "i" sobe meio pixel: centrado pela caixa da fonte ele assenta baixo
+    // demais dentro do circulo, porque a caixa reserva espaco de descendente
+    // que a letra "i" nao usa.
+    g.setFont(juce::Font(d * 0.68f, juce::Font::bold));
+    g.drawText("i", circulo.translated(0.0f, -0.5f), juce::Justification::centred, false);
+}
+
+// ----------------------------------------------------------------------------
+//  PainelAjuda — o conteudo do balao.
+// ----------------------------------------------------------------------------
+PainelAjuda::PainelAjuda(const juce::String& tituloTexto, const juce::String& corpoTexto)
+    : titulo(tituloTexto)
+{
+    juce::AttributedString texto;
+    texto.append(corpoTexto, juce::Font(11.5f), tccColours::textoPrincipal);
+    texto.setLineSpacing(2.5f);
+    // Mede na largura FINAL, porque o CallOutBox dimensiona o balao pelo
+    // setSize abaixo e ele precisa estar certo antes do primeiro paint.
+    corpo.createLayout(texto, (float) (LARGURA - 2 * MARGEM));
+
+    setSize(LARGURA, MARGEM + ALT_TITULO + (int) std::ceil(corpo.getHeight()) + MARGEM);
+}
+
+void PainelAjuda::paint(juce::Graphics& g) {
+    auto r = getLocalBounds().reduced(MARGEM);
+    g.setColour(tccColours::destaque);
+    g.setFont(juce::Font(10.0f, juce::Font::bold));
+    g.drawText(titulo, r.removeFromTop(ALT_TITULO), juce::Justification::topLeft);
+    corpo.draw(g, r.toFloat());
+}
+
 // ----------------------------------------------------------------------------
 //  PainelAfinador
 // ----------------------------------------------------------------------------
@@ -383,6 +464,65 @@ TccAutotuneEditor::TccAutotuneEditor(TccAutotuneProcessor& p)
     configurarCombo(tonicaCombo, tonicaLabel, "Tonica", kTonicas);
     configurarCombo(escalaCombo, escalaLabel, "Escala", kEscalas);
 
+    // ------------------------------------------------------------------
+    //  Os "i" de ajuda. Sete, um por controle que faz algo nao obvio pelo
+    //  nome -- Voz, Tonica e Escala ficam de fora porque as proprias opcoes
+    //  da lista ja dizem o que sao.
+    //
+    //  Os textos sao a documentacao do repositorio reduzida ao que cabe num
+    //  balao, e por isso alguns dizem tambem o que o controle NAO e': a
+    //  confusao entre a Tolerancia e o Flex-Tune da Antares chegou a virar
+    //  decisao cancelada (docs/pesquisa-retune-speed-e-cor.md, achado B).
+    // ------------------------------------------------------------------
+    auto configurarInfo = [this](BotaoInfo& b, const char* titulo, const char* corpo) {
+        b.definirTexto(titulo, corpo);
+        b.onClick = [this, &b] { abrirAjuda(b); };
+        addAndMakeVisible(b);
+    };
+
+    configurarInfo(tolInfo, "Tolerancia",
+        "Zona morta em volta da nota certa, medida em cents. Dentro dela o motor nao "
+        "corrige nada e o que sai e' a sua voz crua. Um semitom tem 100 cents, entao 50 "
+        "ja e' meio caminho ate a nota vizinha.\n\n"
+        "Nao e' o Flex-Tune da Antares: aquele faz o oposto, corrige o que esta perto da "
+        "nota e deixa passar o que esta longe.");
+
+    configurarInfo(retuneInfo, "Retune Speed",
+        "Quanto tempo a correcao leva para chegar na nota, em milissegundos. E' uma "
+        "constante de tempo, nao uma dosagem.\n\n"
+        "Zero e' o efeito duro: a voz salta para o semitom no ataque. De 10 a 50 ms e' a "
+        "faixa de correcao natural, onde o deslize da sua voz sobrevive. Em zero, o "
+        "Natural Vibrato e o Humanize ficam sem efeito.");
+
+    configurarInfo(vibratoInfo, "Natural Vibrato",
+        "Quanto do vibrato que voce ja canta atravessa para a saida. Em 1 ele passa como "
+        "veio; em 0 e' apagado junto com o resto do desvio; acima de 1 e' exagerado.\n\n"
+        "Corrigir afinacao e apagar vibrato sao a mesma operacao vista de perto -- este "
+        "controle e' o que separa as duas. Precisa de Retune Speed maior que zero.");
+
+    configurarInfo(humanizeInfo, "Humanize",
+        "Afrouxa o Retune Speed durante a sustentacao da nota, sem mexer no ataque.\n\n"
+        "Serve para o comeco da nota encaixar firme e a nota longa nao ficar presa, que e' "
+        "o que soa mecanico. Precisa de Retune Speed maior que zero.");
+
+    configurarInfo(lowlatInfo, "Low Latency",
+        "Troca o motor de sintese. No lugar do TD-PSOLA entra um ponteiro movel que le o "
+        "audio de um anel e nunca espera pela deteccao, o que derruba a latencia de dezenas "
+        "de milissegundos para uma fracao de um.\n\n"
+        "O preco sao os formantes: so o TD-PSOLA os preserva. Ligado, tambem zera o "
+        "Look-ahead.");
+
+    configurarInfo(lookInfo, "Look-ahead",
+        "Quantos quadros de analise a escolha da nota espera antes de se comprometer.\n\n"
+        "Mais quadros, escolha mais estavel e mais latencia -- cada quadro custa um hop. "
+        "Com o Low Latency ligado ele fica desabilitado mostrando 0, que e' o valor que o "
+        "motor usa; o seu valor salvo continua intacto e volta ao desligar.");
+
+    configurarInfo(mixInfo, "Mix",
+        "Dosagem entre a voz seca e a corrigida, aplicada depois da sintese.\n\n"
+        "Em 0 % a saida e' a entrada intacta, amostra por amostra: o motor roda e o "
+        "resultado e' descartado. Em 100 % voce ouve so o sinal corrigido.");
+
     auto& apvts = processorRef.apvts;
     mixAttach      = std::make_unique<SliderAttachment>(apvts, "mix",      mixSlider);
     tolAttach      = std::make_unique<SliderAttachment>(apvts, "tol",      tolSlider);
@@ -509,6 +649,11 @@ void TccAutotuneEditor::atualizarControlesInertes() {
     for (auto* l : { &vibratoLabel, &humanizeLabel })
         l->setAlpha(inerte ? 0.45f : 1.0f);
 
+    // Os dois "i" NAO apagam junto, de proposito. E' exatamente quando a coluna
+    // esta cinza que o usuario quer saber por que -- e o texto de cada um
+    // termina dizendo "precisa de Retune Speed maior que zero". Apagar a
+    // explicacao junto com o que ela explica seria o contrario do objetivo.
+
     // O repaint so' vai quando o estado REALMENTE vira. Este metodo roda a cada
     // passo do arrasto do Retune Speed, e repintar o editor inteiro no ritmo do
     // arrasto seria desperdicio -- os setters acima ja' sao idempotentes no
@@ -518,6 +663,22 @@ void TccAutotuneEditor::atualizarControlesInertes() {
     // componente: e' uma linha de texto, e um Label so' para ela seria mais
     // codigo de layout do que a linha vale.
     if (inerte != expressaoInerte) { expressaoInerte = inerte; repaint(); }
+}
+
+// ----------------------------------------------------------------------------
+//  abrirAjuda() — o balao ancorado no "i" que foi clicado.
+//
+//  O CallOutBox e' adicionado a ESTE editor (o terceiro argumento), e nao ao
+//  desktop com nullptr. Janela de nivel de desktop saindo de UI de plugin e'
+//  fonte conhecida de problema em host, e confinada ela cabe folgada nos
+//  640x430 da tela. O JUCE cuida de fechar ao clicar fora e de destruir o
+//  conteudo -- por isso ele vai por unique_ptr e nao guardamos ponteiro.
+// ----------------------------------------------------------------------------
+void TccAutotuneEditor::abrirAjuda(BotaoInfo& botao) {
+    juce::CallOutBox::launchAsynchronously(
+        std::make_unique<PainelAjuda>(botao.getTitulo(), botao.getCorpo()),
+        getLocalArea(&botao, botao.getLocalBounds()),
+        this);
 }
 
 void TccAutotuneEditor::desenharGrupo(juce::Graphics& g, juce::Rectangle<int> caixa,
@@ -623,29 +784,43 @@ void TccAutotuneEditor::resized() {
         // Retune Speed cruza o zero, os quatro sliders mudariam de altura no
         // meio do arrasto e a faixa inteira "pularia".
         faixaAvisoInerte = dentro.removeFromBottom(12).removeFromRight(largura * 2);
-        auto coluna = [&](juce::Slider& s, juce::Label& l) {
+        auto coluna = [&](juce::Slider& s, juce::Label& l, BotaoInfo& info) {
             auto col = dentro.removeFromLeft(largura);
+            // O "i" ganha faixa PROPRIA acima do rotulo, em vez de dividir a
+            // linha com ele: a coluna tem ~62 px e "Retune Speed (ms)" ja ocupa
+            // quase todos. Tirar 14 px de LARGURA espremeria o texto, e
+            // encurtar o rotulo contraria a escolha de usar o nome de catalogo
+            // completo (ver configurarSlider). O custo vai para a ALTURA, que
+            // e' onde sobra folga.
+            info.setBounds(col.removeFromTop(14).removeFromRight(14).reduced(1));
             l.setBounds(col.removeFromTop(24));
             s.setBounds(col);
         };
-        coluna(tolSlider,      tolLabel);
-        coluna(retuneSlider,   retuneLabel);
-        coluna(vibratoSlider,  vibratoLabel);
-        coluna(humanizeSlider, humanizeLabel);
+        coluna(tolSlider,      tolLabel,      tolInfo);
+        coluna(retuneSlider,   retuneLabel,   retuneInfo);
+        coluna(vibratoSlider,  vibratoLabel,  vibratoInfo);
+        coluna(humanizeSlider, humanizeLabel, humanizeInfo);
     }
 
     // MOTOR: dois sliders horizontais, rotulo em cima; o rodape com a latencia
     // e' pintado, nao e' componente.
     {
         auto dentro = caixaMotor.reduced(11, 0).withTrimmedTop(16).withTrimmedBottom(20);
-        auto linha = [&](juce::Label& l, juce::Slider& s) {
-            l.setBounds(dentro.removeFromTop(14));
+        // Aqui o "i" cabe na propria linha do rotulo: o grupo tem ~144 px de
+        // largura util e "Look-ahead" nao chega perto disso. Sem custo de
+        // altura, ao contrario do grupo CORRECAO.
+        auto linha = [&](juce::Label& l, juce::Slider& s, BotaoInfo& info) {
+            auto faixaRotulo = dentro.removeFromTop(14);
+            info.setBounds(faixaRotulo.removeFromRight(14).reduced(1));
+            l.setBounds(faixaRotulo);
             s.setBounds(dentro.removeFromTop(22));
             dentro.removeFromTop(10);
         };
-        lowlatButton.setBounds(dentro.removeFromTop(22));
+        auto faixaLowlat = dentro.removeFromTop(22);
+        lowlatInfo.setBounds(faixaLowlat.removeFromRight(16).withSizeKeepingCentre(12, 12));
+        lowlatButton.setBounds(faixaLowlat);
         dentro.removeFromTop(6);
-        linha(lookLabel, lookSlider);
-        linha(mixLabel,  mixSlider);
+        linha(lookLabel, lookSlider, lookInfo);
+        linha(mixLabel,  mixSlider,  mixInfo);
     }
 }

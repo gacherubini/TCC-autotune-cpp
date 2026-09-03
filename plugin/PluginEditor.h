@@ -43,6 +43,59 @@ namespace tccColours {
 class TccLookAndFeel : public juce::LookAndFeel_V4 {
 public:
     TccLookAndFeel();
+
+    // O balao de ajuda (CallOutBox) NAO se tematiza por setColour: o
+    // LookAndFeel_V4 o pinta com o 'currentColourScheme' interno, que os
+    // setColour do construtor nao alcancam. Sem esta sobrescrita o balao sairia
+    // no cinza de fabrica do JUCE, no meio de uma tela verde escura.
+    void drawCallOutBoxBackground(juce::CallOutBox&, juce::Graphics&,
+                                  const juce::Path&, juce::Image&) override;
+};
+
+// Botao redondo com um "i": abre um balao explicando o controle ao lado.
+//
+//  O circulo e o "i" sao DESENHADOS, nao um glifo "ⓘ" de fonte: o caractere
+//  existe em poucas fontes de sistema e cairia num retangulo vazio onde nao
+//  existisse. Duas primitivas de Graphics nao tem esse risco.
+class BotaoInfo : public juce::Button {
+public:
+    BotaoInfo();
+
+    // O par que o balao exibe. Titulo em uma linha, corpo em prosa.
+    void definirTexto(juce::String tituloNovo, juce::String corpoNovo);
+
+    const juce::String& getTitulo() const noexcept { return titulo; }
+    const juce::String& getCorpo()  const noexcept { return corpo;  }
+
+    void paintButton(juce::Graphics&, bool destacado, bool pressionado) override;
+
+private:
+    juce::String titulo, corpo;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(BotaoInfo)
+};
+
+// Conteudo do balao: um titulo e um paragrafo. O CallOutBox toma posse dele e
+// se dimensiona pelo setSize feito no construtor -- por isso a altura precisa
+// estar certa ANTES do primeiro paint, e por isso o texto e' medido ali.
+//
+//  O fundo NAO e' pintado aqui: quem desenha o balao (com canto arredondado,
+//  seta e sombra) e' o drawCallOutBoxBackground acima. Preencher tambem daqui
+//  quadraria os cantos que aquele arredondou.
+class PainelAjuda : public juce::Component {
+public:
+    PainelAjuda(const juce::String& titulo, const juce::String& corpo);
+    void paint(juce::Graphics&) override;
+
+private:
+    static constexpr int LARGURA    = 236;
+    static constexpr int MARGEM     = 12;
+    static constexpr int ALT_TITULO = 16;
+
+    juce::String     titulo;
+    juce::TextLayout corpo;   // medido no construtor, redesenhado no paint
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(PainelAjuda)
 };
 
 // Painel do afinador: cabecalho (nota-alvo + Hz), arco de desvio e historico da
@@ -125,6 +178,12 @@ private:
     // Ver a implementacao para a algebra e para a escolha do gatilho.
     void atualizarControlesInertes();
 
+    // Abre o balao de ajuda ancorado num BotaoInfo. Vive no editor, e nao no
+    // proprio botao, porque o CallOutBox precisa saber a quem se prender: o
+    // balao e' adicionado a ESTE componente, nao ao desktop. Janela de nivel de
+    // desktop saindo de UI de plugin e' fonte conhecida de encrenca em host.
+    void abrirAjuda(BotaoInfo& botao);
+
     TccAutotuneProcessor& processorRef;
     TccLookAndFeel lookAndFeel;
     PainelAfinador painel;
@@ -144,6 +203,11 @@ private:
     juce::Label    vozLabel, tonicaLabel, escalaLabel, mixLabel, tolLabel, retuneLabel,
                    vibratoLabel, lookLabel, humanizeLabel;
     juce::ToggleButton lowlatButton { "Low Latency" };
+
+    // Um "i" por controle explicado. Voz, Tonica e Escala ficam de fora: o que
+    // elas fazem esta escrito nas proprias opcoes da lista.
+    BotaoInfo tolInfo, retuneInfo, vibratoInfo, humanizeInfo,
+              lowlatInfo, lookInfo, mixInfo;
 
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     using ComboAttachment  = juce::AudioProcessorValueTreeState::ComboBoxAttachment;

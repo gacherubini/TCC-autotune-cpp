@@ -49,6 +49,31 @@ Três detalhes de implementação que valem para o texto do TCC:
    **Mix passou a ser mostrado em %** (o parâmetro continua 0–1), fechando um item cosmético do
    backlog da Etapa 2.
 
+**Adição de 03/09/2026 — um ⓘ por controle.** Sete botões redondos, um ao lado de cada
+controle cujo nome não entrega o que ele faz: os quatro do grupo **Correção**, mais **Low
+Latency**, **Look-ahead** e **Mix**. Clicar abre um `CallOutBox` ancorado no botão, que some ao
+clicar fora. **Voz, Tônica e Escala não têm** — as próprias opções da lista já dizem o que são.
+
+Quatro decisões de implementação:
+
+- **O balão é filho do editor, não do desktop.** `launchAsynchronously(..., this)` em vez de
+  `nullptr`. Janela de nível de desktop saindo de UI de plugin é fonte conhecida de problema em
+  host, e confinada ela cabe folgada nos 640×430.
+- **`drawCallOutBoxBackground` foi sobrescrito.** O `LookAndFeel_V4` pinta o balão pelo
+  `currentColourScheme` interno, que os `setColour` do `TccLookAndFeel` não alcançam — sem a
+  sobrescrita ele sairia cinza de fábrica no meio do tema verde. O corpo é **opaco**, e não o
+  0,8 do original: o balão cobre sliders e o gráfico do afinador, e translúcido sobre eles o
+  texto ficava ilegível.
+- **No grupo Correção o ⓘ ganha faixa própria acima do rótulo**, custando 14 px de curso dos
+  sliders. Ao lado do rótulo não cabia: a coluna tem ~62 px e "Retune Speed (ms)" ocupa quase
+  todos, e encurtar o rótulo contrariaria a escolha de usar o nome de catálogo completo. Nos
+  controles horizontais do grupo Motor ele cabe na linha do rótulo, sem custo.
+- **Os ⓘ do Natural Vibrato e do Humanize não acinzentam** quando o Retune Speed = 0 os torna
+  inertes. É justamente aí que o usuário quer saber por quê, e é o que o texto deles responde.
+
+O círculo e o "i" são **desenhados**, não o glifo `ⓘ` de fonte: o caractere existe em poucas
+fontes de sistema e cairia num retângulo vazio onde não existisse.
+
 **Correção de 02/09/2026 — o texto anda a 7,5 Hz, o desenho a 60 Hz.** O `getF0Atual()` muda a
 cada hop (5,8 ms), e o timer de 60 Hz amostrava isso direto no texto: o nome da nota, os dois Hz
 e o número de cents trocavam em todo repaint e não davam para ler. Agora as agulhas, o rastro e
