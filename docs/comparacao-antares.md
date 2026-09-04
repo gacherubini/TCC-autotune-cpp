@@ -30,8 +30,8 @@ Controles do Auto-Tune Artist (view ADVANCED) contra os do protótipo
 |---|---|---|
 | **INPUT TYPE** (Soprano / Alto-Tenor / Low Male / Instrument / Bass Inst.) | `Voz` — 4 presets, os mesmos nomes | ✅ **paridade** na interface (4 contra 5; falta `Bass Instrument`, que não existe no DSP). A granularidade extra passou a ser capacidade da **linha de comando**: os 9 presets SATB continuam em `presetVoz()` e alcançáveis por `voz=` |
 | **KEY** (12 tônicas) + **SCALE** | `Escala` — 7 combos fixos | ⚠️ **lacuna** — ver §3 |
-| **RETUNE SPEED** (ms) | `Glide` (ms) | ⚠️ estrutura certa, sinal errado — ver §4 |
-| **FLEX-TUNE** (cents) | `Tolerancia` (cents) | 🔴 **NÃO são equivalentes** — mecanismos opostos, ver nota abaixo |
+| **RETUNE SPEED** (ms) | `Retune Speed` (ms) | ✅ implementado (Etapa 3). ⚠️ faixa **0–100 ms**, não 0–400: acima disso a medição mostra platô — ver [Decisão 10](historico-e-decisoes.md#decisão-10--o-usuário-não-pode-alcançar-o-som-ruim-2026-09-03) |
+| **FLEX-TUNE** (cents) | `Tolerancia` (cents) | 🔴 **NÃO são equivalentes** — mecanismos opostos, ver nota abaixo. ⚠️ **fora da interface** desde 03/09/2026 ([Decisão 10](historico-e-decisoes.md#decisão-10--o-usuário-não-pode-alcançar-o-som-ruim-2026-09-03)); segue no DSP, no APVTS e nos CLIs |
 | **HUMANIZE** | — | ❌ ausente (é o item C1-b do backlog) |
 | **NATURAL VIBRATO** | — | ❌ ausente |
 | **TRACKING** | fixo no HMM | ❌ não exposto |
@@ -48,6 +48,14 @@ Controles do Auto-Tune Artist (view ADVANCED) contra os do protótipo
 
 Legenda: ✅ paridade · ⚠️ existe com ressalva · 🔴 erro corrigido · ❌ ausente e relevante ·
 🔵 ausente e fora do escopo · ➕ o protótipo tem e o Auto-Tune não.
+
+> ⚠️ **Esta tabela é um retrato de 26/08/2026 e envelheceu.** As linhas `HUMANIZE`,
+> `NATURAL VIBRATO` e `Mix seco/molhado` dizem "ausente" e **não estão mais** — foram
+> implementadas nas Etapas 2 a 5; a `Forca` já foi removida. Duas linhas foram atualizadas em
+> 03/09/2026 porque o texto delas induziria a erro em número (`RETUNE SPEED`, cuja faixa mudou)
+> ou em localização (`FLEX-TUNE`/`Tolerancia`, que saiu da tela). **A fonte corrente do que está
+> exposto hoje é a tabela de parâmetros do [`plugin/README.md`](../plugin/README.md#parâmetros-expostos);**
+> o valor desta aqui é o argumento controle a controle, não o inventário.
 
 > 🔴 **Correção de 2026-08-26 — `Tolerancia` ≠ Flex-Tune.**
 > A versão anterior desta tabela afirmava que os dois eram o mesmo controle com nomes

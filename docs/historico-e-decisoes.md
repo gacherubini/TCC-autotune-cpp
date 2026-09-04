@@ -484,6 +484,106 @@ latência declarada com o botão ligado é 8 amostras (parte fixa) e a parte var
 cantada) **não** é declarada ao host — o texto do TCC tem de citar as duas. Supersede a
 [Decisão 5](#decisão-5--modo-de-baixa-latência), que previa um modo por parâmetros.
 
+### Decisão 10 — o usuário não pode alcançar o som ruim (2026-09-03)
+
+**Motivo:** o autor, usando o plugin, relatou que o Retune Speed no máximo deixa a voz *"lenta e
+desafinada"*, e que a Tolerância e o Look-ahead não são controles que um cantor saiba operar.
+A queixa do Retune já estava escrita como sintoma 3 do
+[spec de encaixe e estabilidade](spec-encaixe-e-estabilidade.md) e como a história 21 — e nunca
+tinha sido resolvida.
+
+**O que muda, em três partes.**
+
+**1. A faixa do Retune Speed vai de 0–400 para 0–100 ms.** Reverte a **D6** daquele spec.
+
+D6 esticou 200 → 400 ms apostando que a metade de cima passaria a significar algo *depois* da
+estabilização da nota-alvo (histerese de 30 ct + permanência de 50 ms). A estabilização entrou no
+mesmo dia, e a aposta **não se confirmou**. Varredura em `exemplo-antes.wav` com o motor de hoje,
+medindo o desvio da altura de saída até o semitom mais próximo, com `vibrato=0` para separar o
+atraso da correção do vibrato que se preserva de propósito:
+
+| Retune | erro médio | saída a ≤ 10 ct do semitom |
+|---|---|---|
+| 0 ms | 0,3 ct | 99,1 % |
+| 10 ms | 5,4 ct | 84,7 % |
+| 25 ms | 11,4 ct | 62,9 % |
+| **50 ms** | 16,6 ct | 46,6 % |
+| 75 ms | 20,1 ct | 34,9 % |
+| **100 ms** | 21,9 ct | 29,1 % |
+| 150 ms | 24,4 ct | 23,1 % |
+| 200 ms | 22,7 ct | 25,7 % |
+| 300 ms | 24,3 ct | 26,3 % |
+| 400 ms | 22,5 ct | 28,0 % |
+
+O joelho está em ~50 ms. Acima de 100 ms a curva vira dispersão em volta de 22 ct — 150 mede
+*pior* que 200, 300 pior que 400. Não é curva, é ruído: o controle deixa de separar valores e só
+piora o encaixe. **A história 24** (*"mover o controle na metade superior da faixa produz
+diferença audível"*) estava reprovada e ninguém tinha medido.
+
+Duas fontes independentes apontam para o mesmo teto: o manual do Auto-Tune Artist chama **10–50 ms**
+de faixa típica para correção natural ([pesquisa](pesquisa-retune-speed-e-cor.md) §1.1), e a
+varredura acima acha o joelho em ~50 ms no material do próprio projeto. 100 ms é isso com folga.
+
+**Preço:** perde a paridade de *valores* com o Auto-Tune (história 23) e **grampeia projetos
+salvos** acima de 100 ms. Isso não é o espelho de alargar: o comentário que estava em
+`PluginProcessor.cpp` argumentava que esticar era seguro porque a APVTS grava o valor
+**desnormalizado**, e é por isso mesmo que encolher grampeia. Assumido — o padrão de fábrica é 0
+e o plugin não foi distribuído.
+
+**2. A `Tolerancia` sai da interface e fica no DSP, no APVTS e nos CLIs.** Mesmo tratamento e
+mesmo argumento da [Decisão 8](#decisão-8--create-vibrato-sai-da-interface-fica-no-dsp-2026-08-31):
+o controle contradiz o que o produto se propõe a fazer. A zona morta **empurra** o desvio até a
+borda em vez de zerar, então ligá-la é pedir que a saída fique desafinada de propósito, por um
+valor que o usuário escolhe sem ter como prever o efeito. O padrão já era 0 desde D5 — ou seja,
+ela nascia sem efeito e só podia piorar o encaixe a partir dali.
+
+Nada some do host: `tol` continua automatizável e alcançável por `tol=`, os casos
+`st_tol15`/`st_tol600` da linha de base seguem valendo, e o arco da zona morta continua desenhado
+(guardado por `if (tol > 0)`).
+
+**3. O Humanize ganha um teto de τ (`HUM_TAU_TETO` = 100 ms).** Este é o item que **não** estava
+na queixa e apareceu ao medir.
+
+O Humanize estica a **mesma** constante de tempo que o Retune Speed (`τ_eff = τ·(1 + h·HUM_FATOR·rampa)`,
+com `HUM_FATOR = 3`). Sem teto, `retune = 100` + `humanize = 1` dá τ = 400 ms — exatamente o valor
+que a parte 1 acabou de proibir. E não é "parecido": medindo o erro separado por tempo desde o
+ataque da nota, as duas configurações são **a mesma coisa nas duas metades**:
+
+| Configuração | ataque (≤ 100 ms) | sustentação (≥ 300 ms) |
+|---|---|---|
+| retune=25, humanize=0 | 17,2 ct | 1,7 ct |
+| retune=25, humanize=1 | 24,2 ct | 12,0 ct |
+| **retune=100, humanize=1** | **25,7 ct** | **21,2 ct** |
+| **retune=400, humanize=0** | **26,1 ct** | **21,2 ct** |
+
+O teto é `min(τ·fator, max(τ, HUM_TAU_TETO))` — e não `HUM_TAU_TETO` puro — por contrato: os CLIs
+aceitam `retune=` acima de 100 ms e o DSP tem de honrar o que lhe pedem. Com essa forma o Humanize
+nunca **empurra** o τ acima de 100 ms e nunca **puxa para baixo** o que o usuário já pediu.
+
+**Não muda a linha de base**, e isso foi verificado: no padrão de fábrica `retune = 25`, o
+crescimento máximo é 25 × 4 = 100 ms, que é o próprio teto — os casos `st_humanize1` e
+`gold_humanize1` seguem bit a bit iguais. O teto só passa a agir acima de 25 ms. Depois dele, a
+pior sustentação alcançável caiu de 21,2 para 12,1 ct.
+
+**Consequência de interface:** com o Retune Speed em 100 ms o Humanize fica inerte, e a
+[D7](spec-encaixe-e-estabilidade.md) manda avisar. O editor ganhou um segundo estado inerte, só
+para o Humanize, com a linha `Humanize sem efeito: Retune Speed no teto`.
+
+**O Natural Vibrato foi medido e NÃO tem o problema — não mexer.** Com `retune = 25 ms`, o ganho
+do gesto rápido do cantor vai de 0,64× (vibrato=0) a 1,78× (vibrato=2), monótono e sem platô, e o
+valor de fábrica cai em 1,01× — que é o que a documentação promete. O desvio ao semitom cresce
+junto, mas isso é o controle *fazendo o trabalho dele*: vibrato preservado **é** desvio. Medir
+encaixe aqui seria a mesma armadilha de métrica que a primeira varredura do Retune quase produziu.
+
+**O Look-ahead FICA na tela**, por decisão do autor. A [comparação com o Antares](comparacao-antares.md)
+§6 o liga à contribuição do trabalho (o eixo latência × qualidade), e não há texto a reescrever.
+
+**Fica em aberto, com medição e sem decisão:** a rampa do Humanize **vaza para dentro do ataque**.
+`HUM_SUSTENTACAO = 0,200 s` põe a rampa em 39 % já aos 100 ms, então o Humanize degrada o ataque
+(17,2 → 24,2 ct com retune=25) — o manual da Antares e o comentário do `dsp.h` dizem *"only during
+the sustained portion"*, e a implementação não cumpre isso. Escolher a constante nova exige a sua
+própria varredura; não foi feita.
+
 ### Ordem de implementação acordada
 
 | # | Item | Muda DSP? | Risco | Questões em aberto |

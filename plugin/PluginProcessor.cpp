@@ -115,27 +115,55 @@ TccAutotuneProcessor::criarParametros() {
     // Suavidade é trabalho do controle que tem dimensão de tempo.
     layout.add(std::make_unique<AudioParameterFloat>(
         ParameterID{ ids::tol, 1 }, "Tolerancia (cents)", NormalisableRange<float>(0.0f, 50.0f), 0.0f));
-    // retune 0..400 ms — Retune Speed: quanto tempo a correcao leva para chegar
-    // a nota. A faixa foi de 200 para 400 ms (D6) para paridade de valores com o
-    // Auto-Tune. Ela só passou a significar alguma coisa DEPOIS da estabilização
-    // da nota-alvo: antes dela o controle saturava, e o erro médio da saída ia de
-    // 22,7 para 23,8 cents entre 200 e 400 ms — mais números, não mais efeito.
-    // Um alvo que trocava a cada 35 ms não era alcançável por filtro nenhum.
+    // retune 0..100 ms — Retune Speed: quanto tempo a correcao leva para chegar
+    // a nota.
+    //
+    // A faixa ENCOLHEU de 400 para 100 ms em 03/09/2026, revertendo a D6 do spec
+    // de encaixe e estabilidade. D6 tinha esticado 200 -> 400 ms apostando que a
+    // metade de cima passaria a significar alguma coisa DEPOIS da estabilizacao
+    // da nota-alvo (histerese de 30 ct + permanencia de 50 ms). A estabilizacao
+    // entrou, e a aposta nao se confirmou: o controle continua saturando, so que
+    // mais cedo. Varredura no exemplo-antes.wav com o motor de hoje, medindo o
+    // desvio da altura de SAIDA ate o semitom mais proximo, com vibrato = 0 para
+    // isolar o atraso da correcao do vibrato que se preserva de proposito:
+    //
+    //     retune    erro medio    saida a <= 10 ct do semitom
+    //       0 ms       0,3 ct         99,1 %
+    //      10 ms       5,4 ct         84,7 %
+    //      25 ms      11,4 ct         62,9 %
+    //      50 ms      16,6 ct         46,6 %      <- ultimo passo com efeito claro
+    //      75 ms      20,1 ct         34,9 %
+    //     100 ms      21,9 ct         29,1 %      <- teto novo
+    //     150 ms      24,4 ct         23,1 %
+    //     200 ms      22,7 ct         25,7 %
+    //     300 ms      24,3 ct         26,3 %
+    //     400 ms      22,5 ct         28,0 %
+    //
+    // De 100 ms para cima a curva vira dispersao em volta de 22 ct: 150 mede PIOR
+    // que 200, e 300 pior que 400. Nao e' curva, e' ruido — o controle deixa de
+    // separar valores e so' piora o encaixe. Era a metade da faixa que o usuario
+    // descrevia como "lento e desafinado", e a medicao concorda com o ouvido.
+    //
+    // O teto em 100 tem duas fontes independentes apontando para o mesmo lugar: o
+    // manual do Auto-Tune Artist chama 10-50 ms de faixa tipica para correcao
+    // natural (pesquisa-retune-speed-e-cor.md §1.1), e a varredura acima acha o
+    // joelho em ~50 ms no material do proprio projeto. 100 ms e' isso mais folga.
+    //
+    // ATENCAO — encolher NAO e' o espelho de alargar. O comentario que estava
+    // aqui argumentava que esticar a faixa era seguro porque a APVTS grava o
+    // valor DESNORMALIZADO na arvore (juce_AudioProcessorValueTreeState.cpp:413):
+    // um projeto salvo com 100 ms guarda 100.0 e reabre em 100 ms com qualquer
+    // faixa. Isso continua verdade, e e' justamente por isso que ENCOLHER grampeia:
+    // um projeto salvo com 300 ms reabre em 100 ms, calado. Preco assumido — o
+    // padrao de fabrica e' 0 e o plugin nao foi distribuido.
+    //
+    // O DSP nao mudou: CorretorAltura aceita qualquer retuneMs, e os CLIs seguem
+    // aceitando retune=400. So' a faixa EXPOSTA ao usuario encolheu.
     //
     // Padrão 0: o efeito duro como primeira impressão, por decisão do autor. O
     // deslize continua alcançável no próprio controle.
-    //
-    // Alargar a faixa NÃO quebra projetos salvos, e isso foi verificado: a APVTS
-    // grava na árvore o valor DESNORMALIZADO
-    // (juce_AudioProcessorValueTreeState.cpp:413) e o plugin salva/restaura por
-    // copyState/replaceState. Um projeto salvo com 100 ms guarda 100.0 e reabre
-    // em 100 ms, com a faixa velha ou com a nova. Fosse normalizado, o mesmo
-    // projeto reabriria em 200 ms — uma quebra silenciosa e contínua, pior que a
-    // do combo de tessitura, que ao menos salta de uma vez. As duas mudanças
-    // pareciam da mesma família e não são; a diferença está em como a APVTS
-    // serializa cada TIPO de parâmetro.
     layout.add(std::make_unique<AudioParameterFloat>(
-        ParameterID{ ids::retune, 1 }, "Retune Speed (ms)", NormalisableRange<float>(0.0f, 400.0f), 0.0f));
+        ParameterID{ ids::retune, 1 }, "Retune Speed (ms)", NormalisableRange<float>(0.0f, 100.0f), 0.0f));
     // vibrato 0..2 — quanto do vibrato do cantor sobrevive a correcao.
     //   0 = removido (o comportamento ate a Etapa 2), 1 = preservado, 2 = dobrado.
     layout.add(std::make_unique<AudioParameterFloat>(

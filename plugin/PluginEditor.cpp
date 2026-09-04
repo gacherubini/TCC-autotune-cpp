@@ -316,7 +316,7 @@ void PainelAfinador::desenharHistorico(juce::Graphics& g, juce::Rectangle<float>
     auto rodape = r.removeFromBottom(13.0f);
     g.setColour(tccColours::textoFraco);
     g.setFont(juce::Font(8.5f));
-    g.drawText("acima da faixa clara = correcao maior que a tolerancia",
+    g.drawText("altura do traco = quantos cents a correcao moveu a voz",
                rodape.toNearestInt(), juce::Justification::centredLeft);
     r.removeFromBottom(4.0f);
 
@@ -421,7 +421,21 @@ TccAutotuneEditor::TccAutotuneEditor(TccAutotuneProcessor& p)
     };
     // Grupo CORRECAO — verticais. Os rotulos vao no nome de catalogo completo:
     // "Retune" sozinho ja foi confundido com outra coisa.
-    configurarSlider(tolSlider,      tolLabel,      "Tolerancia (ct)",   true);
+    //
+    // A TOLERANCIA NAO ESTA AQUI, e isso e' de proposito (03/09/2026). Ela segue
+    // no DSP, no APVTS e nos CLIs -- e' o mesmo tratamento que a Decisao 8 deu ao
+    // Create Vibrato, e pela mesma razao: o controle contradiz o que o produto se
+    // propoe a fazer. A zona morta EMPURRA o desvio ate a borda em vez de zerar,
+    // entao ligar a Tolerancia e' pedir que a saida fique desafinada de proposito,
+    // por um valor que o proprio usuario escolhe sem ter como saber o efeito. O
+    // padrao de fabrica ja era 0 desde D5, ou seja, o controle nascia sem efeito e
+    // so' podia piorar o encaixe a partir dali.
+    //
+    // Nada some do host: `tol` continua automatizavel e continua alcancavel por
+    // tol= na linha de comando, entao os casos st_tol15/st_tol600 da linha de base
+    // seguem valendo. O desenho da zona morta no afinador tambem fica -- ele ja e'
+    // guardado por `if (tol > 0)`, entao some sozinho no padrao e reaparece se o
+    // host automatizar o parametro.
     configurarSlider(retuneSlider,   retuneLabel,   "Retune Speed (ms)", true);
     configurarSlider(vibratoSlider,  vibratoLabel,  "Natural Vibrato",   true);
     configurarSlider(humanizeSlider, humanizeLabel, "Humanize",          true);
@@ -448,7 +462,7 @@ TccAutotuneEditor::TccAutotuneEditor(TccAutotuneProcessor& p)
         juce::Timer::callAfterDelay(250, [sp] { if (sp != nullptr) sp->repaint(); });
     };
 
-    for (auto* l : { &tolLabel, &retuneLabel, &vibratoLabel, &humanizeLabel })
+    for (auto* l : { &retuneLabel, &vibratoLabel, &humanizeLabel })
         l->setFont(juce::Font(9.5f));
 
     auto configurarCombo = [this](juce::ComboBox& c, juce::Label& l, const juce::String& texto,
@@ -465,27 +479,23 @@ TccAutotuneEditor::TccAutotuneEditor(TccAutotuneProcessor& p)
     configurarCombo(escalaCombo, escalaLabel, "Escala", kEscalas);
 
     // ------------------------------------------------------------------
-    //  Os "i" de ajuda. Sete, um por controle que faz algo nao obvio pelo
+    //  Os "i" de ajuda. Seis, um por controle que faz algo nao obvio pelo
     //  nome -- Voz, Tonica e Escala ficam de fora porque as proprias opcoes
     //  da lista ja dizem o que sao.
     //
     //  Os textos sao a documentacao do repositorio reduzida ao que cabe num
-    //  balao, e por isso alguns dizem tambem o que o controle NAO e': a
-    //  confusao entre a Tolerancia e o Flex-Tune da Antares chegou a virar
-    //  decisao cancelada (docs/pesquisa-retune-speed-e-cor.md, achado B).
+    //  balao, e por isso alguns dizem tambem o que o controle NAO e': confundir
+    //  um parametro com o homonimo da Antares ja custou uma decisao cancelada
+    //  (docs/pesquisa-retune-speed-e-cor.md, achado B).
+    //
+    //  A Tolerancia nao tem "i" porque nao tem mais slider -- ela saiu da tela
+    //  no mesmo dia (ver configurarSlider, acima).
     // ------------------------------------------------------------------
     auto configurarInfo = [this](BotaoInfo& b, const char* titulo, const char* corpo) {
         b.definirTexto(titulo, corpo);
         b.onClick = [this, &b] { abrirAjuda(b); };
         addAndMakeVisible(b);
     };
-
-    configurarInfo(tolInfo, "Tolerancia",
-        "Zona morta em volta da nota certa, medida em cents. Dentro dela o motor nao "
-        "corrige nada e o que sai e' a sua voz crua. Um semitom tem 100 cents, entao 50 "
-        "ja e' meio caminho ate a nota vizinha.\n\n"
-        "Nao e' o Flex-Tune da Antares: aquele faz o oposto, corrige o que esta perto da "
-        "nota e deixa passar o que esta longe.");
 
     configurarInfo(retuneInfo, "Retune Speed",
         "Quanto tempo a correcao leva para chegar na nota, em milissegundos. E' uma "
@@ -525,7 +535,6 @@ TccAutotuneEditor::TccAutotuneEditor(TccAutotuneProcessor& p)
 
     auto& apvts = processorRef.apvts;
     mixAttach      = std::make_unique<SliderAttachment>(apvts, "mix",      mixSlider);
-    tolAttach      = std::make_unique<SliderAttachment>(apvts, "tol",      tolSlider);
     retuneAttach   = std::make_unique<SliderAttachment>(apvts, "retune",   retuneSlider);
     vibratoAttach  = std::make_unique<SliderAttachment>(apvts, "vibrato",  vibratoSlider);
     humanizeAttach = std::make_unique<SliderAttachment>(apvts, "humanize", humanizeSlider);
@@ -587,7 +596,6 @@ TccAutotuneEditor::TccAutotuneEditor(TccAutotuneProcessor& p)
             };
         s.updateText();
     };
-    formatar(tolSlider,      1);
     formatar(retuneSlider,   0);
     formatar(vibratoSlider,  2);
     formatar(humanizeSlider, 2);
@@ -637,17 +645,25 @@ TccAutotuneEditor::~TccAutotuneEditor() {
 //  dois, e com Retune Speed positivo o comportamento e' exatamente o de antes.
 // ----------------------------------------------------------------------------
 void TccAutotuneEditor::atualizarControlesInertes() {
-    const bool inerte = (retuneSlider.getValue() <= 0.0);
+    const double retune = retuneSlider.getValue();
+    const bool inerte = (retune <= 0.0);
+    // SEGUNDO estado inerte, novo em 03/09/2026: com o Retune Speed no teto o
+    // Humanize nao tem para onde crescer. Ele estica o tau ate HUM_TAU_TETO
+    // (100 ms, dsp.h) e para ali -- se o tau JA esta em 100 ms, mover o controle
+    // nao muda uma amostra. E' o mesmo problema de comunicacao que a Decisao 7
+    // resolveu para o retune = 0, entao recebe o mesmo tratamento; a alternativa
+    // seria um controle que o usuario arrasta de ponta a ponta sem ouvir nada.
+    const bool humInerte = inerte || (retune >= HUM_TAU_TETO * 1000.0);
 
     // Acinzenta o slider E o rotulo, para que a coluna inteira apague junto --
     // um slider fosco sob um rotulo aceso pareceria defeito de desenho. Mesma
     // dupla setEnabled + setAlpha(0,45) que o Low Latency ja usa no look-ahead.
-    for (auto* s : { &vibratoSlider, &humanizeSlider }) {
-        s->setEnabled(! inerte);
-        s->setAlpha(inerte ? 0.45f : 1.0f);
-    }
-    for (auto* l : { &vibratoLabel, &humanizeLabel })
-        l->setAlpha(inerte ? 0.45f : 1.0f);
+    vibratoSlider.setEnabled(! inerte);
+    vibratoSlider.setAlpha(inerte ? 0.45f : 1.0f);
+    vibratoLabel.setAlpha(inerte ? 0.45f : 1.0f);
+    humanizeSlider.setEnabled(! humInerte);
+    humanizeSlider.setAlpha(humInerte ? 0.45f : 1.0f);
+    humanizeLabel.setAlpha(humInerte ? 0.45f : 1.0f);
 
     // Os dois "i" NAO apagam junto, de proposito. E' exatamente quando a coluna
     // esta cinza que o usuario quer saber por que -- e o texto de cada um
@@ -662,7 +678,11 @@ void TccAutotuneEditor::atualizarControlesInertes() {
     // O aviso "requer Retune Speed > 0" e' PINTADO (ver paint), nao e'
     // componente: e' uma linha de texto, e um Label so' para ela seria mais
     // codigo de layout do que a linha vale.
-    if (inerte != expressaoInerte) { expressaoInerte = inerte; repaint(); }
+    if (inerte != expressaoInerte || humInerte != humanizeInerte) {
+        expressaoInerte = inerte;
+        humanizeInerte  = humInerte;
+        repaint();
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -723,11 +743,15 @@ void TccAutotuneEditor::paint(juce::Graphics& g) {
     // NOTADO; um cinza fraco aqui derrotaria o proposito da mensagem.
     // drawFittedText, e nao drawText, para que a frase encolha em vez de ser
     // cortada se a fonte do sistema for mais larga que a medida aqui.
-    if (expressaoInerte) {
+    if (expressaoInerte || humanizeInerte) {
         g.setColour(tccColours::destaque.withAlpha(0.80f));
         g.setFont(juce::Font(8.5f, juce::Font::bold));
-        g.drawFittedText("requer Retune Speed > 0", faixaAvisoInerte,
-                         juce::Justification::centred, 1, 0.7f);
+        // Duas causas, duas frases. A faixa e' a mesma nos dois casos: quando so'
+        // o Humanize esta inerte, a metade dela sob o Natural Vibrato esta livre,
+        // entao a frase mais longa cabe sem layout novo.
+        g.drawFittedText(expressaoInerte ? "requer Retune Speed > 0"
+                                         : "Humanize sem efeito: Retune Speed no teto",
+                         faixaAvisoInerte, juce::Justification::centred, 1, 0.7f);
     }
 
     // Latencia real, lida do processor. Nao pode ser numero fixo: a guarda do
@@ -774,20 +798,21 @@ void TccAutotuneEditor::resized() {
         linha(escalaLabel, escalaCombo);
     }
 
-    // CORRECAO: quatro colunas de slider vertical, mais a faixa do aviso.
+    // CORRECAO: tres colunas de slider vertical, mais a faixa do aviso.
     {
         auto dentro = caixaCorrecao.reduced(8, 0).withTrimmedTop(16).withTrimmedBottom(8);
-        const int largura = dentro.getWidth() / 4;
+        const int largura = dentro.getWidth() / 3;
         // Faixa do aviso de controle inerte, sob as DUAS ULTIMAS colunas (que
-        // sao justamente Natural Vibrato e Humanize). Reservada SEMPRE, mesmo
-        // quando o aviso nao aparece: se ela fosse criada e destruida conforme o
-        // Retune Speed cruza o zero, os quatro sliders mudariam de altura no
-        // meio do arrasto e a faixa inteira "pularia".
+        // sao justamente Natural Vibrato e Humanize -- continuam sendo as duas
+        // ultimas com tres colunas). Reservada SEMPRE, mesmo quando o aviso nao
+        // aparece: se ela fosse criada e destruida conforme o Retune Speed cruza
+        // o zero, os sliders mudariam de altura no meio do arrasto e a faixa
+        // inteira "pularia".
         faixaAvisoInerte = dentro.removeFromBottom(12).removeFromRight(largura * 2);
         auto coluna = [&](juce::Slider& s, juce::Label& l, BotaoInfo& info) {
             auto col = dentro.removeFromLeft(largura);
             // O "i" ganha faixa PROPRIA acima do rotulo, em vez de dividir a
-            // linha com ele: a coluna tem ~62 px e "Retune Speed (ms)" ja ocupa
+            // linha com ele: a coluna tem ~83 px e "Retune Speed (ms)" ja ocupa
             // quase todos. Tirar 14 px de LARGURA espremeria o texto, e
             // encurtar o rotulo contraria a escolha de usar o nome de catalogo
             // completo (ver configurarSlider). O custo vai para a ALTURA, que
@@ -796,7 +821,6 @@ void TccAutotuneEditor::resized() {
             l.setBounds(col.removeFromTop(24));
             s.setBounds(col);
         };
-        coluna(tolSlider,      tolLabel,      tolInfo);
         coluna(retuneSlider,   retuneLabel,   retuneInfo);
         coluna(vibratoSlider,  vibratoLabel,  vibratoInfo);
         coluna(humanizeSlider, humanizeLabel, humanizeInfo);
