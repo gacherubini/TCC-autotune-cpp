@@ -513,7 +513,9 @@ TccAutotuneEditor::TccAutotuneEditor(TccAutotuneProcessor& p)
     configurarInfo(humanizeInfo, "Humanize",
         "Afrouxa o Retune Speed durante a sustentacao da nota, sem mexer no ataque.\n\n"
         "Serve para o comeco da nota encaixar firme e a nota longa nao ficar presa, que e' "
-        "o que soa mecanico. Precisa de Retune Speed maior que zero.");
+        "o que soa mecanico.\n\n"
+        "Precisa de Retune Speed entre zero e 100 ms. Em zero nao ha o que afrouxar; em 100 o "
+        "tau ja esta no teto que ele mesmo usaria, e mover o controle nao muda uma amostra.");
 
     configurarInfo(lowlatInfo, "Low Latency",
         "Troca o motor de sintese. No lugar do TD-PSOLA entra um ponteiro movel que le o "

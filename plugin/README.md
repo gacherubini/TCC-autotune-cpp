@@ -50,10 +50,13 @@ Três detalhes de implementação que valem para o texto do TCC:
    **Mix passou a ser mostrado em %** (o parâmetro continua 0–1), fechando um item cosmético do
    backlog da Etapa 2.
 
-**Adição de 03/09/2026 — um ⓘ por controle.** Sete botões redondos, um ao lado de cada
-controle cujo nome não entrega o que ele faz: os quatro do grupo **Correção**, mais **Low
-Latency**, **Look-ahead** e **Mix**. Clicar abre um `CallOutBox` ancorado no botão, que some ao
-clicar fora. **Voz, Tônica e Escala não têm** — as próprias opções da lista já dizem o que são.
+**Adição de 03/09/2026 — um ⓘ por controle.** Seis botões redondos, um ao lado de cada
+controle cujo nome não entrega o que ele faz: os três do grupo **Correção**, mais **Low
+Latency**, **Look-ahead** e **Mix**. Eram sete até a `Tolerancia` sair da tela no mesmo dia
+([Decisão 10](../docs/historico-e-decisoes.md#decisão-10--o-usuário-não-pode-alcançar-o-som-ruim-2026-09-03)):
+balão sem controle para explicar não tem onde ancorar. Clicar abre um `CallOutBox` ancorado no
+botão, que some ao clicar fora. **Voz, Tônica e Escala não têm** — as próprias opções da
+lista já dizem o que são.
 
 Quatro decisões de implementação:
 
@@ -66,11 +69,12 @@ Quatro decisões de implementação:
   0,8 do original: o balão cobre sliders e o gráfico do afinador, e translúcido sobre eles o
   texto ficava ilegível.
 - **No grupo Correção o ⓘ ganha faixa própria acima do rótulo**, custando 14 px de curso dos
-  sliders. Ao lado do rótulo não cabia: a coluna tem ~62 px e "Retune Speed (ms)" ocupa quase
+  sliders. Ao lado do rótulo não cabia: a coluna tem ~83 px e "Retune Speed (ms)" ocupa quase
   todos, e encurtar o rótulo contrariaria a escolha de usar o nome de catálogo completo. Nos
   controles horizontais do grupo Motor ele cabe na linha do rótulo, sem custo.
-- **Os ⓘ do Natural Vibrato e do Humanize não acinzentam** quando o Retune Speed = 0 os torna
-  inertes. É justamente aí que o usuário quer saber por quê, e é o que o texto deles responde.
+- **Os ⓘ do Natural Vibrato e do Humanize não acinzentam** quando os controles ficam inertes —
+  nem com o Retune Speed em 0, nem com ele no teto de 100 ms. É justamente aí que o usuário
+  quer saber por quê, e é o que o texto deles responde.
 
 O círculo e o "i" são **desenhados**, não o glifo `ⓘ` de fonte: o caractere existe em poucas
 fontes de sistema e cairia num retângulo vazio onde não existisse.
