@@ -183,3 +183,464 @@ minimiza latência *e* maximiza qualidade ao mesmo tempo.
 
 ---
 
+## Redesenho da interface para paridade com o Auto-Tune (2026-08-26)
+
+Origem: análise comparativa do Auto-Tune Artist (view ADVANCED) contra o protótipo, registrada
+em [comparacao-antares.md](comparacao-antares.md). A análise partiu do sintoma de naturalidade
+reprovado no teste de usuário e desembocou numa pergunta anterior: **o protótipo tem os
+controles que um corretor de afinação precisa ter?**
+
+> **Status geral: DECIDIDO, NÃO IMPLEMENTADO.** Nada abaixo alterou código ainda.
+> Este bloco existe para que cada passo do TCC 2 fique registrado com a data e o motivo.
+
+### Decisão 1 — remover o parâmetro `Forca`
+
+**O que muda:** `Forca` (0–1, `PluginProcessor.cpp:57`) sai da interface e de
+`notaAlvo()` (`dsp.h:159`).
+
+**Por quê:** a análise mostrou que `Forca` é um **escalar estático** multiplicando a correção
+(`corrMidi = midi + (forca * mov) / 100.0`) — sem estado, sem memória, sem dimensão temporal.
+É um dry/wet no domínio da afinação. O efeito prático de `Forca < 1` é deixar o cantor
+**permanentemente desafinado**: numa nota sustentada 50 cents abaixo, `Forca = 0,5` entrega
+25 cents abaixo *para sempre*, em vez de chegar à nota devagar.
+
+O Auto-Tune não tem controle equivalente justamente por isso: a filosofia é ir sempre 100% até
+a nota e controlar apenas o **tempo**. Ver [comparacao-antares.md §4](comparacao-antares.md).
+
+**Ressalva registrada:** `Forca = 0` é hoje o caminho de bypass usado pelo teste de regressão
+bit-perfect (`python/bench_stream.py` verifica identidade em `forca = 0`). **Remover `Forca`
+exige substituir esse teste.**
+
+> ✅ **Resolvido em 2026-08-26 — decisão do autor: mix seco/molhado.**
+>
+> A `Forca` é substituída por um **mix seco/molhado** (item C4 do backlog), que passa a
+> acumular as duas funções:
+>
+> 1. **Controle musical.** Mistura de *sinal*, não de *afinação* — é o recurso que engenheiros
+>    usam para devolver naturalidade, e é o que faltava na interface (ver
+>    [comparacao-antares.md §5](comparacao-antares.md), Nível 1).
+> 2. **Caminho de bypass para o teste de regressão.** Com `mix = 0%` (100% seco) a saída deve
+>    ser **bit-idêntica** à entrada, exatamente como `forca = 0` era hoje. O
+>    `python/bench_stream.py` passa a verificar identidade nessa condição.
+>
+> **Diferença conceitual que precisa ficar clara no texto do TCC:** `Forca = 0` e `mix = 0%`
+> produzem o mesmo áudio, mas por motivos diferentes. `Forca = 0` mandava o corretor mirar na
+> própria altura do cantor (o PSOLA rodava, com β = 1); `mix = 0%` **não processa** — devolve a
+> entrada. O segundo é mais barato e mais honesto como bypass.
+>
+> **Consequência não óbvia:** com o mix, `bench_stream.py` deixa de exercitar o caminho de
+> PSOLA com β = 1. Esse teste ainda tem valor (ele pegava drift de fase), então convém
+> **manter os dois**: identidade por `mix = 0%` e identidade por β = 1 forçado.
+
+> 🔨 **EXECUTADO em 2026-08-26** — Etapa 2 do plano. Registro completo em
+> [`execucao-do-plano.md`](execucao-do-plano.md).
+>
+> A ressalva acima estava certa, e o "β = 1 forçado" não precisou de código novo: **`tol=600`**
+> (tolerância maior que meio semitom) faz `mov = 0`, logo `alvo == f0`, logo β = 1 com o PSOLA
+> rodando inteiro. Verificado por checksum **antes** de qualquer alteração, ainda com o código
+> antigo: `tol=600` produz o mesmo arquivo, byte a byte, que `forca=0` produzia — nos dois
+> caminhos (offline `4f35cced…`, streaming `373037487…`). A cobertura migrou com prova.
+>
+> Os dois casos viraram um **invariante** verificado pelo `baseline.sh`: `tol600` e `mix0` têm
+> de ser iguais **entre si**, o que continua valendo depois de qualquer re-baseline. Se o PSOLA
+> ganhar drift de fase, o primeiro muda e o segundo não. O script aborta se isso quebrar.
+>
+> **Duas coisas a mais, que a decisão não previa:**
+>
+> 1. **Alinhamento no streaming.** A saída sai atrasada de `latSamples`; o seco precisa ser
+>    atrasado igual, senão a mistura vira filtro-pente. Como só afeta valores *intermediários*
+>    de mix, nenhum teste de identidade pegaria. Virou a Seção 3 do `test_mix.cpp`.
+> 2. **O id do parâmetro mudou** (`"forca"` → `"mix"`), em vez de ser reaproveitado — senão o
+>    host restauraria um valor antigo com semântica nova, calado.
+
+### Decisão 2 — renomear `Tolerancia` para `Flex-Tune`
+
+**O que muda:** o rótulo do parâmetro. O comportamento é idêntico.
+
+**Por quê:** a pesquisa bibliográfica confirmou que a Antares expõe **dois** controles
+separados — *Flex-Tune* (zona morta em cents) e *Retune Speed* (constante de tempo em ms) — e
+que o protótipo implementou corretamente o **primeiro**, apenas batizando-o de forma diferente.
+Adotar o nome do domínio elimina a ambiguidade no texto do TCC e na banca.
+
+**Nota de compatibilidade:** o `ParameterID` (`ids::tol`) **deve ser preservado** para não
+quebrar projetos de DAW já salvos. Muda o nome visível, não o identificador.
+
+> ❌ **CANCELADA em 2026-08-26**, após leitura do manual oficial do Auto-Tune Artist.
+> Ver [pesquisa-retune-speed-e-cor.md §2](pesquisa-retune-speed-e-cor.md).
+>
+> **A premissa estava errada.** O `tol` do protótipo e o Flex-Tune da Antares não são o mesmo
+> mecanismo com nomes diferentes — são **mecanismos opostos**. Verbatim do manual:
+>
+> > "When Flex-Tune is engaged, **it only applies correction as the performer approaches the
+> > target note**. As you move the control toward higher values, **the correction area around
+> > the scale note gets smaller**."
+>
+> | | `tol` do protótipo | Flex-Tune |
+> |---|---|---|
+> | Não corrige | **perto** da nota | **longe** da nota |
+> | Preserva | micro-variação *na* nota | macro-gesto *entre* notas |
+>
+> Adotar o nome criaria uma afirmação falsa de paridade que a banca pode conferir no manual.
+>
+> **Decisão revista: manter `Tolerância`.** O protótipo não perde nada — ele tem um mecanismo
+> diferente, que resolve um problema diferente. O texto do TCC deve **descrever corretamente o
+> que tem**, não reivindicar o que não tem. Implementar o Flex-Tune de verdade vira item novo
+> (**K5**), não renomeação.
+
+### Decisão 3 — adicionar `Retune Speed`
+
+**O que muda:** parâmetro novo, em milissegundos, ao lado do Flex-Tune.
+
+**Por quê:** é o eixo que falta. Os três eixos de um corretor são **profundidade** (quão longe),
+**limiar** (quão grande o erro precisa ser) e **tempo** (quão rápido). O protótipo tinha os dois
+primeiros e nenhum controle real do terceiro.
+
+**Como implementar:** a infraestrutura já existe — o `Glide` é um filtro de 1 polo, exatamente a
+estrutura necessária. O problema é **onde** ele está ligado
+(`autotune_stream.h:434`): ele filtra `alvoCents`, o **destino**, que dentro de uma nota
+sustentada é praticamente constante — o filtro converge e deixa de agir. A formulação correta,
+retirada da patente Hildebrand US 5.973.252, filtra a **correção**:
+
+```c
+// hoje
+glideEstado = α*glideEstado + (1−α)*alvoCents;
+// proposto
+movFiltrado = α*movFiltrado + (1−α)*(mov);
+corrMidi    = midi + movFiltrado / 100.0;
+```
+
+**Dimensionamento:** τ ≳ 50 ms para preservar vibrato de 5–8 Hz, com faixa do controle indo de 0
+(efeito duro, que precisa continuar disponível) até ~200 ms. Ver
+[pesquisa-bibliografica.md §2.7](pesquisa-bibliografica.md).
+
+**Questão em aberto:** `Glide` e `Retune Speed` viram o mesmo controle, ou coexistem?
+
+> ✅ **Resolvido em 2026-08-26 — decisão do autor: fundir.**
+>
+> A fusão não é uma troca, é uma **generalização**. Com dois estados de filtro:
+>
+> ```
+> outCents = LP(alvoCents) + k·(realCents − LP(realCents))
+> ```
+>
+> | `k` | Comportamento |
+> |---:|---|
+> | **0** | `outCents = LP(alvo)` — **exatamente o Glide de hoje** |
+> | **1** | `outCents = real + LP(mov)` — Retune Speed da patente |
+> | **> 1** | vibrato exagerado — Natural Vibrato positivo (K1) |
+>
+> O comportamento antigo **não se perde**: vira o caso `k = 0`. Isso dá o teste de
+> não-regressão da etapa — com `k = 0` e o τ atual, a saída deve bater **amostra a amostra**
+> com a versão anterior.
+>
+> E o Natural Vibrato (K1) deixa de ser item separado: é o próprio `k`.
+>
+> Plano completo em [plano-de-implementacao.md](plano-de-implementacao.md).
+
+### Decisão 4 — expor as 24 tonalidades
+
+**O que muda:** o combo único `Escala` (7 opções fixas) vira dois controles: `Key` (12 tônicas)
+× `Scale` (cromática / maior / menor natural).
+
+**Por quê:** **o motor já suporta as 24 tonalidades; a interface expõe 6.** `definirEscala()`
+(`dsp.h:112`) calcula `g_permitida[(pc + iv[i]) % 12]` para qualquer tônica `pc`, mas
+`PluginProcessor.cpp:30` passa apenas sete strings fixas. Na prática é impossível corrigir em
+Ré maior, Si bemol maior ou Mi maior — qualquer tonalidade com mais de um sustenido ou bemol.
+
+**Custo:** nenhuma linha de DSP. É montagem de combo e formatação da string passada a
+`definirEscala()`. É a maior melhoria por linha de código identificada no projeto.
+
+**Nota de compatibilidade:** trocar um `AudioParameterChoice` por dois quebra o estado salvo.
+
+> ✅ **Resolvido em 2026-08-26 — decisão do autor: expor todas as tonalidades, aceitando a
+> quebra de estado salvo.**
+>
+> **A justificativa deixou de ser teórica.** Durante a preparação do teste de usuário foi
+> preciso **procurar um instrumental que estivesse em uma das 6 tonalidades disponíveis**, em
+> vez de escolher o material musical livremente. Isso foi registrado retroativamente como
+> **Achado 3** do teste de usuário — ver
+> [teste-de-usuario.md §5-bis](teste-de-usuario.md).
+>
+> Ou seja: a limitação não é uma lacuna de paridade com o Auto-Tune detectada em análise de
+> escritório. É uma **falha de usabilidade observada em uso real**, que chegou a **enviesar o
+> repertório do próprio teste** (registrada como limitação metodológica §6, item 7).
+>
+> **A quebra de estado salvo é aceitável** porque o plugin ainda não tem base instalada — não
+> há projetos de terceiros a preservar. Documentar a quebra e seguir.
+>
+> **Escopo confirmado:** 12 tônicas × {cromática, maior, menor natural}. Os modos gregos e as
+> menores harmônica/melódica **não** entram — não foram pedidos, e o `definirEscala()` hoje só
+> conhece `maior[7]` e `menorN[7]` (`dsp.h:132-133`). Ampliar além disso seria mudança de DSP,
+> não de interface, e sairia do escopo desta decisão.
+
+### Decisão 5 — modo de baixa latência
+
+**O que muda:** um controle novo que reconfigura `look`, `nFrame` e a guarda do PSOLA de uma vez.
+
+**Por quê:** o teste de usuário reprovou o requisito de latência, e a pesquisa mostrou que a meta
+original (≤ 20 ms) estava mal fundamentada — os limiares medidos para voz com in-ear são
+**mais rigorosos** (Lester & Boley 2007: "Fair" ≈ 6,5 ms; Marentakis et al. 2012: coloração a
+partir de 13 ms).
+
+**Status:** ⏸️ **especificação escrita, implementação suspensa por decisão do autor.**
+A especificação completa está em [modo-baixa-latencia.md](modo-baixa-latencia.md) e inclui seis
+questões em aberto (§8) que precisam de resposta antes de qualquer código. O ponto central: o
+modo v1 (só parâmetros) chega a 17,1 ms no preset contralto, o que **ainda não cruza o limiar de
+coloração**; só o v2, que exige mudança de arquitetura de detecção (CMNDF recursivo), chega aos
+5,7 ms.
+
+> 🔀 **Superseded em 2026-09-01 pela [Decisão 9](#decisão-9--motor-v3-de-ponteiro-móvel-como-motor-paralelo-2026-09-01).**
+> O modo por parâmetros aqui descrito (v1/v2) tem um piso de `fs/FMIN` enquanto a síntese for
+> PSOLA — a [análise de 31/08](analise-v1-v2-v3.md) mostrou isso. A v3 troca o **motor de
+> síntese** em vez de reconfigurar `look`/`nFrame`, e é o caminho que foi implementado. Esta
+> decisão fica registrada como o que se tentou primeiro, e por que não bastava.
+
+### Decisão 6 — escala global permanece global (2026-08-26)
+
+`g_permitida[12]` (`dsp.h:109`) é estado global. Duas instâncias do plugin compartilham a
+escala. **Decisão do autor: fora do escopo, documentar como limitação conhecida.** Não é
+regressão (já é assim), o uso previsto é uma faixa por vez, e não afeta os requisitos
+reprovados no teste de usuário. Caminho de correção registrado para trabalho futuro: mover
+`g_permitida` para dentro do estado do `AutotuneStream`.
+
+### Decisão 7 — o deslize de entrada é fixo (2026-08-26)
+
+A nota sempre nasce na afinação cantada e desliza até o alvo. **Não vira botão.** Um controle
+a menos, o Auto-Tune também não expõe a escolha, e o deslize é justamente o gesto que o
+diagnóstico apontou como apagado — torná-lo opcional enfraqueceria o resultado.
+
+O comportamento antigo continua alcançável por flag interna (`ataqueNoAlvo`), usada **apenas**
+pelo teste de não-regressão da etapa 3. Ver
+[plano-de-implementacao.md §11](plano-de-implementacao.md).
+
+### Decisão 8 — Create Vibrato sai da interface, fica no DSP (2026-08-31)
+
+**O que muda:** os quatro widgets do Create Vibrato saem da faixa de controles do editor — o
+combo `Create Vib` e os sliders `Vib Rate`, `Vib Depth` e `Vib Amp`. **Só eles.** `FormaVibrato`,
+`formaVibrato()`, os campos `vibForma`/`vibTaxa`/`vibProf`/`vibAmp` de `ParamsCorrecao`, as flags
+`vibforma=`, `vibtaxa=`, `vibprof=` e `vibamp=` dos CLIs e os quatro parâmetros do APVTS
+**continuam existindo e funcionando**. Como permanecem no APVTS, seguem **automatizáveis pelo
+host** e alcançáveis pela linha de comando — só deixam de ocupar espaço na tela custom.
+
+Em uma linha: **o DSP fica; a exposição na GUI sai.**
+
+**Por quê — quatro motivos:**
+
+1. **Tensão com o escopo declarado do projeto.** [comparacao-antares.md §6](comparacao-antares.md)
+   e [documentacao-tecnica.md §8.2](documentacao-tecnica.md#82-a-cor-por-que-soa-duro-e-estático)
+   sustentam que o protótipo é um **corretor**, não um **colorizador** — e foi esse mesmo
+   argumento que justificou cortar Throat Length e Formant Correction (Nível 3). O Create
+   Vibrato é um **gerador**: não corrige nada. Manter os quatro controles em pé de igualdade com
+   os de correção abre um flanco óbvio na banca — *"cortaram formante alegando que corretor não
+   colore, e implementaram um LFO de vibrato?"*.
+
+2. **A justificativa de entrada era a mais fraca das cinco etapas.** K1 (Natural Vibrato) e K2
+   (Humanize) entraram porque **saem de graça** do Retune Speed: uma multiplicação e um τ
+   variável. K3/K4 não saem de graça de nada — são LFO, quatro formas de onda, rampa de onset e
+   modulação de amplitude. A única justificativa registrada é a da tabela do
+   [§5 Nível 2](comparacao-antares.md), *"parâmetros já especificados pelo manual"*, que diz
+   **como** implementar, não **se** deveria. Diferente do Mix e do Retune Speed, o K3 nunca
+   recebeu o `✅ decidido` naquela tabela.
+
+3. **Ele não endereça a reprovação que originou o plano.** O teste de usuário reprovou porque o
+   vibrato **do cantor** era destruído. Quem conserta isso é o Natural Vibrato (`k`, Decisão 3).
+   Somar um vibrato sintético é outro problema.
+
+4. **Custo de interface desproporcional.** Eram **4 dos 13** controles da faixa — ~31 % da
+   densidade que a dívida de interface da Etapa 5 registrou como problema. Sem eles a faixa cai
+   para **9** controles e cabe em três grupos numa linha só (**Escala | Correção | Motor**).
+
+**O que se perde, registrado:** a *descoberta*. Quem abrir a janela do plugin não vê mais que o
+vibrato sintético existe — precisa saber que ele está lá, na lista genérica de parâmetros do host
+ou nas flags dos CLIs. É um custo assumido: o público do gerador é o próprio autor, para
+demonstração, não o usuário do corretor.
+
+**Não muda áudio.** Nenhum caminho de DSP é tocado, então nenhuma hash do `baseline.sh` deve
+mudar, e o `test_expressao.cpp` continua cobrindo o gerador inteiro — inclusive a forma
+`off`, que precisa reproduzir a Etapa 4 bit a bit.
+
+### Decisão 9 — motor v3 de ponteiro móvel como motor paralelo (2026-09-01)
+
+**O que muda:** um segundo motor de síntese (ponteiro móvel, patente US 5.973.252) selecionável
+por um botão **Low Latency** no plugin e por `motor=`/`lowlat=` no CLI. O TD-PSOLA fica, intocado,
+como padrão e referência.
+
+**Por quê:** a [análise de 31/08](analise-v1-v2-v3.md) mostrou que v1 e v2 têm um piso de
+`fs/FMIN` enquanto a síntese for PSOLA (12,5 ms com voz grave, na fronteira de coloração). Só a
+troca do motor atravessa esse piso. O objetivo fixado em 31/08 — contribuição acadêmica **e** uso
+ao vivo — elimina parar na v1 e deixa a v2 na fronteira.
+
+**Três escolhas, decididas com o autor em 2026-09-01:**
+1. **Só o ponteiro, sem L6.** Argumento da análise §8: na v3 o L6 resolve um problema que a v3
+   dissolve. Volta se o erro de ataque medido for inaceitável.
+2. **Qualquer escala.** O teto de formante (2,93 % cromática / 5,95 % maior-menor) é documentado,
+   não imposto. Mais útil para medir.
+3. **Botão Low Latency = ponteiro + look = 0**, com o slider de look-ahead visível e desabilitado
+   (opção B da spec do modo de baixa latência). O CLI mantém `motor=` e `look=` independentes para
+   a varredura latência × robustez.
+
+**Consequências registradas:** a linha de base antiga mede o PSOLA e continua `IDENTICO`; a
+latência declarada com o botão ligado é 8 amostras (parte fixa) e a parte variável (0..T da nota
+cantada) **não** é declarada ao host — o texto do TCC tem de citar as duas. Supersede a
+[Decisão 5](#decisão-5--modo-de-baixa-latência), que previa um modo por parâmetros.
+
+### Decisão 10 — o usuário não pode alcançar o som ruim (2026-09-03)
+
+**Motivo:** o autor, usando o plugin, relatou que o Retune Speed no máximo deixa a voz *"lenta e
+desafinada"*, e que a Tolerância e o Look-ahead não são controles que um cantor saiba operar.
+A queixa do Retune já estava escrita como sintoma 3 do
+[spec de encaixe e estabilidade](spec-encaixe-e-estabilidade.md) e como a história 21 — e nunca
+tinha sido resolvida.
+
+**O que muda, em três partes.**
+
+**1. A faixa do Retune Speed vai de 0–400 para 0–100 ms.** Reverte a **D6** daquele spec.
+
+D6 esticou 200 → 400 ms apostando que a metade de cima passaria a significar algo *depois* da
+estabilização da nota-alvo (histerese de 30 ct + permanência de 50 ms). A estabilização entrou no
+mesmo dia, e a aposta **não se confirmou**. Varredura em `exemplo-antes.wav` com o motor de hoje,
+medindo o desvio da altura de saída até o semitom mais próximo, com `vibrato=0` para separar o
+atraso da correção do vibrato que se preserva de propósito:
+
+| Retune | erro médio | saída a ≤ 10 ct do semitom |
+|---|---|---|
+| 0 ms | 0,3 ct | 99,1 % |
+| 10 ms | 5,4 ct | 84,7 % |
+| 25 ms | 11,4 ct | 62,9 % |
+| **50 ms** | 16,6 ct | 46,6 % |
+| 75 ms | 20,1 ct | 34,9 % |
+| **100 ms** | 21,9 ct | 29,1 % |
+| 150 ms | 24,4 ct | 23,1 % |
+| 200 ms | 22,7 ct | 25,7 % |
+| 300 ms | 24,3 ct | 26,3 % |
+| 400 ms | 22,5 ct | 28,0 % |
+
+O joelho está em ~50 ms. Acima de 100 ms a curva vira dispersão em volta de 22 ct — 150 mede
+*pior* que 200, 300 pior que 400. Não é curva, é ruído: o controle deixa de separar valores e só
+piora o encaixe. **A história 24** (*"mover o controle na metade superior da faixa produz
+diferença audível"*) estava reprovada e ninguém tinha medido.
+
+Duas fontes independentes apontam para o mesmo teto: o manual do Auto-Tune Artist chama **10–50 ms**
+de faixa típica para correção natural ([pesquisa](pesquisa-retune-speed-e-cor.md) §1.1), e a
+varredura acima acha o joelho em ~50 ms no material do próprio projeto. 100 ms é isso com folga.
+
+**Preço:** perde a paridade de *valores* com o Auto-Tune (história 23) e **grampeia projetos
+salvos** acima de 100 ms. Isso não é o espelho de alargar: o comentário que estava em
+`PluginProcessor.cpp` argumentava que esticar era seguro porque a APVTS grava o valor
+**desnormalizado**, e é por isso mesmo que encolher grampeia. Assumido — o padrão de fábrica é 0
+e o plugin não foi distribuído.
+
+**2. A `Tolerancia` sai da interface e fica no DSP, no APVTS e nos CLIs.** Mesmo tratamento e
+mesmo argumento da [Decisão 8](#decisão-8--create-vibrato-sai-da-interface-fica-no-dsp-2026-08-31):
+o controle contradiz o que o produto se propõe a fazer. A zona morta **empurra** o desvio até a
+borda em vez de zerar, então ligá-la é pedir que a saída fique desafinada de propósito, por um
+valor que o usuário escolhe sem ter como prever o efeito. O padrão já era 0 desde D5 — ou seja,
+ela nascia sem efeito e só podia piorar o encaixe a partir dali.
+
+Nada some do host: `tol` continua automatizável e alcançável por `tol=`, os casos
+`st_tol15`/`st_tol600` da linha de base seguem valendo, e o arco da zona morta continua desenhado
+(guardado por `if (tol > 0)`).
+
+**3. O Humanize ganha um teto de τ (`HUM_TAU_TETO` = 100 ms).** Este é o item que **não** estava
+na queixa e apareceu ao medir.
+
+O Humanize estica a **mesma** constante de tempo que o Retune Speed (`τ_eff = τ·(1 + h·HUM_FATOR·rampa)`,
+com `HUM_FATOR = 3`). Sem teto, `retune = 100` + `humanize = 1` dá τ = 400 ms — exatamente o valor
+que a parte 1 acabou de proibir. E não é "parecido": medindo o erro separado por tempo desde o
+ataque da nota, as duas configurações são **a mesma coisa nas duas metades**:
+
+| Configuração | ataque (≤ 100 ms) | sustentação (≥ 300 ms) |
+|---|---|---|
+| retune=25, humanize=0 | 17,2 ct | 1,7 ct |
+| retune=25, humanize=1 | 24,2 ct | 12,0 ct |
+| **retune=100, humanize=1** | **25,7 ct** | **21,2 ct** |
+| **retune=400, humanize=0** | **26,1 ct** | **21,2 ct** |
+
+O teto é `min(τ·fator, max(τ, HUM_TAU_TETO))` — e não `HUM_TAU_TETO` puro — por contrato: os CLIs
+aceitam `retune=` acima de 100 ms e o DSP tem de honrar o que lhe pedem. Com essa forma o Humanize
+nunca **empurra** o τ acima de 100 ms e nunca **puxa para baixo** o que o usuário já pediu.
+
+**Não muda a linha de base**, e isso foi verificado: no padrão de fábrica `retune = 25`, o
+crescimento máximo é 25 × 4 = 100 ms, que é o próprio teto — os casos `st_humanize1` e
+`gold_humanize1` seguem bit a bit iguais. O teto só passa a agir acima de 25 ms. Depois dele, a
+pior sustentação alcançável caiu de 21,2 para 12,1 ct.
+
+**Consequência de interface:** com o Retune Speed em 100 ms o Humanize fica inerte, e a
+[D7](spec-encaixe-e-estabilidade.md) manda avisar. O editor ganhou um segundo estado inerte, só
+para o Humanize, com a linha `Humanize sem efeito: Retune Speed no teto`.
+
+**O Natural Vibrato foi medido e NÃO tem o problema — não mexer.** Com `retune = 25 ms`, o ganho
+do gesto rápido do cantor vai de 0,64× (vibrato=0) a 1,78× (vibrato=2), monótono e sem platô, e o
+valor de fábrica cai em 1,01× — que é o que a documentação promete. O desvio ao semitom cresce
+junto, mas isso é o controle *fazendo o trabalho dele*: vibrato preservado **é** desvio. Medir
+encaixe aqui seria a mesma armadilha de métrica que a primeira varredura do Retune quase produziu.
+
+**O Look-ahead FICA na tela**, por decisão do autor. A [comparação com o Antares](comparacao-antares.md)
+§6 o liga à contribuição do trabalho (o eixo latência × qualidade), e não há texto a reescrever.
+
+**Fica em aberto, com medição e sem decisão:** a rampa do Humanize **vaza para dentro do ataque**.
+`HUM_SUSTENTACAO = 0,200 s` põe a rampa em 39 % já aos 100 ms, então o Humanize degrada o ataque
+(17,2 → 24,2 ct com retune=25) — o manual da Antares e o comentário do `dsp.h` dizem *"only during
+the sustained portion"*, e a implementação não cumpre isso. Escolher a constante nova exige a sua
+própria varredura; não foi feita.
+
+### Ordem de implementação acordada
+
+| # | Item | Muda DSP? | Risco | Questões em aberto |
+|---|---|---|---|---|
+| 1 | **24 tonalidades (Key × Scale)** | não | quebra estado salvo (aceito) | ✅ nenhuma |
+| 2 | Remover Forca, adicionar mix seco/molhado | sim | teste de regressão a reescrever | ✅ nenhuma |
+| 3 | **Retune Speed** (funde o `Glide`; polo sobre a correção) | sim | médio | ✅ nenhuma — fundir |
+| 4 | **K1 · Natural Vibrato** | sim | 🟢 trivial | ✅ **é o próprio `k`** da fusão |
+| 5 | **K2 · Humanize** | sim | 🟢 baixo | ✅ nenhuma — sai junto do item 3 |
+| 6 | **K3 · Create Vibrato** | sim | médio | ⚠️ **DSP feito, GUI retirada** — Decisão 8 |
+| 7 | **K4 · Amplitude Amount** | sim | 🟢 trivial | idem K3 — sai da GUI junto, Decisão 8 |
+| 8 | **K5 · Flex-Tune de verdade** | sim | médio | ⚠️ convive com `tol` como? |
+| 9 | **K6 · Targeting Ignores Vibrato** | sim | médio | ⚠️ mexe no Viterbi |
+| 10 | Modo de baixa latência | v1 não, v2 sim | alto | ⏸️ 6 questões em aberto |
+| — | ~~Renomear Tolerancia → Flex-Tune~~ | — | — | ❌ **cancelada** — premissa errada |
+
+**A ordem mudou duas vezes em 2026-08-26.**
+
+Primeiro, as 24 tonalidades subiram para o primeiro lugar: único item com risco nulo, causa
+trivial e **evidência direta de uso real** (Achado 3 do teste de usuário).
+
+Depois, a pesquisa sobre Retune Speed
+([pesquisa-retune-speed-e-cor.md](pesquisa-retune-speed-e-cor.md)) mostrou que o item 3
+**não é um controle — é a fundação da camada de expressão inteira**. Com o polo movido para a
+correção, a saída passa a ser `alvo + HP(real)`, e daí saem de graça:
+
+- **K1 (Natural Vibrato)** — um ganho `k` sobre o termo `HP(real)`. Uma multiplicação.
+- **K2 (Humanize)** — τ variável com o tempo desde o ataque. O `tinhaNota` já marca o ataque.
+
+Três controles expressivos pelo preço de um. Isso torna o item 3 o de melhor retorno da fila
+depois das tonalidades.
+
+---
+
+## Errata — afirmações corrigidas pela pesquisa bibliográfica (2026-08-26)
+
+> **Este bloco não apaga nada.** As afirmações originais continuam no corpo dos documentos, como
+> registro do que se acreditava antes da revisão bibliográfica. Esta errata diz o que mudou e
+> por quê — que é exatamente o tipo de rastro que um TCC precisa ter.
+
+Fonte das correções: [pesquisa-bibliografica.md](pesquisa-bibliografica.md), levantada em
+2026-08-26 (5 artigos revisados por pares, 1 patente, 4 manuais de fabricante, 2 implementações
+de código aberto).
+
+| # | Onde | Afirmação original | Correção |
+|---|---|---|---|
+| 1 | doc. técnica §8.2 | O protótipo implementou "o mecanismo errado" (zona morta em vez de retune speed) | **Falso.** A Antares expõe **os dois**, separadamente. O protótipo implementou o Flex-Tune corretamente e só o nomeou como o outro. Falta *acrescentar*, não *substituir* |
+| 2 | doc. técnica §9.2 (C1) | "Filtrar a correção em vez do alvo" apresentado como contribuição original | **Não é original.** Está na patente Hildebrand US 5.973.252 (1997) e é o comportamento documentado do Retune Speed. Reposicionar como **replicação fundamentada** |
+| 3 | doc. técnica §9.1 (L6) | Mecanismo descrito como "janela de 2τ → 1τ" | **Erra o mecanismo.** A janela continua sendo de 2 períodos — mas de sinal **passado**, atualizado recursivamente por amostra. O custo real é o **lote quadro/hop**, não a janela |
+| 4 | doc. técnica §10 | L6 no item 17 do backlog ("só se sobrar tempo") | **Repriorizar para o topo.** É a única mudança capaz de levar o RNF01 à faixa defensável pela literatura |
+| 5 | doc. técnica §9.2 | Meta da métrica: "razão ≥ 0,8 em 4–8 Hz **e** ≈ 0 abaixo de 1 Hz" | **Matematicamente insatisfazível com um único polo:** em f_c = 3 Hz, G(1 Hz) = 0,32, não 0. Ou a meta afrouxa, ou C1 precisa de filtro de ordem maior |
+| 6 | doc. técnica §12 | Dattorro (JAES 1997) citado para pitch shifting por linha de atraso modulada | **Referência errada** — o artigo não trata de pitch shifting. A fonte correta é **Disch & Zölzer, DAFx-99** |
+| 7 | doc. técnica §12 | WSOLA descrito como "potencialmente com menos look-ahead" | **Sem evidência.** Manter a referência, retirar a afirmação de redução de latência |
+| 8 | repo Python, comentário | "autotune ao vivo tolera no máximo ~20–30 ms" | **Sem respaldo revisado por pares.** Rastreia até marketing da Antares. Os valores medidos para voz + in-ear são bem mais rigorosos (§5 acima) |
+
+**Consequência para o texto do TCC:** o requisito **RNF01** precisa ser reescrito com um limiar
+**nomeado e citado**, e não com o número de 20–30 ms. Ver
+[modo-baixa-latencia.md §5](modo-baixa-latencia.md).
+
+---

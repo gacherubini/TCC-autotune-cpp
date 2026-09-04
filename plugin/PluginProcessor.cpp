@@ -12,37 +12,79 @@
 // ----------------------------------------------------------------------------
 //  IDs estáveis dos parâmetros (não mudar: o host salva por esse nome).
 //  Estruturais (mudam dimensões/latência -> re-prepare): look, voz, escala.
-//  "Ao vivo" (sem realocar): forca, tol, glide.
+//  "Ao vivo" (sem realocar): mix, tol, retune, vibrato.
 // ----------------------------------------------------------------------------
 namespace ids {
-    static constexpr const char* forca  = "forca";
+    // Etapa 2 do plano: o id "forca" foi APOSENTADO e o parametro que ocupa o
+    // lugar dele chama-se "mix". Id novo de proposito: o significado mudou (era
+    // fracao do desvio corrigido, agora e' cruzamento seco/molhado), entao
+    // reaproveitar o id faria o host restaurar um valor antigo com semantica
+    // nova, calado. Com id novo, o projeto salvo simplesmente cai no padrao.
+    static constexpr const char* mix    = "mix";
     static constexpr const char* tol    = "tol";
-    static constexpr const char* glide  = "glide";
+    // Etapa 3: o id "glide" foi APOSENTADO. O parametro nao mudou de unidade
+    // (continua ms), mas mudou de SIGNIFICADO: o filtro deixou de agir sobre o
+    // alvo e passou a agir sobre a correcao, e o padrao foi de 40 para 25 ms
+    // (faixa recomendada pelo manual da Antares). Um valor salvo de 40 ms nao
+    // soa mais igual, entao id novo -- mesma regra aplicada ao "mix".
+    static constexpr const char* retune  = "retune";
+    static constexpr const char* vibrato  = "vibrato";
+    // Etapa 4/5
+    static constexpr const char* humanize = "humanize";
+    static constexpr const char* vibForma = "vibforma";
+    static constexpr const char* vibTaxa  = "vibtaxa";
+    static constexpr const char* vibProf  = "vibprof";
+    static constexpr const char* vibAmp   = "vibamp";
     static constexpr const char* look   = "look";
+    // Etapa 6: o botao Low Latency. Liga o motor de ponteiro E forca look = 0.
+    // Estrutural: muda a latencia declarada ao host.
+    static constexpr const char* lowlat = "lowlat";
     static constexpr const char* voz    = "voz";
     static constexpr const char* escala = "escala";
+    // Etapa 1 do plano: a tonica virou parametro proprio. O id "escala" foi
+    // MANTIDO (agora guarda so o modo) para nao inventar id novo a toa; quem
+    // abrir um projeto salvo com a versao antiga cai no indice equivalente
+    // quando ele existe, e em cromatico quando nao existe.
+    static constexpr const char* tonica = "tonica";
 }
 
 // Listas dos combos. A ORDEM define o índice salvo — manter em sincronia com
 // nomeVoz()/textoEscala() abaixo.
-const juce::StringArray kVozes  {
-    "Baixo", "Baritono", "Tenor", "Contralto", "Mezzo", "Soprano", "Instrumento" };
+//
+// Etapa "encaixe e estabilidade" (D4): a lista de tessituras ENCOLHEU de 7 para
+// 4 e passou a ser a do Auto-Tune. Ela não é mais montada aqui: a tabela mora em
+// dsp.h (vozDaInterface), junto da razão da ordem e do rótulo com a faixa em
+// notas, para que a GUI e os testes leiam a MESMA fonte. Ver o comentário longo
+// lá — em especial por que o índice 3 é `Instrument`.
+//
+// Os nove presets de presetVoz() continuam alcançáveis por `voz=` na linha de
+// comando. Só a interface encolheu.
+const juce::StringArray kVozes = [] {
+    juce::StringArray a;
+    for (int i = 0; i < N_VOZES_UI; ++i) a.add(vozDaInterface(i).rotulo);
+    return a;
+}();
+// Etapa 1: 12 tonicas x 3 modos = 24 tonalidades + cromatico, no lugar dos
+// 6 combos fixos que existiam antes (ver docs/execucao-do-plano.md).
+const juce::StringArray kTonicas {
+    "C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab", "A", "A#/Bb", "B" };
 const juce::StringArray kEscalas {
-    "Cromatica", "Do maior (C)", "La menor (Am)", "Sol maior (G)",
-    "Mi menor (Em)", "Fa maior (F)", "Re menor (Dm)" };
+    "Cromatica", "Maior", "Menor natural" };
+// Etapa 5: formas de onda do Create Vibrato. A ordem tem de bater com o enum
+// FormaVibrato de dsp.h -- o indice do combo e' convertido direto.
+const juce::StringArray kFormasVib { "Off", "Senoide", "Triangular", "Quadrada" };
 
+// Era um switch sobre o índice, com `default: instrumento`. Isso é exatamente o
+// que não sobrevive a uma lista que muda de tamanho: encolher o combo sem
+// encolher o switch faria o menu mostrar uma tessitura e o DSP usar outra, sem
+// erro de compilação. Agora as duas coisas saem da mesma tabela em dsp.h, e
+// src/tests/test_vozes.cpp prende uma à outra.
 const char* TccAutotuneProcessor::nomeVoz(int idx) {
-    switch (idx) {
-        case 0: return "baixo";    case 1: return "baritono"; case 2: return "tenor";
-        case 3: return "contralto";case 4: return "mezzo";    case 5: return "soprano";
-        default: return "instrumento";
-    }
+    return vozDaInterface(idx).preset;
 }
-const char* TccAutotuneProcessor::textoEscala(int idx) {
-    switch (idx) {
-        case 0: return "crom"; case 1: return "C";  case 2: return "Am"; case 3: return "G";
-        case 4: return "Em";   case 5: return "F";  case 6: return "Dm"; default: return "crom";
-    }
+// A tabela mora em dsp.h (montarEscala), para que GUI e testes usem a mesma.
+std::string TccAutotuneProcessor::textoEscala(int tonica, int escala) {
+    return montarEscala(tonica, escala);
 }
 
 // ----------------------------------------------------------------------------
@@ -53,22 +95,111 @@ TccAutotuneProcessor::criarParametros() {
     using namespace juce;
     AudioProcessorValueTreeState::ParameterLayout layout;
 
-    // forca 0..1 — o quanto puxa em direção à nota da escala (1 = "duro").
+    // mix 0..1 — cruzamento seco/molhado. 0 = so o sinal original (bypass
+    // exato, mas ainda atrasado da latencia do motor), 1 = so o corrigido.
+    // Padrao 1.0 para que a instalacao nova soe como a versao anterior soava.
     layout.add(std::make_unique<AudioParameterFloat>(
-        ParameterID{ ids::forca, 1 }, "Forca", NormalisableRange<float>(0.0f, 1.0f), 1.0f));
+        ParameterID{ ids::mix, 1 }, "Mix", NormalisableRange<float>(0.0f, 1.0f), 1.0f));
     // tol 0..50 cents — zona morta (preserva vibrato/microafinacao).
+    //
+    // Padrão 0 desde a etapa "encaixe e estabilidade" (D5). A semântica NÃO
+    // mudou: a zona morta continua empurrando o desvio até a borda, e não é
+    // Flex-Tune. O que mudou é o valor de fábrica, porque o antigo (15) não
+    // encaixava a nota — ele deixava resíduo proporcional ao próprio valor. Uma
+    // nota 40 cents desafinada saía 15 cents desafinada, e a média medida na
+    // configuração do usuário era 11,8 cents fora. Quem quiser a zona morta liga.
+    //
+    // Vale a distinção, que é o que impede confundir este controle com o de
+    // baixo: a Tolerância decide SE a nota chega no lugar certo; o Retune Speed
+    // decide EM QUANTO TEMPO. Com tol = 0 a nota chega exata em qualquer Retune.
+    // Suavidade é trabalho do controle que tem dimensão de tempo.
     layout.add(std::make_unique<AudioParameterFloat>(
-        ParameterID{ ids::tol, 1 }, "Tolerancia (cents)", NormalisableRange<float>(0.0f, 50.0f), 15.0f));
-    // glide 0..200 ms — portamento ate a nota-alvo (tira o "robo").
+        ParameterID{ ids::tol, 1 }, "Tolerancia (cents)", NormalisableRange<float>(0.0f, 50.0f), 0.0f));
+    // retune 0..100 ms — Retune Speed: quanto tempo a correcao leva para chegar
+    // a nota.
+    //
+    // A faixa ENCOLHEU de 400 para 100 ms em 03/09/2026, revertendo a D6 do spec
+    // de encaixe e estabilidade. D6 tinha esticado 200 -> 400 ms apostando que a
+    // metade de cima passaria a significar alguma coisa DEPOIS da estabilizacao
+    // da nota-alvo (histerese de 30 ct + permanencia de 50 ms). A estabilizacao
+    // entrou, e a aposta nao se confirmou: o controle continua saturando, so que
+    // mais cedo. Varredura no exemplo-antes.wav com o motor de hoje, medindo o
+    // desvio da altura de SAIDA ate o semitom mais proximo, com vibrato = 0 para
+    // isolar o atraso da correcao do vibrato que se preserva de proposito:
+    //
+    //     retune    erro medio    saida a <= 10 ct do semitom
+    //       0 ms       0,3 ct         99,1 %
+    //      10 ms       5,4 ct         84,7 %
+    //      25 ms      11,4 ct         62,9 %
+    //      50 ms      16,6 ct         46,6 %      <- ultimo passo com efeito claro
+    //      75 ms      20,1 ct         34,9 %
+    //     100 ms      21,9 ct         29,1 %      <- teto novo
+    //     150 ms      24,4 ct         23,1 %
+    //     200 ms      22,7 ct         25,7 %
+    //     300 ms      24,3 ct         26,3 %
+    //     400 ms      22,5 ct         28,0 %
+    //
+    // De 100 ms para cima a curva vira dispersao em volta de 22 ct: 150 mede PIOR
+    // que 200, e 300 pior que 400. Nao e' curva, e' ruido — o controle deixa de
+    // separar valores e so' piora o encaixe. Era a metade da faixa que o usuario
+    // descrevia como "lento e desafinado", e a medicao concorda com o ouvido.
+    //
+    // O teto em 100 tem duas fontes independentes apontando para o mesmo lugar: o
+    // manual do Auto-Tune Artist chama 10-50 ms de faixa tipica para correcao
+    // natural (pesquisa-retune-speed-e-cor.md §1.1), e a varredura acima acha o
+    // joelho em ~50 ms no material do proprio projeto. 100 ms e' isso mais folga.
+    //
+    // ATENCAO — encolher NAO e' o espelho de alargar. O comentario que estava
+    // aqui argumentava que esticar a faixa era seguro porque a APVTS grava o
+    // valor DESNORMALIZADO na arvore (juce_AudioProcessorValueTreeState.cpp:413):
+    // um projeto salvo com 100 ms guarda 100.0 e reabre em 100 ms com qualquer
+    // faixa. Isso continua verdade, e e' justamente por isso que ENCOLHER grampeia:
+    // um projeto salvo com 300 ms reabre em 100 ms, calado. Preco assumido — o
+    // padrao de fabrica e' 0 e o plugin nao foi distribuido.
+    //
+    // O DSP nao mudou: CorretorAltura aceita qualquer retuneMs, e os CLIs seguem
+    // aceitando retune=400. So' a faixa EXPOSTA ao usuario encolheu.
+    //
+    // Padrão 0: o efeito duro como primeira impressão, por decisão do autor. O
+    // deslize continua alcançável no próprio controle.
     layout.add(std::make_unique<AudioParameterFloat>(
-        ParameterID{ ids::glide, 1 }, "Glide (ms)", NormalisableRange<float>(0.0f, 200.0f), 40.0f));
+        ParameterID{ ids::retune, 1 }, "Retune Speed (ms)", NormalisableRange<float>(0.0f, 100.0f), 0.0f));
+    // vibrato 0..2 — quanto do vibrato do cantor sobrevive a correcao.
+    //   0 = removido (o comportamento ate a Etapa 2), 1 = preservado, 2 = dobrado.
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID{ ids::vibrato, 1 }, "Natural Vibrato", NormalisableRange<float>(0.0f, 2.0f), 1.0f));
+    // humanize 0..1 (Etapa 4) — afrouxa o Retune Speed na sustentacao da nota.
+    // Padrao 0 para que a instalacao nova soe exatamente como a Etapa 3.
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID{ ids::humanize, 1 }, "Humanize", NormalisableRange<float>(0.0f, 1.0f), 0.0f));
+    // Create Vibrato (Etapa 5) — GERA vibrato, ao contrario do Natural Vibrato,
+    // que apenas preserva o do cantor. Desligado por padrao.
+    layout.add(std::make_unique<AudioParameterChoice>(
+        ParameterID{ ids::vibForma, 1 }, "Create Vibrato",
+        kFormasVib, 0));
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID{ ids::vibTaxa, 1 }, "Vibrato Rate (Hz)", NormalisableRange<float>(0.1f, 10.0f), 5.5f));
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID{ ids::vibProf, 1 }, "Vibrato Depth (ct)", NormalisableRange<float>(0.0f, 100.0f), 0.0f));
+    layout.add(std::make_unique<AudioParameterFloat>(
+        ParameterID{ ids::vibAmp, 1 }, "Amplitude Amount", NormalisableRange<float>(0.0f, 1.0f), 0.0f));
     // look 0..16 quadros — look-ahead do Viterbi (latencia x qualidade). ESTRUTURAL.
     layout.add(std::make_unique<AudioParameterInt>(
         ParameterID{ ids::look, 1 }, "Look-ahead (quadros)", 0, 16, 4));
-    // voz — preset de tessitura (define fmin/fmax). ESTRUTURAL. Default Contralto.
+    // Low Latency (Etapa 6): troca o TD-PSOLA pelo motor de ponteiro movel (v3)
+    // e forca look = 0. Desligado por padrao: a instalacao nova soa como antes e
+    // a linha de base mede o motor padrao. Ver docs/especificacao-v3-ponteiro.md.
+    layout.add(std::make_unique<AudioParameterBool>(
+        ParameterID{ ids::lowlat, 1 }, "Low Latency", false));
+    // voz — preset de tessitura (define fmin/fmax). ESTRUTURAL.
+    // Padrão de fábrica Alto-Tenor (índice 1): é o único dos quatro que cobre o
+    // take medido inteiro. Ver VOZ_UI_PADRAO em dsp.h para a medição e o preço.
     layout.add(std::make_unique<AudioParameterChoice>(
-        ParameterID{ ids::voz, 1 }, "Voz (tessitura)", kVozes, 3));
+        ParameterID{ ids::voz, 1 }, "Voz (tessitura)", kVozes, VOZ_UI_PADRAO));
     // escala — cromatica ou tonica maior/menor. ESTRUTURAL (re-prepare por simplicidade).
+    layout.add(std::make_unique<AudioParameterChoice>(
+        ParameterID{ ids::tonica, 1 }, "Tonica", kTonicas, 0));
+
     layout.add(std::make_unique<AudioParameterChoice>(
         ParameterID{ ids::escala, 1 }, "Escala", kEscalas, 0));
 
@@ -85,23 +216,35 @@ TccAutotuneProcessor::TccAutotuneProcessor()
           .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       apvts(*this, nullptr, "PARAMS", criarParametros())
 {
-    pForca  = apvts.getRawParameterValue(ids::forca);
+    pMix    = apvts.getRawParameterValue(ids::mix);
     pTol    = apvts.getRawParameterValue(ids::tol);
-    pGlide  = apvts.getRawParameterValue(ids::glide);
+    pRetune  = apvts.getRawParameterValue(ids::retune);
+    pVibrato = apvts.getRawParameterValue(ids::vibrato);
+    pHumanize = apvts.getRawParameterValue(ids::humanize);
+    pVibForma = apvts.getRawParameterValue(ids::vibForma);
+    pVibTaxa  = apvts.getRawParameterValue(ids::vibTaxa);
+    pVibProf  = apvts.getRawParameterValue(ids::vibProf);
+    pVibAmp   = apvts.getRawParameterValue(ids::vibAmp);
     pLook   = apvts.getRawParameterValue(ids::look);
+    pLowLat = apvts.getRawParameterValue(ids::lowlat);
     pVoz    = apvts.getRawParameterValue(ids::voz);
     pEscala = apvts.getRawParameterValue(ids::escala);
+    pTonica = apvts.getRawParameterValue(ids::tonica);
 
-    // Só os estruturais disparam re-prepare (forca/tol/glide são "ao vivo").
+    // Só os estruturais disparam re-prepare (mix/tol/retune/vibrato são "ao vivo").
     apvts.addParameterListener(ids::look,   this);
+    apvts.addParameterListener(ids::lowlat, this);
     apvts.addParameterListener(ids::voz,    this);
     apvts.addParameterListener(ids::escala, this);
+    apvts.addParameterListener(ids::tonica, this);
 }
 
 TccAutotuneProcessor::~TccAutotuneProcessor() {
     apvts.removeParameterListener(ids::look,   this);
+    apvts.removeParameterListener(ids::lowlat, this);
     apvts.removeParameterListener(ids::voz,    this);
     apvts.removeParameterListener(ids::escala, this);
+    apvts.removeParameterListener(ids::tonica, this);
 }
 
 void TccAutotuneProcessor::parameterChanged(const juce::String&, float) {
@@ -115,20 +258,45 @@ void TccAutotuneProcessor::parameterChanged(const juce::String&, float) {
 //  Aloca (core.prepare) — chamar no prepareToPlay ou no boot de um bloco quando
 //  um parâmetro estrutural mudou (não a cada bloco).
 // ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+//  Monta a malha de correcao a partir do APVTS. Existe como funcao porque e'
+//  chamada de DOIS lugares -- aplicarParametros() (no re-prepare) e a cada
+//  bloco em processBlock() -- e uma divergencia entre as duas copias produziria
+//  um plugin que soa diferente logo depois de mexer num controle estrutural.
+// ----------------------------------------------------------------------------
+ParamsCorrecao TccAutotuneProcessor::lerCorrecao() const {
+    ParamsCorrecao c;
+    c.tolCents = pTol      ? pTol->load()      : 0.0;
+    c.retuneMs = pRetune   ? pRetune->load()   : 0.0;
+    c.vibrato  = pVibrato  ? pVibrato->load()  : 1.0;
+    c.humanize = pHumanize ? pHumanize->load() : 0.0;
+    c.vibForma = (FormaVibrato)(pVibForma ? (int)pVibForma->load() : 0);
+    c.vibTaxa  = pVibTaxa  ? pVibTaxa->load()  : 5.5;
+    c.vibProf  = pVibProf  ? pVibProf->load()  : 0.0;
+    c.vibAmp   = pVibAmp   ? pVibAmp->load()   : 0.0;
+    sanearCorrecao(c);
+    return c;
+}
+
 void TccAutotuneProcessor::aplicarParametros() {
     StreamParams p;
-    p.forca    = pForca  ? pForca->load()  : 1.0;
-    p.tolCents = pTol    ? pTol->load()    : 0.0;
-    p.glideMs  = pGlide  ? pGlide->load()  : 0.0;
-    p.look     = pLook   ? (int) pLook->load() : 4;
+    p.mix      = pMix    ? pMix->load()    : 1.0;
+    p.corr = lerCorrecao();
+    // Low Latency (Etapa 6): liga o motor de ponteiro e forca look = 0. O
+    // valor salvo em 'pLook' NAO e' alterado -- so' o que chega ao nucleo.
+    // Desligar o botao devolve o look-ahead configurado sem o usuario mexer.
+    const bool lowlat = pLowLat && pLowLat->load() > 0.5f;
+    p.look  = lowlat ? 0 : (pLook ? (int) pLook->load() : 4);
+    p.motor = lowlat ? MotorSintese::Ponteiro : MotorSintese::PSOLA;
 
     // Preset de tessitura -> fmin/fmax (a grade de pitch do núcleo).
     double fmin = FMIN, fmax = FMAX;
-    presetVoz(nomeVoz(pVoz ? (int) pVoz->load() : 3), fmin, fmax);
+    presetVoz(nomeVoz(pVoz ? (int) pVoz->load() : VOZ_UI_PADRAO), fmin, fmax);
     p.fmin = fmin; p.fmax = fmax;
 
     // Escala é global (g_permitida via definirEscala), lida por notaAlvo.
-    definirEscala(textoEscala(pEscala ? (int) pEscala->load() : 0));
+    definirEscala(textoEscala(pTonica ? (int) pTonica->load() : 0,
+                              pEscala ? (int) pEscala->load() : 0).c_str());
 
     core.prepare(sampleRateAtual, p);
     setLatencySamples(core.getLatencySamples());   // aparece na barra do Ableton
@@ -178,8 +346,8 @@ void TccAutotuneProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         updateHostDisplay();   // pede ao host p/ reler a latência
     }
 
-    // (2) Parâmetros "ao vivo" (sem realocar): forca/tol/glide.
-    core.updateLiveParams(pForca->load(), pTol->load(), pGlide->load());
+    // (2) Parâmetros "ao vivo" (sem realocar): toda a malha de correcao + mix.
+    core.updateLiveParams(lerCorrecao(), pMix->load());
 
     // Segurança: se o host mandar um bloco maior que o previsto, cresce os
     // scratch buffers (não deveria ocorrer; JUCE garante n <= samplesPerBlock).

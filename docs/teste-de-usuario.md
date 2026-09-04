@@ -219,6 +219,59 @@ necessário antes de decidir o que muda no TCC 2.
 
 ---
 
+## 5-bis. Achado 3 — Cobertura de tonalidades insuficiente
+
+> **Registrado retroativamente em 2026-08-26**, a partir do relato do autor sobre a
+> preparação da sessão. Não foi anotado na redação original deste documento porque, no
+> momento do teste, foi tratado como inconveniência de configuração e não como resultado.
+> **É um resultado** — e provavelmente o mais concreto dos três.
+
+### Observação
+
+Para realizar o teste foi necessário **procurar um instrumental que estivesse em uma das
+tonalidades disponíveis no plugin**, em vez de escolher livremente o material musical e
+configurar o plugin para acompanhá-lo.
+
+Isto é uma inversão da relação normal entre ferramenta e uso: a ferramenta impôs uma
+restrição ao repertório em vez de se adaptar a ele.
+
+### Causa
+
+O combo `Escala` do plugin oferece **7 opções fixas**
+(`plugin/PluginProcessor.cpp:30`):
+
+```
+Cromatica · Do maior (C) · La menor (Am) · Sol maior (G)
+Mi menor (Em) · Fa maior (F) · Re menor (Dm)
+```
+
+São **6 tonalidades** mais o modo cromático. Nenhuma tonalidade com mais de um sustenido
+ou bemol está disponível — ficam de fora Ré maior, Lá maior, Mi maior, Si bemol maior,
+Mi bemol maior e todas as menores correspondentes.
+
+**O motor não tem essa limitação.** `definirEscala()` (`src/core/dsp.h:112`) calcula as
+classes de nota permitidas para **qualquer** tônica. A restrição é exclusivamente da
+interface.
+
+### Por que isto importa mais do que parece
+
+1. **É o único dos três achados com causa trivial e conserto sem risco.** Não envolve DSP,
+   não envolve trade-off, não precisa de teste de escuta para validar.
+2. **Afeta a validade do próprio teste.** O material musical não foi escolhido pelo mérito
+   musical, mas pela compatibilidade com a ferramenta — o que é, em si, uma limitação
+   metodológica da sessão (ver §6, item 7).
+3. **É evidência de uso real, não de análise.** Os outros dois achados vieram da escuta e
+   do código; este veio de uma pessoa tentando usar o plugin e esbarrando nele.
+
+### Encaminhamento
+
+Decisão registrada em
+[`historico-e-decisoes.md`](historico-e-decisoes.md#redesenho-da-interface-para-paridade-com-o-auto-tune-2026-08-26),
+Decisão 4: separar em `Key` (12 tônicas) × `Scale` (cromática / maior / menor natural),
+cobrindo as 24 tonalidades.
+
+---
+
 ## 6. Limitações do teste
 
 Registradas explicitamente para que o TCC não superestime o alcance destes resultados:
@@ -236,23 +289,35 @@ Registradas explicitamente para que o TCC não superestime o alcance destes resu
    cadeia completa.
 6. **Sem medição de carga de CPU ao longo do tempo.** A ausência de sobrecarga foi
    observada subjetivamente, não registrada.
+7. **O material musical foi escolhido pela ferramenta, não pelo teste.** Como o plugin só
+   oferecia 6 tonalidades, foi preciso procurar um instrumental compatível — ver o
+   Achado 3. O repertório testado é, portanto, enviesado pela limitação da interface.
 
-Essas limitações não invalidam os dois achados — ambos foram inequívocos na escuta e o
-primeiro é confirmado por cálculo. Mas elas definem o que precisa ser feito melhor no
-TCC 2.
+Essas limitações não invalidam os três achados — os dois primeiros foram inequívocos na
+escuta, o primeiro é confirmado por cálculo, e o terceiro é verificável por inspeção do
+código. Mas elas definem o que precisa ser feito melhor no TCC 2.
 
 ---
 
 ## 7. Conclusão do teste
 
 O protótipo **atende aos requisitos funcionais** (corrige afinação, preserva timbre, não
-produz artefatos, roda em tempo real numa DAW) e **não atende a dois requisitos de
+produz artefatos, roda em tempo real numa DAW) e **não atende a três requisitos de
 usabilidade**:
 
 | # | Requisito | Situação | Evidência |
 |---|---|---|---|
-| R1 | Latência compatível com monitoração ao vivo (≤ ~20–30 ms) | **Não atendido** | 57,9 ms de latência algorítmica; relato de ~60 ms; interferência na execução |
+| R1 | Latência compatível com monitoração ao vivo | **Não atendido** | 57,9 ms de latência algorítmica; relato de ~60 ms; interferência na execução |
 | R2 | Resultado sonoro natural / não-robótico | **Não atendido** | Avaliação perceptual do usuário de teste: "estático", "duro", "robótico" |
+| R3 | Cobrir as tonalidades de uso musical corrente | **Não atendido** | 6 das 24 tonalidades disponíveis; foi preciso escolher o instrumental em função do plugin (§5-bis) |
+
+> **Sobre o teto de latência do R1.** A redação original citava "≤ ~20–30 ms". A revisão
+> bibliográfica de 2026-08-26 mostrou que esse número **não tem respaldo revisado por
+> pares** — ele rastreia até material de marketing. Os limiares medidos para voz com
+> monitoração in-ear são bem mais rigorosos. O requisito precisa ser reescrito com um
+> limiar nomeado e citado; ver
+> [`modo-baixa-latencia.md` §5](modo-baixa-latencia.md). **O texto original foi mantido
+> acima como registro.**
 
 ### Correspondência com os requisitos formais do TCC
 
@@ -264,7 +329,7 @@ converteu duas ressalvas teóricas em evidência de uso.
 |---|---|---|
 | **RNF01** — operar com baixa latência em contexto experimental | *Parcial* — "cadeia completa ≈ 58 ms, acima do teto de monitoração ao vivo, mas parametrizável e compensada pelo host" | **Confirmado em uso real.** O valor de 58 ms não é apenas "acima do teto": ele **impede** a execução ao vivo. A ressalva "compensada pelo host" precisa ser corrigida no texto — o PDC não compensa monitoração (ver §4). |
 | **RNF03** — preservar naturalidade sonora sempre que possível | *Parcial* — "tolerância e glide implementados; validação perceptual com usuário prevista" | **Validação perceptual realizada e reprovada.** Tolerância e glide estão implementados e verificados objetivamente, mas **não produzem o efeito perceptual pretendido** (ver §5). |
-| **RNF05** — simples de operar em contexto de validação | *Parcial* — "interface gráfica funcional; validação de usabilidade prevista" | Não avaliado formalmente nesta sessão; sem achados negativos registrados. |
+| **RNF05** — simples de operar em contexto de validação | *Parcial* — "interface gráfica funcional; validação de usabilidade prevista" | **Achado negativo registrado retroativamente:** a cobertura de tonalidades obrigou a adaptar o repertório à ferramenta (Achado 3). É uma falha de usabilidade, não de DSP. |
 | **RF01–RF05** (funcionais) | *Atendidos* | Mantidos. Confirmados em uso real (ver §3). |
 
 Também se confirma, do levantamento de requisitos original (Seção *Levantamento das
@@ -275,9 +340,19 @@ levantamento inicial identificou corretamente o que importava.
 
 ### Encaminhamento
 
-Esses dois requisitos passam a ser o **objeto do TCC 2**. O diagnóstico técnico das causas
-e as alternativas de solução estão documentados separadamente em
-[`documentacao-tecnica.md`](documentacao-tecnica.md).
+Esses requisitos passam a ser o **objeto do TCC 2**. O diagnóstico técnico das causas e as
+alternativas de solução estão documentados separadamente em
+[`documentacao-tecnica.md`](documentacao-tecnica.md); as decisões de projeto derivadas
+estão em [`historico-e-decisoes.md`](historico-e-decisoes.md) e a comparação com o produto
+de referência em [`comparacao-antares.md`](comparacao-antares.md).
+
+Os três achados têm perfis de esforço muito diferentes, e vale registrar isso:
+
+| Achado | Causa | Conserto | Risco |
+|---|---|---|---|
+| 1 · Latência | arquitetural (detecção por quadro) | mudança de arquitetura para chegar à faixa defensável | alto |
+| 2 · Naturalidade | filtro aplicado ao sinal errado na cadeia | reposicionar o polo + acrescentar controles | médio |
+| 3 · Tonalidades | montagem de combo na interface | expor o que o motor já faz | **nenhum** |
 
 ---
 

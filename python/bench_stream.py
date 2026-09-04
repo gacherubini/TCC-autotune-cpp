@@ -25,6 +25,8 @@ for B in (64,128,256,512):
     # fase de pouquíssimas amostras (<3 ~ 0.07 ms) que varia de nota a nota,
     # inerente à re-síntese em janela ancorada por região vozeada — por isso a
     # correlação global fica ~0.997 enquanto a correlação POR REGIÃO é >0.999.
-    # (Em forca=0, beta=1, a saída é IDÊNTICA à entrada — ver teste_fase.py.)
+    # (Com tol=600 o alvo coincide com o F0 -> beta=1 e a saída é IDÊNTICA à
+    #  entrada; era esse o papel do antigo forca=0. Ver teste_fase.py e
+    #  docs/execucao-do-plano.md, Etapa 2.)
     ok &= (cc>0.995)
 print("RESULTADO:", "PASS" if ok else "DIVERGIU")
