@@ -23,7 +23,9 @@
 // define o índice salvo no parâmetro (ver nomeVoz()/textoEscala()). Usadas
 // também pela GUI custom (PluginEditor.cpp) para popular os juce::ComboBox.
 extern const juce::StringArray kVozes;
+extern const juce::StringArray kTonicas;
 extern const juce::StringArray kEscalas;
+extern const juce::StringArray kFormasVib;   // Etapa 5
 
 class TccAutotuneProcessor : public juce::AudioProcessor,
                              private juce::AudioProcessorValueTreeState::Listener
@@ -60,13 +62,17 @@ public:
     void getStateInformation(juce::MemoryBlock&) override;
     void setStateInformation(const void*, int) override;
 
-    // Árvore de parâmetros exposta ao host (forca/tol/glide/look/voz/escala).
+    // Árvore de parâmetros exposta ao host (mix/tol/retune/vibrato/look/voz/tonica/escala).
     juce::AudioProcessorValueTreeState apvts;
 
     // Snapshot "ao vivo" do pitch atual (Hz; 0 = sem voz), escrito no fim de
     // processBlock() e lido pela GUI (TunerDisplay) sem lock.
     float getUiF0()   const { return uiF0.load();   }
     float getUiFout() const { return uiFout.load(); }
+
+    // Etapa 6: le' se o modo Low Latency esta' ligado. Usado pela GUI para
+    // trocar o rotulo do motor no rodape (ver PluginEditor::paint()).
+    bool lowLatencyLigado() const { return pLowLat && pLowLat->load() > 0.5f; }
 
 private:
     // Monta os parâmetros do plugin (chamado no construtor da APVTS).
@@ -75,6 +81,7 @@ private:
     // (Re)configura o núcleo a partir dos valores ATUAIS dos parâmetros e
     // reporta a latência ao host. Aloca (prepare) → chamar fora do hot-path
     // de tempo real, ou no boot de um bloco quando um parâmetro ESTRUTURAL mudou.
+    ParamsCorrecao lerCorrecao() const;
     void aplicarParametros();
 
     // Listener da APVTS: marca 'precisaReprepare' quando um parâmetro ESTRUTURAL
@@ -83,7 +90,9 @@ private:
 
     // Mapeiam o índice do combo para o texto que dsp.h entende.
     static const char* nomeVoz(int idx);
-    static const char* textoEscala(int idx);
+    // Etapa 1: monta a string de definirEscala() a partir dos combos
+    // Tonica (0=C..11=B) e Escala (0=cromatica, 1=maior, 2=menor natural).
+    static std::string textoEscala(int tonica, int escala);
 
     AutotuneStream core;                 // o motor C1 (estado entre blocos)
     double          sampleRateAtual = 44100.0;
@@ -92,12 +101,20 @@ private:
     std::vector<float> monoIn, monoOut;
 
     // Ponteiros "crus" (lock-free) para ler os parâmetros no áudio sem custo.
-    std::atomic<float>* pForca  = nullptr;
+    std::atomic<float>* pMix  = nullptr;
     std::atomic<float>* pTol    = nullptr;
-    std::atomic<float>* pGlide  = nullptr;
+    std::atomic<float>* pRetune  = nullptr;
+    std::atomic<float>* pVibrato = nullptr;
+    std::atomic<float>* pHumanize = nullptr;
+    std::atomic<float>* pVibForma = nullptr;
+    std::atomic<float>* pVibTaxa  = nullptr;
+    std::atomic<float>* pVibProf  = nullptr;
+    std::atomic<float>* pVibAmp   = nullptr;
     std::atomic<float>* pLook   = nullptr;
+    std::atomic<float>* pLowLat = nullptr;
     std::atomic<float>* pVoz    = nullptr;
     std::atomic<float>* pEscala = nullptr;
+    std::atomic<float>* pTonica = nullptr;
 
     // Valores atuais do pitch (Hz; 0 = sem voz), escritos em processBlock()
     // e expostos via getUiF0()/getUiFout() acima.

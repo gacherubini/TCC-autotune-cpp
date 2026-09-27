@@ -1,0 +1,31 @@
+# Impressoes digitais da ETAPA 2 (commit a615444), congeladas.
+# O baseline.sh roda cada caso com 'legado=1 vibrato=0' e exige ESTE hash.
+# Nao regravar: e' contra este arquivo que a fusao Glide+Retune Speed e'
+# verificada. Se um destes mudar, a Etapa 3 deixou de ser generalizacao.
+74794f1942feb95ee494e4f3eabbec73b29f2252de391212014d95fd590264b4  gold_aminor
+74794f1942feb95ee494e4f3eabbec73b29f2252de391212014d95fd590264b4  gold_cmaior
+db0f52d6bd47b25f54d420d4992648e0c4ce7d6d0b23b22a7126cf1632e96e07  gold_glide120
+4f35cced6cc704b20a0573a7266304c0b1732923897d10b0ee82191f65242d37  gold_mix0
+a10c561e7290fa8a300e7f7b1d160c451e636545ad1a5b5816fee7d983c4dd33  gold_mix1
+511c1e14ee113393f9adda6d836f21de1761ba35a448ae3e6d325630144007f2  gold_tol30
+4f35cced6cc704b20a0573a7266304c0b1732923897d10b0ee82191f65242d37  gold_tol600
+0c2fb55c41dcfe221a5780ca95e98c1fcfd2f1c29229fec2fa3f74c0d3c1e2d8  rt_glide0
+00016234ee2ea3121dab857be84e8cf50056e0e4c639407fafde3505d6e796ae  rt_look0
+0c2fb55c41dcfe221a5780ca95e98c1fcfd2f1c29229fec2fa3f74c0d3c1e2d8  rt_look4
+0c2fb55c41dcfe221a5780ca95e98c1fcfd2f1c29229fec2fa3f74c0d3c1e2d8  rt_tol0
+# CORRIGIDO em 26/08/2026. O valor original da Etapa 2 para st_block512 era
+#   270c22c19308a2e471c30acb73eee1a59950cbc85e3d6adf654c97e7c6a16543
+# que era a saida COM o bug de invariancia ao tamanho de bloco (block>nHop
+# saia da grade de commit do PSOLA). A referencia congelada estava, portanto,
+# congelando um defeito. Depois da correcao em avancarPsola() o caso passou a
+# dar o MESMO hash de st_block64 e st_mix1 -- que e' o que "invariancia ao
+# tamanho de bloco" sempre quis dizer. Esta e' a UNICA linha alterada, e a
+# alteracao esta registrada em docs/execucao-do-plano.md.
+522ffaf32a3d6e47c69481332b966cff525bac664d54983784d0e96a09de71f1  st_block512
+522ffaf32a3d6e47c69481332b966cff525bac664d54983784d0e96a09de71f1  st_block64
+44af6aebec7600ce9137633a6f57246f0ba08b5224c2ac1910bd6325045f70ae  st_cmaior
+a86b831cc550896a58f5307e01a9a1a3c07cb046cb245fc36416cee8b44189ce  st_glide40
+373037487675431e93cda3fc531e2ddaafa503915f864ddbfa4f371f8ba3fc87  st_mix0
+522ffaf32a3d6e47c69481332b966cff525bac664d54983784d0e96a09de71f1  st_mix1
+42e8ad70d2356180c4d06a06775e7e3c29c47e938721131abcab2dba9a310bb2  st_tol15
+373037487675431e93cda3fc531e2ddaafa503915f864ddbfa4f371f8ba3fc87  st_tol600

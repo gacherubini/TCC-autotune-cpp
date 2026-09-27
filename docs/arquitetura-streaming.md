@@ -5,6 +5,13 @@ que processa blocos de tamanho arbitrário dentro do `processBlock()` de um plug
 
 > **Índice da documentação:** [`docs/README.md`](README.md)
 > **Análise aprofundada e diagnóstico:** [`documentacao-tecnica.md`](documentacao-tecnica.md)
+>
+> ⚠️ **Errata (26/08/2026, Etapa 2).** O parâmetro **`forca` não existe mais** — foi
+> substituído por um **mix seco/molhado** aplicado depois do PSOLA. Onde este documento diz
+> `forca=0`, leia **`mix=0` ou `tol=600`** (os dois caminhos de identidade que o
+> substituíram); onde diz `forca=1`, leia **`mix=1`**. As medições continuam válidas: os
+> checksums de todos os casos de áudio ficaram inalterados na troca — ver
+> [`execucao-do-plano.md`](execucao-do-plano.md), Etapa 2. O texto original foi preservado.
 
 ---
 
@@ -40,7 +47,8 @@ resposta imediata. O streaming roda peça por peça, guardando **estado entre ch
 | **2** | disparo de quadro | `while (buffered≥frame && desdeUltimo≥hop)`: fatia as últimas `frame` amostras (juntando a volta do anel) e `desdeUltimo -= hop` | ⏳ `frame` |
 | **3** | análise de pitch | YIN/CMNDF + multi-limiar **Beta(2,18)** → mapa de probabilidade `obs[bin]` + `pUnv` (idêntico ao offline, 1 quadro) | — |
 | **4** | **Viterbi de lag fixo** | 1 passo do HMM (emissão+transição); guarda só `look+1` colunas de `psi`; **emite o quadro `t−look`** por backtrack curto | ⏳ `look·hop` |
-| **5** | nota-alvo + glide | F0 detectado → encosta na escala (`forca`, zona morta `tol`) + portamento (`glide`, filtro de 1 polo com reset no ataque) | — |
+| **5** | nota-alvo + glide | F0 detectado → encosta na escala (zona morta `tol`) + portamento (`glide`, filtro de 1 polo com reset no ataque) | — |
+| **6-bis** | mix seco/molhado | cruza a saída do PSOLA com a entrada **atrasada da latência** (mesmo índice absoluto), Etapa 2 | — |
 | **6** | **PSOLA online** | re-sintetiza em janela deslizante (reusa `psolaSintetiza`) e comete o miolo já estável; look-ahead de **2 períodos** | ⏳ `2·fs/FMIN` |
 | **7** | pull da saída | copia `n` amostras já prontas pro `out[]` (no início, silêncio = priming) | — |
 | **8** | repete | cada chamada move as 3 fronteiras; tudo que era "global" no offline vira uma frente com look-ahead limitado | — |

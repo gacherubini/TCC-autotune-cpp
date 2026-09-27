@@ -1,0 +1,16 @@
+# Fim de linha. O projeto e' desenvolvido no Windows e verificado por um script
+# bash (baseline.sh), entao os dois mundos se encontram aqui.
+#
+# O caso concreto que motivou este arquivo (03/09/2026): num worktree novo, o
+# baseline/etapa2-legado.sha256 vinha com CRLF, e o 'read -r h nome' do script
+# deixava um \r colado no nome do caso. O arquivo g_$nome.wav procurado nao
+# existia, o hash saia VAZIO, e os 19 casos falhavam de uma vez -- parecendo uma
+# regressao catastrofica quando era so' fim de linha. O sintoma que distingue os
+# dois e' o hash vazio: uma regressao de verdade da um hash DIFERENTE.
+
+*.sh            text eol=lf
+baseline/*.txt  text eol=lf
+baseline/*.sha256 text eol=lf
+
+# Audio e' binario: nunca converter.
+*.wav binary

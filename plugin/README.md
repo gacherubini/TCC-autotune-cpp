@@ -1,8 +1,8 @@
 # Caminho C2 — plugin VST3 (casca JUCE em volta do núcleo C1)
 
 Transforma o autotune em **plugin VST3 + app Standalone** para rodar **ao vivo no
-Ableton Live** (Windows). **Não** reescreve DSP: o miolo é o `AutotuneStream`
-(`../src/autotune_stream.h`), já pronto e verificado headless no C1. O JUCE entra
+Ableton Live**. **Não** reescreve DSP: o miolo é o `AutotuneStream`
+(`../src/c1_streaming/autotune_stream.h`), já pronto e verificado headless no C1. O JUCE entra
 só como adaptador do host (callback de áudio, parâmetros, GUI, latência).
 
 ## Arquivos
@@ -11,10 +11,83 @@ só como adaptador do host (callback de áudio, parâmetros, GUI, latência).
 |---|---|
 | `CMakeLists.txt` | traz o JUCE via `FetchContent` e declara o plugin (`juce_add_plugin`, formatos VST3 + Standalone) |
 | `PluginProcessor.h/.cpp` | o `AudioProcessor`: parâmetros (APVTS) ↔ `StreamParams`, `processBlock` → `core.process`, `setLatencySamples` |
-| `build.bat` | configura + compila (atalho dos 2 comandos CMake) |
+| `PluginEditor.h/.cpp` | a tela: `PainelAfinador`, os 9 controles em três grupos e o `TccLookAndFeel` (ver *A tela*, abaixo) |
+| `build.bat` | configura + compila no **Windows** (atalho dos 2 comandos CMake) |
+| `build.sh` | configura + compila + **valida** no **macOS/Linux** (ver seção própria abaixo) |
+| `instalar_vst3.bat` | copia o `.vst3` para a pasta do sistema no Windows — exige prompt de **administrador** |
 
-GUI: por enquanto a **genérica do JUCE** (sliders/combos automáticos a partir dos
-parâmetros). Uma GUI custom é refinamento posterior.
+## A tela (GUI custom, 31/08/2026)
+
+Até 31/08/2026 a tela era a **genérica do JUCE**: um slider ou combo por parâmetro, na ordem em
+que foram declarados. Ela deixou de servir quando a faixa chegou a **13 colunas** numa linha
+só, no fim da Etapa 5.
+
+O que existe hoje, em `PluginEditor.h/.cpp`, sem uma linha de DSP nova:
+
+- **`PainelAfinador`, em cima.** Um cabeçalho com o nome da **nota-alvo** e a frequência, um
+  **arco** que mostra a que distância em cents o cantor está dela com a zona morta da
+  `Tolerancia` desenhada dentro, e uma faixa com o **histórico dos últimos 2,5 s** da correção
+  aplicada. A quantidade de correção virou um número na tela, no lugar do vão entre duas
+  agulhas.
+- **Oito controles embaixo, em três grupos:** **Escala** | **Correção** | **Motor**. Os quatro
+  widgets do Create Vibrato saíram na [Decisão 8](../docs/historico-e-decisoes.md#decisão-8--create-vibrato-sai-da-interface-fica-no-dsp-2026-08-31)
+  e a `Tolerancia` saiu na [Decisão 10](../docs/historico-e-decisoes.md#decisão-10--o-usuário-não-pode-alcançar-o-som-ruim-2026-09-03);
+  é o que fez 13 caberem em 8.
+- **Tema verde escuro** (`TccLookAndFeel`). Duas cores carregam significado e não são gosto:
+  `destaque` é **sempre** o sinal corrigido e `cantado` é **sempre** a altura crua do cantor.
+  Elas são de famílias de matiz diferentes de propósito, senão a leitura do arco se perde.
+
+Três detalhes de implementação que valem para o texto do TCC:
+
+1. **A nota-alvo vem do `fout`, não do `f0`.** Atacar um F# em dó maior faz o motor mirar em F
+   ou G; ler a nota mais próxima do `f0` mostrava F#, que a escala nem permite.
+2. **O anel do histórico é acumulado no timer da UI, a 60 Hz, não no processor.** O que a faixa
+   plota é uma envoltória lenta (o vibrato vive em ~5,5 Hz), então não é preciso um ring buffer
+   lock-free dentro do callback de áudio só para desenhar um gráfico.
+3. **A formatação do texto dos sliders tem de vir *depois* dos attachments.** O
+   `SliderAttachment` instala o próprio `textFromValueFunction` a partir de `param.getText()`,
+   que ignora `setNumDecimalPlacesToDisplay` e imprimia `15.0000…` em toda caixa. Foi aí que o
+   **Mix passou a ser mostrado em %** (o parâmetro continua 0–1), fechando um item cosmético do
+   backlog da Etapa 2.
+
+**Adição de 03/09/2026 — um ⓘ por controle.** Seis botões redondos, um ao lado de cada
+controle cujo nome não entrega o que ele faz: os três do grupo **Correção**, mais **Low
+Latency**, **Look-ahead** e **Mix**. Eram sete até a `Tolerancia` sair da tela no mesmo dia
+([Decisão 10](../docs/historico-e-decisoes.md#decisão-10--o-usuário-não-pode-alcançar-o-som-ruim-2026-09-03)):
+balão sem controle para explicar não tem onde ancorar. Clicar abre um `CallOutBox` ancorado no
+botão, que some ao clicar fora. **Voz, Tônica e Escala não têm** — as próprias opções da
+lista já dizem o que são.
+
+Quatro decisões de implementação:
+
+- **O balão é filho do editor, não do desktop.** `launchAsynchronously(..., this)` em vez de
+  `nullptr`. Janela de nível de desktop saindo de UI de plugin é fonte conhecida de problema em
+  host, e confinada ela cabe folgada nos 640×430.
+- **`drawCallOutBoxBackground` foi sobrescrito.** O `LookAndFeel_V4` pinta o balão pelo
+  `currentColourScheme` interno, que os `setColour` do `TccLookAndFeel` não alcançam — sem a
+  sobrescrita ele sairia cinza de fábrica no meio do tema verde. O corpo é **opaco**, e não o
+  0,8 do original: o balão cobre sliders e o gráfico do afinador, e translúcido sobre eles o
+  texto ficava ilegível.
+- **No grupo Correção o ⓘ ganha faixa própria acima do rótulo**, custando 14 px de curso dos
+  sliders. Ao lado do rótulo não cabia: a coluna tem ~83 px e "Retune Speed (ms)" ocupa quase
+  todos, e encurtar o rótulo contrariaria a escolha de usar o nome de catálogo completo. Nos
+  controles horizontais do grupo Motor ele cabe na linha do rótulo, sem custo.
+- **Os ⓘ do Natural Vibrato e do Humanize não acinzentam** quando os controles ficam inertes —
+  nem com o Retune Speed em 0, nem com ele no teto de 100 ms. É justamente aí que o usuário
+  quer saber por quê, e é o que o texto deles responde.
+
+O círculo e o "i" são **desenhados**, não o glifo `ⓘ` de fonte: o caractere existe em poucas
+fontes de sistema e cairia num retângulo vazio onde não existisse.
+
+**Correção de 02/09/2026 — o texto anda a 7,5 Hz, o desenho a 60 Hz.** O `getF0Atual()` muda a
+cada hop (5,8 ms), e o timer de 60 Hz amostrava isso direto no texto: o nome da nota, os dois Hz
+e o número de cents trocavam em todo repaint e não davam para ler. Agora as agulhas, o rastro e
+o histórico seguem no ritmo cheio, e uma cópia congelada a cada 8 ticks alimenta só o texto.
+Nada é suavizado — é o valor de um instante real, amostrado com menos frequência. Ver a
+[correção no diário](../docs/execucao-do-plano.md#correção-de-2026-09-02--o-texto-do-afinador-piscava-a-60-hz).
+
+Verificação: `baseline.sh` responde `IDENTICO` antes e depois (nenhum áudio mudou), e o
+`pluginval` no nível 10 passa, incluindo *Editor Automation* e *Fuzz parameters*.
 
 ## Pré-requisitos
 
@@ -49,19 +122,132 @@ Saída: `build/TccAutotune_artefacts/Release/VST3/TCC Autotune.vst3` e o
 > Para instalar no sistema, rode `instalar_vst3.bat` num prompt **como administrador**.
 > Sem admin: aponte o Ableton para a pasta de build (ver abaixo).
 
+## Compilar no macOS
+
+Acrescentado em **26/08/2026**. O `CMakeLists.txt` não tem nada específico de plataforma —
+serve aos dois sistemas sem alteração.
+
+Pré-requisitos:
+
+```
+xcode-select --install               # Command Line Tools (NÃO precisa do Xcode completo)
+brew install cmake ninja
+brew install --cask pluginval        # opcional, para o passo de validação
+```
+
+Depois, nesta pasta:
+
+```
+./build.sh          # configura + compila + valida
+./build.sh limpo    # apaga build-mac/ antes, para recompilar do zero
+```
+
+Saída: `build-mac/TccAutotune_artefacts/Release/VST3/TCC Autotune.vst3` e o
+`.../Standalone/TCC Autotune.app`.
+
+> O diretório é `build-mac`, e não `build`, **de propósito**: assim a árvore do Windows e a do
+> macOS coexistem na mesma cópia do repositório sem uma sobrescrever o cache da outra.
+
+### Validação automatizada
+
+O `build.sh` termina rodando o [pluginval](https://github.com/Tracktion/pluginval) no nível de
+rigor **10 (máximo)**, que carrega o VST3 num host de verdade e testa: processamento a 44,1 /
+48 / 96 kHz × blocos de 64 a 1024, automação em sub-blocos, abrir e fechar a GUI **durante** o
+callback de áudio, salvar e restaurar estado, thread-safety dos parâmetros e fuzzing. Saída
+esperada: `SUCCESS`.
+
+Ele é o complemento do `test_escalas` (rodado pelo `baseline.sh`): o teste unitário prova que a
+lógica está certa, o `pluginval` prova que o plugin não quebra o host. Detalhes e resultado em
+[`../docs/execucao-do-plano.md`](../docs/execucao-do-plano.md), seção *Etapa 1-bis*.
+
+### Testar rápido sem DAW (macOS)
+
+```
+open "build-mac/TccAutotune_artefacts/Release/Standalone/TCC Autotune.app"
+```
+
+Em *Options → Audio/MIDI Settings* escolha entrada (microfone) e saída (fones — **use fones**,
+senão realimenta). É o jeito mais rápido de ver a GUI e ouvir o efeito.
+
 ## Parâmetros expostos
 
 | parâmetro | faixa | tipo | efeito |
 |---|---|---|---|
-| **Forca** | 0–1 | ao vivo | quanto puxa para a nota da escala (1 = "duro") |
-| **Tolerancia** | 0–50 cents | ao vivo | zona morta (preserva vibrato) |
-| **Glide** | 0–200 ms | ao vivo | portamento até a nota-alvo |
+| **Mix** | 0–1 | ao vivo | seco/molhado: 0 = só a entrada, 1 = só o corrigido (padrão 1) |
+| **Tolerancia** 🚫 | 0–50 cents | ao vivo | zona morta. **Padrão 0**, e **fora da tela** desde 03/09/2026: ela não encaixa a nota, empurra o desvio até a borda (tol 15 ⇒ resíduo de 15 ct) |
+| **Retune Speed** | 0–**100** ms | ao vivo | tempo até a nota. **Padrão 0** (efeito "duro"). Faixa encolhida de 400 para 100 ms em 03/09/2026: acima disso a medição mostra platô, não efeito |
+| **Natural Vibrato** ⚠️ | 0–2 | ao vivo | 0 = remove o vibrato, 1 = preserva (padrão), 2 = dobra |
+| **Humanize** ⚠️ | 0–1 | ao vivo | afrouxa o Retune Speed na sustentação da nota (padrão 0), **até o teto de 100 ms** (`HUM_TAU_TETO`). Inerte com Retune Speed já em 100 |
+| **Create Vibrato** 🚫 | off/sen/tri/qua | ao vivo | **gera** vibrato (≠ Natural Vibrato, que preserva) |
+| **Vibrato Rate** 🚫 | 0,1–10 Hz | ao vivo | taxa do vibrato gerado (padrão 5,5) |
+| **Vibrato Depth** 🚫 | 0–100 ct | ao vivo | profundidade do vibrato gerado (padrão 0 = desligado) |
+| **Amplitude Amount** 🚫 | 0–1 | ao vivo | modulação de amplitude em sincronia (±3 dB em 1) |
 | **Look-ahead** | 0–16 quadros | estrutural | latência × qualidade do Viterbi (re-prepara) |
-| **Voz** | preset | estrutural | tessitura → `fmin/fmax` (re-prepara, muda a latência) |
-| **Escala** | cromática / tônica | estrutural | grade de notas permitidas |
+| **Voz** | 4 presets | estrutural | tessitura → `fmin/fmax` (re-prepara, muda a latência). Lista do Auto-Tune desde 03/09/2026; padrão `Alto-Tenor`. Os 9 presets SATB seguem em `voz=` no CLI |
+| **Tonica** | 12 opções | estrutural | tônica da escala (Etapa 1) |
+| **Escala** | cromática / maior / menor | estrutural | grade de notas permitidas |
+| **Low Latency** (`lowlat`) | on/off | estrutural | troca o motor de síntese, Etapa 6 (ver abaixo). Padrão **desligado** |
 
 "Ao vivo" = aplicado sem realocar, a cada bloco. "Estrutural" = muda dimensões/
 latência → o núcleo é re-preparado (e o host relê `setLatencySamples`).
+
+⚠️ = **inerte com Retune Speed = 0**, e a tela diz isso. Com constante de tempo zero o
+passa-baixa sobre a altura real vira a própria altura real, o termo do Natural Vibrato vira
+exatamente zero para qualquer valor do controle, e o Humanize está atrás de uma guarda de
+constante de tempo positiva — nem chega a ser avaliado. Nessa condição os dois sliders ficam
+**desabilitados** e aparece a linha `requer Retune Speed > 0` sob eles. Os parâmetros seguem
+automatizáveis pelo host; é comunicação, não mudança de DSP. Ver a decisão **D7** do
+[`spec-encaixe-e-estabilidade.md`](../docs/spec-encaixe-e-estabilidade.md).
+
+O **Humanize tem um segundo estado inerte**, desde 03/09/2026: com o **Retune Speed já em
+100 ms** ele não tem para onde crescer, porque o τ efetivo é limitado a `HUM_TAU_TETO`
+(100 ms, `src/core/dsp.h`). Nessa condição só o slider dele apaga, e a linha vira
+`Humanize sem efeito: Retune Speed no teto`. É o mesmo tratamento de D7 para uma causa nova.
+
+🚫 = **existe no parâmetro, não existe na tela.** Os quatro controles do Create Vibrato saíram
+do editor em **31/08/2026** ([Decisão 8](../docs/historico-e-decisoes.md#decisão-8--create-vibrato-sai-da-interface-fica-no-dsp-2026-08-31)):
+é um **gerador** num protótipo que se declara **corretor**. A **Tolerancia** saiu em
+**03/09/2026** ([Decisão 10](../docs/historico-e-decisoes.md#decisão-10--o-usuário-não-pode-alcançar-o-som-ruim-2026-09-03))
+pelo argumento vizinho: é o único controle cujo efeito é deixar a saída desafinada de propósito,
+e o padrão de fábrica já era 0. Os cinco continuam automatizáveis pelo host, salvos no estado e
+alcançáveis pelos CLIs (`tol=`, `vibforma=`, `vibtaxa=`, `vibprof=`, `vibamp=`). Não é widget
+esquecido — não "conserte".
+
+O **arco da zona morta continua desenhado** no `PainelAfinador`, guardado por `if (tol > 0)`:
+no padrão ele some sozinho, e reaparece se o host automatizar o parâmetro.
+
+**O Mix aparece na tela em %**, e não em 0–1 (desde 31/08/2026). O parâmetro em si continua
+0–1: quem muda é só a formatação do texto do slider.
+
+> **`Mix = 0` não é um bypass instantâneo.** A saída passa a ser a entrada **atrasada da
+> latência do motor**, não a entrada de agora. É o comportamento correto para um plugin que
+> reporta latência: se o bypass não atrasasse, mexer no Mix deslocaria o áudio no tempo. O
+> host compensa um atraso fixo; não compensa um atraso que aparece e some.
+
+## O botão Low Latency (motor v3, Etapa 6)
+
+Um `ToggleButton` **"Low Latency"** no grupo *Motor*, id de parâmetro estável `"lowlat"`
+(`AudioParameterBool`, padrão **desligado**). É **estrutural**: liga/desliga dispara re-prepare,
+porque muda a latência declarada.
+
+Ligado, ele força duas coisas de uma vez — **não** são controles independentes enquanto o botão
+estiver ativo:
+
+- **O motor de síntese vira o ponteiro móvel**, no lugar do TD-PSOLA.
+- **`look` é forçado a 0.** O slider de Look-ahead continua **visível**, mas fica **desabilitado
+  e mostra 0** — o valor salvo no parâmetro não é sobrescrito, só ignorado enquanto o botão está
+  ligado; desligar devolve exatamente o `look` de antes.
+
+O que muda na saída: `setLatencySamples()` passa a reportar **8 amostras (0,18 ms)**, contra os
+milhares de amostras (`fs/FMIN`) do TD-PSOLA — o Ableton mostra 8 em vez de, por exemplo, 2552 no
+preset contralto. A **nota** de saída não muda (é o mesmo `β`); o que muda é como o esticamento é
+feito, o tipo de artefato e uma parte de latência **variável** (0 a T, o período da nota cantada)
+que **não** entra nesse número declarado. Mecânica completa, verificação e a medição comparando
+os dois motores: [`../docs/especificacao-v3-ponteiro.md`](../docs/especificacao-v3-ponteiro.md) e
+a [Etapa 6 do diário](../docs/execucao-do-plano.md#etapa-6--motor-v3-de-ponteiro-móvel-low-latency).
+
+Padrão **desligado** por dois motivos: uma instalação nova tem de soar como antes, e a linha de
+base (`baseline.sh`) mede o motor padrão (TD-PSOLA).
 
 ## Testar no Ableton
 
@@ -76,7 +262,7 @@ latência → o núcleo é re-preparado (e o host relê `setLatencySamples`).
 4. A latência reportada aparece na barra inferior (ex.: *"Latency: NNNN samples"*).
    Use **ASIO** e `look` pequeno (0–4) para cantar confortável.
 
-## Testar rápido SEM DAW (app Standalone)
+## Testar rápido SEM DAW (app Standalone — Windows)
 
 Rode `build\TccAutotune_artefacts\Release\Standalone\TCC Autotune.exe`. Em
 *Options/Audio Settings* escolha o driver (ASIO de preferência), entrada = microfone,
@@ -84,5 +270,15 @@ saída = fones. Ajuste os sliders e cante. É o jeito mais rápido de validar an
 
 > **Nota (resultado do TCC):** a latência que se *ouve* ao vivo = driver_in +
 > bloco_host + latência do núcleo + driver_out. O PDC (`setLatencySamples`) alinha
-> faixas gravadas, mas não remove o atraso de monitoração. Nosso número (~40–60 ms)
-> ser maior que o do Auto-Tune Pro (~1 ms) é **discussão de método**, não defeito.
+> faixas gravadas, mas **não remove o atraso de monitoração**.
+>
+> ⚠️ **Cite a latência sempre junto com o FMIN.** A guarda do PSOLA é `2·fs/FMIN`, então o
+> número muda com o preset de voz: **71,4 ms** com o FMIN padrão de 80 Hz e **57,9 ms** com
+> `voz=contralto` (FMIN 175 Hz).
+>
+> A diferença para o Auto-Tune Pro (37 amostras, 0,84 ms) **não é de ajuste, é de
+> arquitetura**: a latência dele é fixa em amostras, a nossa é proporcional a `fs/FMIN`.
+> Ele não faz análise-e-ressíntese — corrige com um ponteiro de leitura móvel sobre um buffer
+> circular, e o áudio nunca espera pela detecção. A dedução completa, com a patente e o que
+> seria preciso para chegar perto, está em
+> [`../docs/pesquisa-latencia-antares.md`](../docs/pesquisa-latencia-antares.md).

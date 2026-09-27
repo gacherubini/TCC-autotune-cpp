@@ -56,7 +56,140 @@ inline void calcularCMNDF(const std::vector<float>& x, long long ini, int W, int
     }
 }
 
+// ---------------------------------------------------------------------------
+//  Piso da varredura da GUARDA CONTRA A SUBHARMONICA (ver candidato(), abaixo).
+//
+//  A guarda procura evidencia de um periodo mais CURTO que o admitido pela
+//  tessitura, entao precisa de um piso proprio, abaixo do 'tauMin' da tessitura
+//  mais aguda que o projeto oferece (Instrumento, 2000 Hz -> 22 amostras a
+//  44,1 kHz). Oito amostras sao 5,5 kHz a 44,1 kHz: acima de qualquer
+//  fundamental de voz, e longe do regime tau -> 0, onde a CMNDF nao quer dizer
+//  nada -- dp[1] vale 1,0 por construcao, seja qual for o sinal.
+//
+//  E' constante do DETECTOR, nao parametro de usuario: ela nao expressa um gosto,
+//  expressa ate onde a funcao de diferenca ainda tem significado.
+// ---------------------------------------------------------------------------
+inline constexpr int TAU_GUARDA_MIN = 8;
+
+// ---------------------------------------------------------------------------
+//  Limiar da GUARDA, e por que ele NAO e' o limiar da busca principal.
+//
+//  candidato() e' chamada 100 vezes por quadro, com limiares 's' varridos de uma
+//  distribuicao Beta -- e' assim que o pYIN gera candidatos em vez de decidir de
+//  uma vez. Varios desses limiares sao PERMISSIVOS de proposito (chegam perto de
+//  1,0), porque o peso deles na agregacao e' minusculo e quem decide no fim e' o
+//  HMM. Reaproveitar esse 's' na guarda seria um erro de tipo: um limiar feito
+//  para GERAR hipoteses baratas passaria a REJEITAR quadros.
+//
+//  Medido em 03/09/2026, profundidade do vale abaixo de tauMin:
+//    verdadeiro positivo (349 Hz cantado num preset de teto 330)  ->  dp = 0,001
+//    falso positivo (take real, teto de 1000 Hz, longe de estourar) -> dp = 0,14 a 0,43
+//  Duas ordens de grandeza separam os dois casos, entao a guarda exige um vale
+//  FUNDO em termos absolutos, e nao "abaixo do limiar do momento".
+//
+//  A primeira versao usou 0,10, o limiar absoluto do YIN original (de Cheveigne
+//  e Kawahara, 2002, secao II-D). O argumento era bonito -- "o criterio de
+//  periodicidade da literatura" -- e a medicao o derrubou: 0,10 foi o PIOR dos
+//  quatro valores varridos. Ele so parecia bom porque tinha sido calibrado
+//  contra o preset mais LARGO (teto de 1000 Hz), onde a guarda varre pouco. Nos
+//  presets estreitos ela varre muito mais e encontra vales rasos legitimos.
+//
+//  Varredura sobre exemplo-antes.wav, perda de quadros vozeados DENTRO da faixa
+//  (o orcamento e' 2 pontos percentuais), com a divergencia de oitava em 0 % nos
+//  quatro casos:
+//
+//    limiar | tenor | contralto | altotenor | dentro do orcamento?
+//     0,10  | 97,0  |   97,1    |   97,1    | NAO -- estourava
+//     0,06  | 99,0  |   99,0    |   99,0    | sim
+//     0,04  | 99,3  |   99,3    |   99,3    | sim   <-- escolhido
+//     0,02  | 99,6  |   99,6    |   99,6    | sim (colateral zero)
+//
+//  0,04 e' o compromisso, e a assimetria e' deliberada. Errar para MENOS traz de
+//  volta a oitava errada, que e' o defeito audivel que tudo isto existe para
+//  remover; errar para MAIS custa um quadro sem correcao, que e' barato. Entao
+//  nao se escolhe o valor de colateral zero: escolhe-se o que mantem folga sobre
+//  o verdadeiro positivo (0,001, ou seja 40x) com colateral de 0,3 pp.
+//
+//  E ele vale INCONDICIONALMENTE, sem min() com o 's' do chamador -- ver o
+//  comentario dentro de candidato(), onde essa tentacao e o buraco que ela abre
+//  estao registrados.
+//
+//  O que este limiar custava quando estava frouxo: tres quadros de
+//  exemplo-antes.wav viravam nao-vozeados por engano. Tres em 854 parece pouco,
+//  e nao e': um quadro nao-vozeado PARTE uma regiao vozeada, a cadeia de marcas
+//  do PSOLA re-ancora, e a correlacao da saida caia para 0,77. Um erro de 0,35 %
+//  na trilha custava a frase inteira. O mesmo mecanismo de amplificacao derrubou
+//  o teto da janela do PSOLA (ver avancarPsola em autotune_stream.h).
+// ---------------------------------------------------------------------------
+inline constexpr double LIMIAR_GUARDA = 0.04;
+
+// ---------------------------------------------------------------------------
+//  candidato() — escolhe um periodo a partir da CMNDF, para um limiar 's'.
+//
+//  GUARDA CONTRA A SUBHARMONICA (D1 de docs/spec-encaixe-e-estabilidade.md).
+//
+//  A busca percorre a faixa a partir de 'tauMin', o periodo mais CURTO admitido
+//  pela tessitura. Se a altura cantada for mais aguda que o teto do preset, o
+//  periodo real cai ABAIXO de tauMin e fica invisivel para a busca -- mas o
+//  DOBRO dele nao fica, porque um sinal periodico em T tambem e' periodico em
+//  2T. A busca achava o 2T e reportava METADE da frequencia.
+//
+//  Medido em 03/09/2026: 100 % dos quadros acima do teto, com a quebra caindo
+//  exatamente no fmax de cada preset. Sobre exemplo-antes.wav, o preset Baixo
+//  divergia por uma oitava em 34,3 % dos quadros vozeados, e o Low Male em
+//  16,2 %. Os numeros estao congelados em src/tests/test_deteccao.cpp.
+//
+//  O defeito era ASSIMETRICO, e e' isso que o tornava traicoeiro:
+//    altura abaixo do fmin -> "sem voz", nao corrige. Silencioso, mas honesto.
+//    altura acima do fmax  -> uma oitava abaixo: corrige para a nota ERRADA.
+//
+//  A correcao NAO e' alargar a faixa percorrida. Isso exigiria mais bins no HMM
+//  (o espaco de estados tem binDe(FMAX)+1 posicoes, e o codigo ja descarta
+//  candidatos fora dele), ou seja, mais custo de Viterbi por quadro. A correcao
+//  e' REJEITAR o candidato quando ha evidencia de que o periodo real esta fora
+//  da faixa. O resultado passa a espelhar o que ja acontecia abaixo do piso --
+//  fora da faixa, "sem voz" -- e sobra um unico comportamento para lembrar.
+//
+//  Custo zero: calcularCMNDF() ja preenche 'dp' de tau = 1 ate tauMax. Os dados
+//  abaixo de tauMin ja existiam, apenas nao eram consultados. A guarda e' uma
+//  leitura a mais, nao um calculo a mais.
+//
+//  Devolver 0.0 nao forca o quadro a "nao-vozeado" na marra: cada limiar 's' e'
+//  um voto, e retirar o voto desloca massa do histograma de pitch para 'pUnv'.
+//  Quem decide continua sendo o HMM, com a evidencia certa na mao.
+// ---------------------------------------------------------------------------
 inline double candidato(const std::vector<double>& dp, int tauMin, int tauMax, double s, int fs) {
+    //  O que conta como evidencia: um VALE QUE FECHA abaixo de tauMin, e nao
+    //  qualquer amostra abaixo do limiar. A diferenca decide o caso de borda, e
+    //  ele nao e' raro -- e' exatamente a nota mais aguda que o preset promete
+    //  cobrir. Cantando o proprio fmax (330 Hz no Baixo), o periodo real e' 133,6
+    //  amostras e o tauMin e' 133: o vale legitimo fica CENTRADO no limite, e o
+    //  flanco esquerdo dele cai dentro da regiao que a guarda varre. Uma guarda
+    //  que dispare com "existe dp[tau] < s" rejeitaria a nota do teto -- trocando
+    //  o defeito da oitava por um buraco no agudo da propria tessitura.
+    //
+    //  Seguir o vale ate o fundo separa os dois casos pela fisica, sem constante
+    //  de ajuste: se o fundo cai abaixo de tauMin, existe mesmo um periodo mais
+    //  curto que o admitido (altura acima do fmax); se o vale so ATRAVESSA
+    //  tauMin, o que se viu foi o flanco do periodo legitimo mais grave.
+    //  O limiar da guarda e' o dela, NAO o 's' do chamador -- nem sequer o menor
+    //  dos dois. Uma primeira versao usava min(s, LIMIAR_GUARDA) por parecer
+    //  "conservadora nos dois sentidos", e isso contradizia o argumento acima
+    //  justamente onde ele importa: para os limiares BAIXOS da varredura Beta,
+    //  min() devolve o 's' do chamador e a guarda volta a ser refem dele. O
+    //  buraco e' concreto -- com s = 0,02, periodo real 100 abaixo de um tauMin
+    //  de 133, dp[100] = 0,05 e dp[200] = 0,001, a busca principal vota a metade
+    //  da frequencia e a guarda nao dispara, porque 0,05 >= 0,02. Esses votos
+    //  pesam pouco na agregacao, mas "pesa pouco" nao e' o mesmo que "nao existe".
+    const int guardaAte = std::min(tauMin, (int)dp.size());
+    for (int tau = TAU_GUARDA_MIN; tau < guardaAte; ++tau) {
+        if (dp[tau] >= LIMIAR_GUARDA) continue;
+        int fundo = tau;   // mesma descida que a busca principal faz, abaixo
+        while (fundo + 1 < tauMax && dp[fundo + 1] < dp[fundo]) ++fundo;
+        if (fundo < tauMin) return 0.0;   // altura acima do fmax -> sem voz
+        break;                            // vale do periodo legitimo: segue
+    }
+
     int tauEst = -1;
     for (int tau = tauMin; tau < tauMax; ++tau)
         if (dp[tau] < s) { while (tau + 1 < tauMax && dp[tau + 1] < dp[tau]) tau++; tauEst = tau; break; }
@@ -93,6 +226,62 @@ inline bool presetVoz(std::string nome, double& fmin, double& fmax) {
     else if (nome == "instrumento" || nome == "instrument" || nome == "amplo") { fmin = 50; fmax = 2000; }
     else return false;
     return true;
+}
+
+// ---------------------------------------------------------------------------
+//  A lista de tessituras EXPOSTA NA INTERFACE (o "Input Type" do Auto-Tune).
+//
+//  Ela e' MENOR que presetVoz(): quatro itens contra nove. Os nove continuam
+//  resolvendo pela linha de comando, e isso e' deliberado -- eles sao DADOS DE
+//  MEDICAO antes de serem itens de menu. Foi com os presets SATB que a tabela de
+//  erro de oitava e a de cobertura de tessitura do spec foram levantadas, e o
+//  texto do TCC cita as duas: jogar os nove fora destruiria a capacidade de
+//  reproduzir numeros que o trabalho afirma.
+//
+//  A tabela mora AQUI, e nao na GUI, pela mesma razao que montarEscala() mora
+//  aqui: para que a interface e os testes leiam a MESMA fonte. O modo de falha
+//  concreto que isso evita ja existia -- nomeVoz() era um switch sobre o indice
+//  do combo, com 'default: instrumento'. Encolher a lista sem encolher o switch
+//  faria o indice 1 devolver "baritono" enquanto o combo mostrava outra coisa:
+//  o menu diria uma tessitura e o DSP usaria outra, sem erro de compilacao e sem
+//  teste falhando, porque nao havia nada ligando os dois.
+//
+//  A ORDEM E' DELIBERADA, e a razao precisa ficar junto da tabela senao a
+//  proxima reordenacao a desfaz sem perceber. A lista encolheu de 7 para 4, e a
+//  APVTS grava o indice do AudioParameterChoice: um projeto salvo com
+//  'Contralto' (indice 3 da lista antiga) reabre no indice 3 da lista NOVA. Por
+//  isso o indice 3 e' 'Instrument', a faixa mais larga e a unica imune ao erro
+//  de oitava. O pior pouso possivel seria 'Low Male', cujo teto de 392 Hz corta
+//  18,5 % do take medido. Isto nao e' sorte a herdar em silencio: e' escolha.
+//
+//  Os rotulos trazem a faixa em NOTAS, nao em Hz, porque e' a leitura que o
+//  cantor consegue usar ("minha nota mais grave e' um Mi2, entao Low Male
+//  serve"). src/tests/test_vozes.cpp confere que cada rotulo bate com o
+//  presetVoz() correspondente -- e' o que prende o texto ao numero.
+// ---------------------------------------------------------------------------
+struct VozDaInterface {
+    const char* rotulo;   // o que o combo mostra
+    const char* preset;   // o nome que presetVoz() entende
+};
+
+inline constexpr int N_VOZES_UI = 4;
+
+// Padrao de fabrica: Alto-Tenor. A medicao da §3 do spec mostra que ele cobre
+// 100 % do take do autor, contra 98,6 % do Contralto (o padrao ate 03/09/2026),
+// que cortava 1,4 % dos graves. Preco registrado: preset mais largo significa
+// fs/FMIN maior, logo mais latencia no PSOLA -- 337 amostras de guarda contra
+// 252 do Contralto.
+inline constexpr int VOZ_UI_PADRAO = 1;
+
+inline const VozDaInterface& vozDaInterface(int idx) {
+    static const VozDaInterface tabela[N_VOZES_UI] = {
+        { "Soprano (C4-C6)",    "soprano"     },
+        { "Alto-Tenor (C3-F5)", "altotenor"   },   // padrao de fabrica
+        { "Low Male (E2-G4)",   "lowmale"     },
+        { "Instrument (G1-B6)", "instrumento" },   // indice 3: ver acima
+    };
+    if (idx < 0 || idx >= N_VOZES_UI) idx = N_VOZES_UI - 1;
+    return tabela[idx];
 }
 
 inline std::string hzParaNota(double f) {
@@ -137,6 +326,19 @@ inline void definirEscala(const char* txt) {
     for (int i = 0; i < 7; ++i) g_permitida[(pc + iv[i]) % 12] = true;
 }
 
+// Monta a string que definirEscala() entende a partir de dois indices de combo.
+// Existe aqui, e nao na GUI, para que a interface e os testes usem a MESMA
+// tabela — o mesmo motivo que levou a malha de correcao para dsp.h (Etapa 0).
+//   tonica: 0=C, 1=C#, 2=D, ... 11=B
+//   modo:   0=cromatico (ignora a tonica), 1=maior, 2=menor natural
+inline std::string montarEscala(int tonica, int modo) {
+    if (modo <= 0 || modo > 2) return "crom";
+    static const char* RAIZ[12] =
+        { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+    if (tonica < 0 || tonica > 11) tonica = 0;
+    return std::string(RAIZ[tonica]) + (modo == 2 ? "m" : "");
+}
+
 // Acha, entre as notas permitidas pela escala atual (g_permitida), a mais
 // próxima (em semitons) da frequência 'f'. Retorna o número MIDI dessa nota
 // (ex.: 69 = A4 = 440 Hz). Usada por notaAlvo() e pela GUI do plugin (nota-alvo
@@ -155,16 +357,582 @@ inline int notaMaisProximaMidi(double f) {
     return alvo;
 }
 
-// Nota-alvo: nota mais próxima da escala, com "forca" 0..1 e zona morta (tolCents).
-inline double notaAlvo(double f, double forca, double tolCents) {
+// A zona morta, medida contra um semitom JA ESCOLHIDO.
+//
+// Separar as duas decisoes -- "qual semitom" e "quanto empurrar em direcao a
+// ele" -- e' o que permite que a ESCOLHA ganhe memoria (EscolhaDeSemitom,
+// adiante) sem que a zona morta precise saber disso. As duas sao independentes,
+// e misturá-las de novo desfaria D2.
+inline double notaAlvoDoSemitom(double f, int alvoMidi, double tolCents) {
     double midi = 69.0 + 12.0 * std::log2(f / 440.0);
-    int alvo = notaMaisProximaMidi(f);
-    double errCents = (alvo - midi) * 100.0;
+    double errCents = (alvoMidi - midi) * 100.0;
     double mag = std::fabs(errCents);
     double mov = (mag <= tolCents) ? 0.0
                                    : (errCents > 0 ? 1.0 : -1.0) * (mag - tolCents);
-    double corrMidi = midi + (forca * mov) / 100.0;
+    double corrMidi = midi + mov / 100.0;
     return 440.0 * std::pow(2.0, (corrMidi - 69.0) / 12.0);
+}
+
+// Nota-alvo: nota mais próxima da escala, com zona morta (tolCents).
+//
+// ETAPA 2 do plano: o parâmetro "forca" (0..1, fração do desvio a corrigir) foi
+// REMOVIDO daqui. Ele não tinha equivalente no Auto-Tune e misturava duas coisas
+// distintas — "quanto corrigir" e "quanto do efeito ouvir". A segunda virou o
+// Mix seco/molhado (misturar(), abaixo); a primeira simplesmente não existe mais:
+// a correção agora é sempre integral, e o que se dosa é a mistura.
+//
+// A zona morta continua sendo o único controle que decide o ALVO. Vale notar,
+// para quem vier depois: uma tolerância maior que meio semitom (tolCents >= 50)
+// faz mov=0 sempre, logo alvo == f, logo beta = 1 no PSOLA. É por isso que
+// `tol=600` é o caso de teste que exercita o PSOLA inteiro em identidade —
+// exatamente a cobertura que a antiga `forca=0` dava. Ver docs/execucao-do-plano.md,
+// Etapa 2, onde a equivalência está verificada por checksum.
+//
+// Esta é a versão SEM MEMÓRIA da escolha de semitom, e continua pura: é ela que
+// os oráculos congelados dos testes chamam, e é ela que a GUI pode usar. Ela
+// delega a aritmética em vez de repeti-la — duplicar a zona morta em dois
+// lugares é exatamente o defeito que a Etapa 0 removeu do projeto quando a malha
+// de correção estava copiada em três arquivos.
+inline double notaAlvo(double f, double tolCents) {
+    return notaAlvoDoSemitom(f, notaMaisProximaMidi(f), tolCents);
+}
+
+// ---------------------------------------------------------------------------
+//  Mistura seco/molhado (Etapa 2 do plano) — o substituto da "forca".
+//
+//  A troca não é de grau, é de natureza:
+//    - a FORCA agia DENTRO da correção: o PSOLA recebia um alvo intermediário e
+//      sintetizava um sinal que não era nem o original nem o corrigido;
+//    - o MIX age DEPOIS: os dois sinais existem por inteiro e são cruzados
+//      linearmente. O que se ouve em 50% é metade do original mais metade do
+//      corrigido — não um terceiro sinal sintetizado num alvo intermediário.
+//
+//  Isso é o que todo plugin de efeito faz, e é o que a Antares expõe. Também é
+//  o que torna `mix = 0` um bypass EXATO: nenhuma operação sobra no caminho.
+//
+//  ⚠️ ALINHAMENTO — a armadilha desta função. O "seco" tem de ser a MESMA
+//  amostra que o "molhado". No caminho offline os dois vetores já são paralelos
+//  e não há o que fazer. No STREAMING o molhado sai atrasado da latência do
+//  motor: misturar o seco instantâneo com o molhado atrasado somaria o sinal com
+//  uma cópia deslocada de si mesmo — um filtro-pente, claramente audível. Por
+//  isso o process() indexa os dois pelo MESMO índice absoluto (ver
+//  autotune_stream.h). Quem replicar esta mistura em outro lugar precisa
+//  atrasar o seco na mesma medida.
+//
+//  Os extremos são casos exatos de propósito: mix=1 devolve o molhado bit a bit
+//  e mix=0 devolve o seco bit a bit, sem passar por multiplicação nenhuma. É o
+//  que sustenta o teste de identidade da etapa (test_mix.cpp).
+// ---------------------------------------------------------------------------
+inline float misturar(float seco, float molhado, double mix) {
+    if (mix >= 1.0) return molhado;
+    if (mix <= 0.0) return seco;
+    return (float)(mix * (double)molhado + (1.0 - mix) * (double)seco);
+}
+
+// ---------------------------------------------------------------------------
+//  Malha de correcao de altura, amostra a amostra.
+//
+//  Ate a Etapa 0 do plano (docs/plano-de-implementacao.md) este bloco estava
+//  copiado LITERALMENTE em tres arquivos: offline_causal/main.cpp (caminho A),
+//  offline_causal/autotune_rt.cpp (caminho B) e c1_streaming/autotune_stream.h
+//  (caminho C1). Como a verificacao do projeto compara C1 contra o gold, uma
+//  divergencia entre as copias quebraria essa comparacao EM SILENCIO -- o teste
+//  passaria a comparar coisas diferentes sem acusar erro.
+//
+//  ETAPA 3 -- a matematica mudou aqui. Ate a Etapa 2 a malha era:
+//
+//      estado = alpha*estado + (1-alpha)*alvoCents          (filtro sobre o ALVO)
+//
+//  Dois defeitos, ambos diagnosticados na documentacao tecnica (secao 8.2):
+//
+//   1) O filtro agia sobre o ALVO, que e' quase CONSTANTE dentro de uma nota --
+//      ele converge em ~tau e depois nao faz mais nada. Consequencia: o vibrato
+//      do cantor era destruido, porque o alvo nao vibra e a saida seguia o alvo.
+//   2) O reset de ataque era para o ALVO: a nota nascia exatamente afinada, sem
+//      trajeto. E' o "duro, estatico" que o teste de usuario reprovou.
+//
+//  A cadeia nova mantem DOIS estados de filtro, um sobre o alvo e outro sobre a
+//  altura REAL do cantor, e combina assim:
+//
+//      outCents = LP(alvo) + k*(real - LP(real))
+//               = LP(alvo) + k*HP(real)
+//
+//  Escrevendo HP(x) = x - LP(x) para o complementar do passa-baixa, o que essa
+//  forma faz e' separar o que o cantor faz DEVAGAR (deriva de afinacao, que deve
+//  ser corrigida) do que ele faz DEPRESSA (vibrato, que deve ser preservado). O
+//  filtro deixa de agir sobre o alvo e passa a agir sobre a CORRECAO.
+//
+//  Por que isso funde o Glide no Retune Speed, em vez de trocar um pelo outro:
+//
+//   k = 0  ->  outCents = LP(alvo). E' LITERALMENTE a linha da Etapa 2. O
+//              comportamento antigo nao se perde: vira um caso particular.
+//   k = 1  ->  outCents = LP(alvo) + real - LP(real) = real + LP(alvo - real)
+//                       = real + LP(correcao). E' a formulacao da patente de
+//              Hildebrand (US 5.973.252): o filtro sobre a correcao, nao sobre
+//              o alvo. Vibrato preservado.
+//   k > 1  ->  com o alvo constante dentro da nota, LP(alvo) -> alvo e a saida
+//              vira alvo + k*vibrato: vibrato EXAGERADO (o "Natural Vibrato"
+//              positivo da Antares).
+//
+//  Resposta do passa-altas a um vibrato de frequencia f_v, com frequencia de
+//  corte f_c = 1/(2*pi*tau):   G(f_v) = f_v / sqrt(f_v^2 + f_c^2).
+//  Vibrato de cantor fica em ~5-7 Hz; com tau = 25 ms, f_c ~ 6,4 Hz, o que
+//  atenua o vibrato a ~0,7. Nao e' descuido: tau curto corrige rapido E come
+//  vibrato -- e' o compromisso central deste controle, nao um defeito dele.
+//
+//  RESSALVA (registrada no plano, secao 11.1): k = 0 reproduz o REGIME antigo,
+//  nao o ATAQUE. A Etapa 2 iniciava o estado em alvoCents (nota nasce afinada);
+//  a cadeia nova inicia em realCents (nota nasce onde o cantor cantou). Para
+//  reproduzir a Etapa 2 EXATAMENTE sao precisos DOIS valores neutros: k = 0 e
+//  a flag 'ataqueNoAlvo'. Ela existe so para o teste de nao-regressao e NAO e'
+//  parametro de plugin -- o deslize de entrada e' comportamento fixo do produto.
+// ---------------------------------------------------------------------------
+//  ETAPA 4 -- Humanize. Do manual da Antares, literalmente: "applies a slower
+//  Retune Speed only during the sustained portion of longer notes".
+//
+//  O problema que ele resolve e' um efeito colateral direto da Etapa 3. Um tau
+//  unico serve a dois momentos que querem coisas opostas:
+//
+//    - no ATAQUE quer-se tau CURTO: a nota nasce onde o cantor a colocou e
+//      precisa chegar a afinacao rapido, senao a entrada soa desafinada;
+//    - na SUSTENTACAO quer-se tau LONGO: e' onde vive a expressao (vibrato,
+//      deriva intencional), e corrigir depressa ali achata tudo.
+//
+//  Humanize desacopla os dois: o tau efetivo cresce conforme a nota se sustenta.
+//
+//      tauEff = tau * (1 + humanize * HUM_FATOR * rampa(t))
+//      rampa(t) = 1 - exp(-t / HUM_SUSTENTACAO)      t = tempo desde o ataque
+//
+//  A rampa e' suave de proposito. Um limiar duro ("depois de X ms, troque o
+//  tau") produziria um degrau na constante de tempo no meio da nota, e degrau
+//  em filtro e' transitorio audivel. A exponencial da a mesma ideia sem a
+//  descontinuidade -- e usa a mesma primitiva que o resto da malha.
+//
+//  Por que sao CONSTANTES e nao controles: o projeto ja tem 8 parametros. Estes
+//  dois definem o que "sustentacao" QUER DIZER, e essa e' uma decisao de
+//  desenho, nao um gosto do usuario -- que ja escolhe a intensidade pelo
+//  proprio Humanize. Ficam nomeados aqui para poderem ser discutidos no texto.
+inline constexpr double HUM_SUSTENTACAO = 0.200;  // s: constante da rampa ataque->sustentacao
+inline constexpr double HUM_FATOR       = 3.0;    // humanize=1 -> tau ate 4x na sustentacao
+// Teto do tau EFETIVO (s). O Humanize pode desacelerar a sustentacao ate aqui e
+// nao alem -- e' o mesmo 100 ms que o slider do Retune Speed expoe como maximo,
+// de proposito: os dois controles esticam a MESMA constante de tempo, entao um
+// teto que valesse so' para um deles seria uma porta dos fundos para o outro. A
+// justificativa do numero (a varredura que acha o joelho em ~50 ms e o plato
+// acima de 100) esta no comentario do parametro `retune` em
+// plugin/PluginProcessor.cpp. Ver o uso em CorretorAltura::proxima() para a
+// razao de o teto ser max(tau, HUM_TAU_TETO) e nao HUM_TAU_TETO puro.
+inline constexpr double HUM_TAU_TETO    = 0.100;  // s: 100 ms, o teto do Retune Speed
+
+//  ETAPA 5 -- Create Vibrato. Aqui o plugin deixa de so CORRIGIR e passa a
+//  GERAR: um vibrato sintetico somado a altura de saida, com forma, taxa e
+//  profundidade proprias, mais uma modulacao de amplitude em sincronia.
+//
+//  Nao confundir com o 'vibrato' (k) da Etapa 3, que sao coisas opostas:
+//    - k preserva o vibrato que o CANTOR fez (nao inventa nada);
+//    - Create Vibrato inventa um que o cantor NAO fez.
+//  Os dois convivem: da para preservar o do cantor e somar um por cima. Soam
+//  mal juntos em profundidade alta, e isso e' escolha do usuario, nao defeito.
+//
+//  ATRASO DE ENTRADA (onset). Vibrato que comeca junto com a nota soa
+//  sintetico -- cantor nenhum entra vibrando. A Antares expoe isso como "Onset
+//  Delay"/"Onset Rate"; aqui e' uma rampa fixa com a mesma forma da do Humanize,
+//  reusando o contador 'desdeAtaque' que a Etapa 4 ja mantem. Sem controle
+//  proprio, pelo mesmo motivo: define o que "entrada da nota" quer dizer.
+inline constexpr double VIB_ONSET = 0.300;   // s: constante da rampa de entrada do vibrato
+inline constexpr double VIB_AMP_DB = 3.0;    // dB de modulacao de amplitude em vibAmp=1
+
+// Formas de onda do Create Vibrato. Valor em [-1,1] para uma fase em [0,1).
+enum class FormaVibrato { Nenhuma = 0, Senoide = 1, Triangular = 2, Quadrada = 3 };
+
+inline double formaVibrato(FormaVibrato f, double fase) {
+    switch (f) {
+        case FormaVibrato::Senoide:    return std::sin(2.0 * PI * fase);
+        // Triangular: sobe de -1 a 1 na primeira metade, desce na segunda.
+        case FormaVibrato::Triangular: return (fase < 0.5) ? (4.0 * fase - 1.0)
+                                                           : (3.0 - 4.0 * fase);
+        case FormaVibrato::Quadrada:   return (fase < 0.5) ? 1.0 : -1.0;
+        default:                       return 0.0;
+    }
+}
+
+// ---------------------------------------------------------------------------
+//  ESTABILIZACAO DA NOTA-ALVO (D2 do spec de encaixe e estabilidade).
+//
+//  Ate 03/09/2026 a trilha de altura detectada chegava CRUA a escolha de
+//  semitom. Ruido de poucos cents na estimativa fazia a nota-alvo trocar de
+//  semitom, e a malha perseguia cada troca. Medido na configuracao do usuario:
+//  51 notas em 5 s, duracao MEDIANA de 34,8 ms, 76 % delas abaixo de 80 ms.
+//
+//  O efeito audivel nao e' "troca de nota": e' a saida nunca PARAR em cima de um
+//  semitom. E ele explica um segundo sintoma que parecia independente -- o
+//  Retune Speed "enjoado". Um filtro de constante 200 ms nunca alcanca um alvo
+//  que troca a cada 35 ms: ele corre atras e nao chega, e o que se ouve e' um
+//  deslizar permanente entre notas. E' por isso que no Auto-Tune (alvo estavel)
+//  um Retune lento soa como bypass limpo, e aqui soava como enjoo.
+//
+//  POR QUE AQUI, e nao filtrando a trilha de altura: filtrar a altura destruiria
+//  o vibrato do cantor, que e' exatamente o que a malha existe para preservar, e
+//  desfaria o trabalho da Etapa 3. O que precisa de memoria e' a DECISAO, nao a
+//  medida.
+//
+//  POR QUE NAO EM notaMaisProximaMidi(): aquilo e' funcao livre e pura, e a GUI
+//  a chama do timer da message thread com um argumento diferente (o fout, nao o
+//  f0). Estado ali seriam duas threads escrevendo na mesma variavel, com
+//  entradas diferentes, e ainda compartilhado entre os tres CLIs no mesmo
+//  processo. O estado mora em CorretorAltura, que ja e' a casa do estado da
+//  malha, ja tem reset() e ja e' membro de cada motor.
+//
+//  INVARIANCIA AO TAMANHO DE BLOCO, por construcao. O contador de permanencia
+//  anda por CHAMADA de proxima(), que roda uma vez por amostra emitida, e a
+//  emissao e' comandada pelo hop -- nunca pelo callback do host. Contar tempo
+//  por callback, ou por quantas amostras chegaram no bloco, quebraria a
+//  invariancia na hora. E' a mesma exigencia que o teto da janela do PSOLA
+//  declara inegociavel, e pela mesma razao.
+// ---------------------------------------------------------------------------
+
+//  Histerese, em cents de DESLOCAMENTO DA FRONTEIRA de troca -- ver o fator 2
+//  dentro de escolher(), que e' onde a primeira versao disto errou.
+//
+//  PISO, imposto pela analise e nao por gosto: a trilha de F0 emitida vive numa
+//  grade de RES_CENTS = 20 cents, que e' a resolucao dos bins do HMM. Uma
+//  tremulacao de UM BIN ja sao 20 cents, entao abaixo disso a histerese nao
+//  filtraria nem o menor ruido possivel.
+//
+//  TETO, medido: em 35 cents o glissando comeca a perder degraus (12 em vez de
+//  13, span de 11 semitons em vez de 12) -- a estabilizacao passa a engolir
+//  movimento legitimo, que e' o defeito oposto.
+//
+//  Varredura com permanencia de 50 ms, sobre exemplo-antes.wav:
+//
+//     histerese | mediana | <80ms | glissando
+//        15     | 58,0 ms |  60 % | 13 degraus, span 12
+//        20     | 58,0 ms |  60 % | 13 degraus, span 12
+//        25     | 58,0 ms |  60 % | 13 degraus, span 12
+//        30     | 63,9 ms |  56 % | 13 degraus, span 12   <-- escolhido
+//        35     | 64,8 ms |  56 % | 12 degraus, span 11   (degrada)
+//
+//  Abaixo de 30 a permanencia minima domina e a histerese nao acrescenta nada.
+//
+//  Vale registrar a amarracao, porque ela nao e' obvia: a resolucao da ANALISE
+//  poe um piso na resolucao da DECISAO. Baixar RES_CENTS para 10 foi considerado
+//  e rejeitado -- W_TRANS e SIGMA_TRANS estao em BINS, nao em cents, entao
+//  reescalar dobraria o numero de bins E a largura da janela de transicao, o que
+//  custa da ordem de 4x no Viterbi por quadro.
+#ifndef HISTERESE_CENTS
+inline constexpr double HISTERESE_CENTS = 30.0;
+#endif
+
+//  Permanencia minima, em segundos. A histerese sozinha nao pega a troca rapida
+//  quando o cantor esta de fato perto do meio do caminho entre dois semitons:
+//  ali as duas distancias ficam parecidas o tempo todo, e a margem nao decide.
+//
+//  O teto e' obvio e e' o contraponto: precisa ser curta o bastante para nao
+//  arrastar melodia rapida. Semicolcheias a 120 bpm duram 125 ms, entao a
+//  permanencia tem de ficar bem abaixo disso -- o valor escolhido e' o
+//  compromisso entre "nao piscar" e "nao engolir ornamento", e as duas pontas
+//  sao medidas no teste.
+#ifndef PERMANENCIA_MIN_S
+inline constexpr double PERMANENCIA_MIN_S = 0.050;
+#endif
+
+//  Sao CONSTANTES DE DESENHO, nao controles de usuario, pela mesma razao
+//  registrada para as constantes do Humanize: elas definem o que "nota" QUER
+//  DIZER, e isso e' decisao de projeto, nao gosto. Ficam nomeadas aqui para
+//  poderem ser discutidas no texto do TCC.
+//  Salto que dispensa as duas travas. Tremulacao de estimativa e' de poucos
+//  cents e nunca passa de um semitom vizinho; um salto MAIOR que um tom e' nota
+//  nova, e segurar nota nova e' o defeito que a historia 14 do spec proibe.
+//
+//  Ele tem um segundo efeito, que vale registrar com honestidade sobre o quanto
+//  ele e' necessario. Sem um teto, o semitom SEGURADO pode em principio ficar
+//  arbitrariamente longe da altura cantada durante a permanencia, e isso
+//  ameacaria o CAMINHO DE IDENTIDADE do projeto: com tol = 600 a zona morta so
+//  devolve alvo == f0 enquanto |errCents| <= 600, e um salto de oitava dentro da
+//  janela levaria o erro a 1200. Com o teto, o semitom segurado nunca fica a
+//  mais de 2 semitons + meio semitom da altura real -- 250 cents, folga de 2,4x.
+//
+//  Na pratica esse caso nao foi alcancado. Tentou-se: saltos de oitava a cada
+//  40 ms e varreduras de duas oitavas em 40 ms mantiveram tol=600 bit-identico
+//  MESMO com o teto desligado. A razao esta noutra camada -- o HMM nao deixa a
+//  trilha emitida andar mais que W_TRANS (12 bins, 240 cents) por quadro, e o
+//  que e' rapido demais para ele sai como NAO-VOZEADO, que zera esta escolha.
+//  Ou seja: hoje a identidade e' protegida por uma propriedade do Viterbi, e nao
+//  por esta constante. Ela fica como seguro barato contra essa protecao mudar,
+//  porque um acoplamento entre a largura da transicao do HMM e um caminho de
+//  identidade e' fragil demais para ficar implicito -- e porque, mesmo sem esse
+//  argumento, seguir nota nova depressa e' o comportamento certo.
+inline constexpr int SALTO_IMEDIATO_SEMITONS = 2;
+
+struct EscolhaDeSemitom {
+    void reset() { tem = false; atual = 0; desdeTroca = 0; }
+
+    // Semitom (numero MIDI) que deve valer como alvo para esta amostra.
+    int escolher(double f0Hz, double fs) {
+        const int candidato = notaMaisProximaMidi(f0Hz);
+        if (!tem) { atual = candidato; tem = true; desdeTroca = 0; return atual; }
+
+        ++desdeTroca;
+        if (candidato == atual) return atual;
+
+        // Salto grande: nota nova, sem discussao. Ver o comentario acima.
+        if (std::abs(candidato - atual) > SALTO_IMEDIATO_SEMITONS) {
+            atual = candidato; desdeTroca = 0; return atual;
+        }
+
+        // Permanencia minima: um semitom recem-escolhido nao troca tao cedo.
+        if ((double)desdeTroca < PERMANENCIA_MIN_S * fs) return atual;
+
+        // Histerese: o novo tem de estar MAIS PERTO QUE O ATUAL POR UMA MARGEM,
+        // e nao apenas mais perto. E' o que mata a oscilacao na fronteira: ali
+        // as duas distancias sao ~50 cents e a diferenca entre elas ronda zero,
+        // enquanto uma nota de verdade chega com a diferenca perto de 100.
+        //
+        // O FATOR 2 NAO E' DETALHE, e a primeira versao disto errou por causa
+        // dele. As duas distancias se movem em sentidos OPOSTOS quando a altura
+        // anda: passando o ponto medio entre dois semitons por x cents, tem-se
+        // distAtual = 50 + x e distNovo = 50 - x, ou seja a diferenca vale 2x.
+        // Comparar a diferenca crua contra HISTERESE_CENTS faria a constante
+        // valer METADE do que o nome promete -- 30 cents de constante moveriam a
+        // fronteira de troca em apenas 15 cents, abaixo do piso de 20 que a
+        // propria analise impoe (um bin do HMM). Dividindo por 2, a constante
+        // passa a ser o que ela diz ser: DESLOCAMENTO DA FRONTEIRA, em cents.
+        const double midi = 69.0 + 12.0 * std::log2(f0Hz / 440.0);
+        const double distAtual = std::fabs(midi - (double)atual)     * 100.0;
+        const double distNovo  = std::fabs(midi - (double)candidato) * 100.0;
+        if (0.5 * (distAtual - distNovo) < HISTERESE_CENTS) return atual;
+
+        atual = candidato; desdeTroca = 0;
+        return atual;
+    }
+
+private:
+    int  atual = 0;
+    bool tem = false;
+    long long desdeTroca = 0;   // chamadas de escolher() desde a ultima troca
+};
+
+struct ParamsCorrecao {
+    // Etapa 2: 'forca' saiu daqui. Ela nao era um parametro da MALHA (nao tem
+    // dimensao de tempo, nem decide o alvo) -- era uma dosagem de efeito, e
+    // dosagem de efeito e' mix, aplicado depois do PSOLA. Ver misturar().
+    double tolCents = 0.0;   // zona morta (cents) ao redor da nota-alvo
+    double retuneMs = 0.0;   // Retune Speed: constante de tempo da correcao (ms)
+    double vibrato  = 1.0;   // k: 0 = sem vibrato, 1 = preservado, >1 = exagerado
+    double humanize = 0.0;   // 0..1: quanto o Retune Speed AFROUXA na sustentacao
+
+    // Etapa 5 -- Create Vibrato (gerado, nao preservado; ver 'vibrato' acima).
+    FormaVibrato vibForma = FormaVibrato::Nenhuma; // Nenhuma = desligado
+    double vibTaxa  = 5.5;   // Hz
+    double vibProf  = 0.0;   // cents de profundidade (0 = desligado)
+    double vibAmp   = 0.0;   // 0..1: modulacao de amplitude em sincronia
+
+    // Flag INTERNA (nao e' parametro de usuario): restaura o reset de ataque da
+    // Etapa 2, em que a nota nascia no alvo. Com ataqueNoAlvo=true E vibrato=0,
+    // a saida e' identica a da Etapa 2 amostra a amostra -- e' o que torna a
+    // Etapa 3 verificavel por nao-regressao. Ver test_retune.cpp, secao 1.
+    bool   ataqueNoAlvo = false;
+
+    // Flag INTERNA, irma da de cima e pela mesma razao. A escolha de semitom
+    // ganhou memoria (EscolhaDeSemitom), e memoria e' justamente o que a malha
+    // da Etapa 2 nao tinha. Sem uma neutralizacao, os oraculos congelados de
+    // test_retune.cpp e test_expressao.cpp -- que comparam bit a bit contra
+    // reimplementacoes das Etapas 2 e 3 -- passariam a falhar por medir OUTRA
+    // coisa, e perder essa prova para provar uma diferente seria troca ruim.
+    //
+    // 'legado=1' liga as duas, porque 'legado' sempre quis dizer "a malha da
+    // Etapa 2", e reproduzir aquela malha exige hoje tres valores neutros:
+    // vibrato = 0, ataqueNoAlvo e semHisterese.
+    bool   semHisterese = false;
+};
+
+class CorretorAltura {
+public:
+    void prepare(double fsHz) { fs = fsHz; reset(); }
+    void reset() { lpAlvo = 0.0; lpReal = 0.0; tinhaNota = false; desdeAtaque = 0;
+                   fase = 0.0; ganho = 1.0; semitom.reset(); }
+
+    // Ganho de amplitude da ULTIMA amostra calculada por proxima() (Etapa 5).
+    // Fica separado do retorno porque proxima() devolve ALTURA, e altura e
+    // amplitude entram no sinal em pontos diferentes do pipeline: a altura
+    // vai para o PSOLA, o ganho e aplicado depois dele.
+    double ultimoGanho() const { return ganho; }
+
+    // Devolve o pitch-alvo em Hz para uma amostra cujo F0 detectado e f0Hz.
+    // f0Hz <= 0 marca trecho nao-vozeado: devolve 0 e rearma o ataque.
+    double proxima(double f0Hz, const ParamsCorrecao& p) {
+        if (f0Hz <= 0.0) { tinhaNota = false; ganho = 1.0; semitom.reset(); return 0.0; }
+
+        const double realCents = 1200.0 * std::log2(f0Hz / FMIN);
+        // A escolha de semitom tem memoria (ver EscolhaDeSemitom). A zona morta
+        // continua sendo aplicada depois dela, sobre o semitom escolhido: as
+        // duas decisoes sao independentes e ficam separadas.
+        const double alvoHz = p.semHisterese
+            ? notaAlvo(f0Hz, p.tolCents)
+            : notaAlvoDoSemitom(f0Hz, semitom.escolher(f0Hz, fs), p.tolCents);
+        const double alvoCents = 1200.0 * std::log2(alvoHz / FMIN);
+        // Etapa 4: o tau EFETIVO cresce com o tempo desde o ataque, se Humanize
+        // estiver ligado. O ramo humanize==0 e' exato de proposito: ele tem de
+        // devolver a Etapa 3 bit a bit, e nao "praticamente igual".
+        double tau = p.retuneMs / 1000.0;
+        if (p.humanize > 0.0 && tau > 0.0) {
+            const double t     = (double)desdeAtaque / fs;
+            const double rampa = 1.0 - std::exp(-t / HUM_SUSTENTACAO);
+            // O TETO. Sem ele o Humanize e' um atalho para o regime que a
+            // interface acabou de proibir: com o Retune Speed no maximo exposto
+            // (100 ms) e Humanize em 1, o tau efetivo dava 400 ms -- exatamente
+            // o valor que a varredura reprovou e que saiu da faixa do slider em
+            // 03/09/2026. Medido em exemplo-antes.wav, `retune=100 humanize=1` e
+            // `retune=400 humanize=0` davam o MESMO erro nas duas metades da
+            // nota (ataque 25,7 vs 26,1 ct; sustentacao 21,2 vs 21,2 ct). Nao
+            // eram parecidos: eram a mesma coisa por outro botao.
+            //
+            // O teto e' max(tau, HUM_TAU_TETO), e nao HUM_TAU_TETO puro, por uma
+            // razao de contrato: os CLIs aceitam retune= acima de 100 ms, e o
+            // DSP tem de honrar o que lhe pedem (test_expressao secao 7 prende
+            // isso, e a linha de base roda valores altos). Com essa forma o
+            // Humanize nunca EMPURRA o tau acima de 100 ms, e tambem nunca
+            // PUXA para baixo o que o usuario ja pediu -- com tau >= 100 ms ele
+            // simplesmente nao faz nada, que e' a leitura honesta.
+            //
+            // No padrao de fabrica isto nao muda nada: com retune = 25 ms o
+            // crescimento maximo e' 25 x 4 = 100 ms, que e' o proprio teto. Por
+            // isso os casos st_humanize1/gold_humanize1 da linha de base seguem
+            // bit a bit iguais -- o teto so' passa a agir acima de 25 ms.
+            const double teto = std::max(tau, HUM_TAU_TETO);
+            tau = std::min(tau * (1.0 + p.humanize * HUM_FATOR * rampa), teto);
+        }
+        const double alpha     = (tau > 0.0) ? std::exp(-1.0 / (tau * fs)) : 0.0;
+
+        if (!tinhaNota) {
+            // ATAQUE. Os dois estados nascem na altura REAL do cantor, e por
+            // isso a saida do primeiro instante e' exatamente ela:
+            //     out = lpAlvo + k*(real - lpReal) = real + k*0 = real
+            // qualquer que seja k. A nota nasce onde o cantor a colocou e
+            // desliza dali ate o alvo em ~tau. (Com ataqueNoAlvo, lpAlvo nasce
+            // no alvo e o gesto de entrada desaparece -- comportamento da Etapa 2.)
+            //
+            // PRECO, que precisa ficar no texto: um ataque errado fica audivel
+            // por ~tau. Com tau = 100 ms e o cantor entrando 200 cents fora, da
+            // para ouvir. E' o custo direto da naturalidade.
+            lpAlvo = p.ataqueNoAlvo ? alvoCents : realCents;
+            lpReal = realCents;
+            tinhaNota = true;
+            desdeAtaque = 0;
+            fase = 0.0;
+        } else {
+            ++desdeAtaque;
+            // Regime. Mesmo alpha nos dois: sao o mesmo filtro, aplicado a dois
+            // sinais. Usar constantes de tempo diferentes quebraria a identidade
+            // LP(alvo) + real - LP(real) = real + LP(alvo - real) que sustenta
+            // a interpretacao de "filtro sobre a correcao".
+            lpAlvo = alpha * lpAlvo + (1.0 - alpha) * alvoCents;
+            lpReal = alpha * lpReal + (1.0 - alpha) * realCents;
+        }
+
+        double outCents = lpAlvo + p.vibrato * (realCents - lpReal);
+
+        // Etapa 5: Create Vibrato. Os dois ramos de desligado (forma Nenhuma e
+        // profundidade zero) sao saidas exatas -- nao pode sobrar aritmetica no
+        // caminho, senao a etapa deixa de reproduzir a Etapa 4 bit a bit.
+        ganho = 1.0;
+        if (p.vibForma != FormaVibrato::Nenhuma && (p.vibProf > 0.0 || p.vibAmp > 0.0)) {
+            // A fase avanca com a nota, e zera no ataque: o vibrato gerado
+            // comeca sempre do mesmo ponto da forma de onda, em vez de pegar o
+            // LFO onde ele estivesse. Sem isso, notas iguais soariam diferentes
+            // conforme o instante em que comecassem.
+            fase += p.vibTaxa / fs;
+            if (fase >= 1.0) fase -= std::floor(fase);
+            const double t     = (double)desdeAtaque / fs;
+            const double onset = 1.0 - std::exp(-t / VIB_ONSET);
+            const double lfo   = formaVibrato(p.vibForma, fase) * onset;
+            outCents += p.vibProf * lfo;
+            // Amplitude em sincronia com a altura: e' o que a Antares chama de
+            // "Amplitude Amount". Em voz real as duas andam juntas, e vibrato
+            // so de altura soa mecanico.
+            if (p.vibAmp > 0.0)
+                ganho = std::pow(10.0, (p.vibAmp * VIB_AMP_DB * lfo) / 20.0);
+        }
+        return FMIN * std::pow(2.0, outCents / 1200.0);
+    }
+
+private:
+    double fs        = 44100.0;
+    double lpAlvo    = 0.0;    // passa-baixa do ALVO, em cents acima de FMIN
+    double lpReal    = 0.0;    // passa-baixa da altura REAL, mesma unidade
+    bool   tinhaNota = false;  // false = proxima amostra vozeada e um ataque
+    long long desdeAtaque = 0; // amostras desde o ataque da nota atual (Etapa 4)
+    double fase   = 0.0;       // fase do LFO do Create Vibrato, em [0,1) (Etapa 5)
+    double ganho  = 1.0;       // ganho de amplitude da ultima amostra (Etapa 5)
+    EscolhaDeSemitom semitom;  // escolha de semitom com memoria (D2)
+};
+
+// ---------------------------------------------------------------------------
+//  Parsing das flags "chave=valor" da malha de correcao, num lugar so.
+//
+//  Existe pela mesma razao que CorretorAltura existe (Etapa 0): os tres CLIs
+//  liam as MESMAS flags, cada um com sua copia do if/else-if. Com 4 parametros
+//  isso era chato; com 10 (Etapas 3-5) vira fonte garantida de divergencia --
+//  um CLI aceitando 'vibprof=' e outro ignorando em silencio e' exatamente o
+//  tipo de bug que nao aparece em teste nenhum, porque a flag ignorada nao
+//  reclama.
+//
+//  Devolve true se a string foi reconhecida como flag desta malha.
+// ---------------------------------------------------------------------------
+inline bool lerFlagCorrecao(const std::string& a, ParamsCorrecao& p) {
+    auto num = [&](size_t n) { return std::atof(a.c_str() + n); };
+    if      (a.rfind("tol=",      0) == 0) p.tolCents = num(4);
+    // 'glide=' e' o nome que 'retune=' tinha ate a Etapa 3; fica como apelido
+    // para que comandos e scripts anteriores nao quebrem em silencio.
+    else if (a.rfind("glide=",    0) == 0) p.retuneMs = num(6);
+    else if (a.rfind("retune=",   0) == 0) p.retuneMs = num(7);
+    else if (a.rfind("vibrato=",  0) == 0) p.vibrato  = num(8);
+    else if (a.rfind("humanize=", 0) == 0) p.humanize = num(9);
+    else if (a.rfind("vibtaxa=",  0) == 0) p.vibTaxa  = num(8);
+    else if (a.rfind("vibprof=",  0) == 0) p.vibProf  = num(8);
+    else if (a.rfind("vibamp=",   0) == 0) p.vibAmp   = num(7);
+    else if (a.rfind("vibforma=", 0) == 0) {
+        const int v = std::atoi(a.c_str() + 9);
+        p.vibForma = (v >= 0 && v <= 3) ? (FormaVibrato)v : FormaVibrato::Nenhuma;
+    }
+    // Flag INTERNA de teste (ver ParamsCorrecao::ataqueNoAlvo). Fica aqui, e nao
+    // escondida, porque o baseline.sh precisa dela nos tres CLIs.
+    else if (a.rfind("legado=",   0) == 0) {
+        // 'legado' quer dizer "a malha da Etapa 2", e reproduzir aquela malha
+        // exige HOJE tres valores neutros, nao um: vibrato = 0 (passado a parte),
+        // o ataque no alvo e a escolha de semitom sem memoria.
+        const bool v = (std::atoi(a.c_str() + 7) != 0);
+        p.ataqueNoAlvo = v; p.semHisterese = v;
+    }
+    else return false;
+    return true;
+}
+
+// Limites dos parametros da malha. Separado do parsing porque quem monta
+// ParamsCorrecao sem passar por linha de comando (o plugin) tambem precisa.
+inline void sanearCorrecao(ParamsCorrecao& p) {
+    if (p.tolCents < 0.0) p.tolCents = 0.0;
+    if (p.retuneMs < 0.0) p.retuneMs = 0.0;
+    if (p.vibrato  < 0.0) p.vibrato  = 0.0;
+    if (p.humanize < 0.0) p.humanize = 0.0;
+    if (p.humanize > 1.0) p.humanize = 1.0;
+    if (p.vibTaxa  < 0.1) p.vibTaxa  = 0.1;
+    if (p.vibProf  < 0.0) p.vibProf  = 0.0;
+    if (p.vibAmp   < 0.0) p.vibAmp   = 0.0;
+    if (p.vibAmp   > 1.0) p.vibAmp   = 1.0;
+}
+
+// Resumo de uma linha dos parametros da malha, para o log dos CLIs.
+inline std::string resumoCorrecao(const ParamsCorrecao& p) {
+    char buf[256];
+    std::snprintf(buf, sizeof(buf),
+        "tol=%.0f ct | retune=%.0f ms | vibrato=%.2f | humanize=%.2f | createvib=%s%s",
+        p.tolCents, p.retuneMs, p.vibrato, p.humanize,
+        p.vibForma == FormaVibrato::Nenhuma ? "off" :
+        p.vibForma == FormaVibrato::Senoide ? "sen" :
+        p.vibForma == FormaVibrato::Triangular ? "tri" : "qua",
+        p.ataqueNoAlvo ? " | LEGADO" : "");
+    return std::string(buf);
 }
 
 // Grava um WAV mono em 16-bit PCM (formato universal, sem glitch de player).
@@ -305,5 +1073,140 @@ inline std::vector<float> psolaSintetiza(const std::vector<float>& x, long long 
     if (pico > 1.0) for (long long i = 0; i < N; ++i) out[i] = (float)(out[i] / pico);
     return out;
 }
+
+// ----------------------------------------------------------------------------
+//  MotorPonteiro — v3: correcao de altura por PONTEIRO DE LEITURA MOVEL, no
+//  lugar do TD-PSOLA. E' o mecanismo da patente do Auto-Tune (US 5.973.252,
+//  Hildebrand 1999) e o que o produto chama de "Classic Mode". Especificacao
+//  completa em docs/especificacao-v3-ponteiro.md; a razao de existir esta em
+//  docs/analise-v1-v2-v3.md: enquanto a sintese for PSOLA, a latencia e'
+//  proporcional a fs/FMIN por construcao. Este motor tem latencia FIXA de
+//  MARGEM amostras, mais uma parte VARIAVEL (0..T) que depende da nota cantada.
+//
+//  Como funciona, por amostra:
+//    1. a entrada e' escrita num anel (ponteiro W, avanca 1 por amostra);
+//    2. a saida e' LIDA do mesmo anel num ponteiro fracionario R que avanca
+//       beta = fAlvo/f0 por amostra (beta > 1 = le mais rapido = sobe a nota);
+//    3. como os dois andam a taxas diferentes, a distancia W - R muda. Quando
+//       ela sai de [MARGEM, MARGEM + T], soma-se ou subtrai-se EXATAMENTE um
+//       periodo T = fs/f0 de R: um ciclo e' repetido (subindo) ou descartado
+//       (descendo). Como o salto e' de um periodo inteiro, as duas pontas da
+//       emenda estao no mesmo ponto do ciclo -- e' a mesma ideia que sustenta
+//       o PSOLA, sem quadros, sem marcas e sem janelas.
+//
+//  O que ele NAO faz: nao preserva formantes. Reamostrar desloca o envelope
+//  espectral por |beta - 1|. Medido em docs/pesquisa-latencia-antares.md §10:
+//  teto de 2,93 % em escala cromatica, abaixo do limiar tipico de 5 %.
+//
+//  Invariante que o teste verifica: com beta = 1 a saida e' a entrada
+//  atrasada de MARGEM amostras, BIT A BIT. Depende de tres coisas: R nunca
+//  sai da grade inteira (soma 1.0 exata), a interpolacao em fracao zero
+//  devolve a amostra crua, e nenhum salto dispara.
+//
+//  RT-safe: o anel e' alocado em prepare(); processar() nao aloca.
+// ----------------------------------------------------------------------------
+class MotorPonteiro {
+public:
+    // Distancia minima entre leitura e escrita, em amostras. E' a latencia FIXA
+    // declarada ao host. 8 porque a interpolacao cubica le ate i+2 e a distancia
+    // cai no maximo (beta - 1) < 1 por amostra antes de o salto disparar: sobra
+    // folga. (A Antares declara 37; o interpolador dela e' mais longo.)
+    static constexpr int MARGEM = 8;
+
+    void prepare(int fsHz, double fminHz) {
+        fs = fsHz;
+        // Precisa caber: a margem, ate T atras (salto para tras), mais um T de
+        // folga para o ponteiro velho do crossfade, mais os 2 pontos que a
+        // interpolacao le a frente. Potencia de 2 para que o wrap seja um '&'.
+        const double T = (double)fs / std::max(1.0, fminHz);
+        long long precisa = MARGEM + (long long)std::ceil(2.0 * T) + 8;
+        size_t n = 16; while ((long long)n < precisa) n <<= 1;
+        anel.assign(n, 0.0f); mask = n - 1;
+        reset();
+    }
+
+    void reset() {
+        std::fill(anel.begin(), anel.end(), 0.0f);
+        // W comeca em N (nao em 0) para que R = W - MARGEM seja >= 0 e o
+        // priming leia zeros do anel, sem indice negativo.
+        W = (long long)anel.size(); R = (double)W - MARGEM; Rvelho = R;
+        xfResta = 0; xfLen = 1;
+        nSaltos = 0; somaDist = 0.0; nDist = 0; maxDist = 0.0;
+    }
+
+    int latencia() const { return MARGEM; }
+
+    // f0Hz <= 0: sem voz -> beta = 1, nenhum salto (a distancia fica onde esta).
+    float processar(float x, double f0Hz, double fAlvoHz) {
+        anel[(size_t)(W & (long long)mask)] = x; ++W;
+        const double beta = (f0Hz > 0.0 && fAlvoHz > 0.0) ? fAlvoHz / f0Hz : 1.0;
+
+        double y = ler(R);
+        if (xfResta > 0) {
+            // Crossfade linear entre a leitura ANTIGA (que continua andando a
+            // beta) e a nova. Em sinal periodico as duas sao quase iguais e o
+            // crossfade e' quase nulo; em consoante/ataque ele transforma o
+            // degrau numa modulacao curta de amplitude.
+            const double w = 1.0 - (double)xfResta / (double)xfLen;
+            y = (1.0 - w) * ler(Rvelho) + w * y;
+            Rvelho += beta; --xfResta;
+            // O ponteiro velho de um salto para tras estava perto da escrita e
+            // continua se aproximando: se ameacar ler o futuro, encerra antes.
+            // Dentro da faixa real de beta deste projeto isto nunca dispara (maximo
+            // medido 1,008; teto 1,0595 em maior/menor, abaixo do 1,0625 que seria
+            // preciso) -- mas em beta = 1,3 dispara em 100% dos saltos para tras. Nao
+            // e' uma valvula de seguranca rara: e' o caminho normal logo depois do
+            // teto documentado de deslocamento.
+            if ((double)W - Rvelho < 4.0) xfResta = 0;
+        }
+        R += beta;
+
+        if (f0Hz > 0.0) {
+            const double T = (double)fs / f0Hz;
+            const double dist = (double)W - R;
+            if      (dist < (double)MARGEM)     saltar(-T, T);   // repete um ciclo
+            else if (dist > (double)MARGEM + T) saltar(+T, T);   // descarta um ciclo
+            const double d2 = (double)W - R;
+            somaDist += d2; ++nDist; if (d2 > maxDist) maxDist = d2;
+        }
+        return (float)y;
+    }
+
+    long long saltos()    const { return nSaltos; }
+    double    distMedia() const { return nDist ? somaDist / (double)nDist : (double)MARGEM; }
+    double    distMax()   const { return maxDist; }
+
+private:
+    // Catmull-Rom de 4 pontos em torno de floor(pos). Em fracao ZERO devolve a
+    // amostra crua sem passar pela aritmetica -- e' o que garante a identidade
+    // bit a bit com beta = 1.
+    double ler(double pos) const {
+        const long long i = (long long)std::floor(pos);
+        const double f = pos - (double)i;
+        const double x0 = anel[(size_t)(i & (long long)mask)];
+        if (f == 0.0) return x0;
+        const double xm1 = anel[(size_t)((i - 1) & (long long)mask)];
+        const double x1  = anel[(size_t)((i + 1) & (long long)mask)];
+        const double x2  = anel[(size_t)((i + 2) & (long long)mask)];
+        const double c1 = 0.5 * (x1 - xm1);
+        const double c2 = xm1 - 2.5 * x0 + 2.0 * x1 - 0.5 * x2;
+        const double c3 = 0.5 * (x2 - xm1) + 1.5 * (x0 - x1);
+        return ((c3 * f + c2) * f + c1) * f + x0;
+    }
+
+    void saltar(double delta, double T) {
+        Rvelho = R; R += delta;
+        xfLen = std::max(1, std::min(64, (int)std::llround(T / 2.0)));
+        xfResta = xfLen;
+        ++nSaltos;
+    }
+
+    int fs = 44100;
+    std::vector<float> anel; size_t mask = 0;
+    long long W = 0;             // escrita (absoluto)
+    double R = 0.0, Rvelho = 0.0;// leitura (absoluto, fracionario) e leitura antiga do crossfade
+    int xfResta = 0, xfLen = 1;
+    long long nSaltos = 0; double somaDist = 0.0; long long nDist = 0; double maxDist = 0.0;
+};
 
 #endif // DSP_H

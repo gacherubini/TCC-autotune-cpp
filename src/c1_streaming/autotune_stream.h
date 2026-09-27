@@ -30,21 +30,36 @@
 #define AUTOTUNE_STREAM_H
 #include "../core/dsp.h"   // primitivas + constantes (NÃO define DR_WAV_IMPLEMENTATION aqui)
 
+// Etapa 6: qual motor executa o estagio 3 (a sintese). O estagio 1 (pYIN +
+// Viterbi) e o 2 (CorretorAltura) sao os mesmos nos dois; o que muda e' COMO
+// o esticamento e' feito, nao QUANTO. Ver docs/especificacao-v3-ponteiro.md.
+enum class MotorSintese { PSOLA, Ponteiro };
+
+
 // ----------------------------------------------------------------------------
 //  Parâmetros do streaming. Espelham as flags de linha de comando do
-//  autotune_rt (forca, escala já é global via definirEscala/g_permitida,
-//  tolCents, glideMs, look, frame/hop, fmin/fmax) para que o driver de teste
+//  autotune_rt (mix, escala já é global via definirEscala/g_permitida,
+//  tolCents, retuneMs, vibrato, look, frame/hop, fmin/fmax) para que o driver de teste
 //  possa repassar os mesmos argumentos usados nas versões offline/causal.
 // ----------------------------------------------------------------------------
 struct StreamParams {
-    double forca    = 1.0;     // 0..1: o quanto puxa em direção à nota da escala
-    double tolCents = 0.0;     // zona morta (cents) ao redor da nota-alvo
-    double glideMs  = 0.0;     // tempo de "deslize" até a nota-alvo (1 polo)
+    // Etapa 5: os parametros da MALHA de correcao (tol, retune, vibrato,
+    // humanize, Create Vibrato, legado) vivem numa struct so, a mesma que os
+    // CLIs e o plugin montam -- em vez de copiados campo a campo aqui. Foi o
+    // que a Etapa 0 fez com o laco de correcao, pela mesma razao: com 10
+    // parametros, campos duplicados divergem em silencio.
+    ParamsCorrecao corr;
+    double mix      = 1.0;     // 0..1: seco/molhado (0 = só a entrada, 1 = só o corrigido)
     int    look     = 4;       // look-ahead (em quadros) do Viterbi causal
     int    nFrame   = N_FRAME; // tamanho do quadro de análise de pitch
     int    nHop     = N_HOP;   // passo entre quadros de análise
     double fmin     = FMIN;    // faixa de busca de pitch (Hz)
     double fmax     = FMAX;
+
+    // Etapa 6: PSOLA (padrao; a linha de base mede este) ou Ponteiro (v3, baixa
+    // latencia). O plugin liga o Ponteiro pelo botao Low Latency, que tambem
+    // forca look = 0; o CLI expoe os dois separadamente (motor= e lowlat=).
+    MotorSintese motor = MotorSintese::PSOLA;
 };
 
 // ----------------------------------------------------------------------------
@@ -77,9 +92,19 @@ public:
         // orçamento de latência e em avancarPsola() (devem casar exatamente).
         psolaGuard = 2 * (int)std::llround((double)fs / FMIN);
 
-        // Orçamento de latência: quadro de análise + look-ahead do Viterbi +
-        // folga do PSOLA (psolaGuard).
-        latSamples = p.nFrame + p.look * p.nHop + psolaGuard;
+
+        // Orçamento de latência. Com PSOLA: quadro + look-ahead + guarda, os
+        // tres termos de docs/modo-baixa-latencia.md §2. Com Ponteiro: so a
+        // margem fixa do motor -- os outros dois termos nao somem, mudam de
+        // moeda: viram DEFASAGEM DA CORRECAO (o beta aplicado agora foi
+        // decidido 'defasagem' amostras atras). Ver especificacao §4.
+        defasagem = p.nFrame + p.look * p.nHop;
+        if (p.motor == MotorSintese::Ponteiro) {
+            ponteiro.prepare(fs, FMIN);
+            latSamples = ponteiro.latencia();
+        } else {
+            latSamples = p.nFrame + p.look * p.nHop + psolaGuard;
+        }
 
         // -----------------------------------------------------------------
         // TAREFA 3: monta os "limiares" de Beta (pYIN) e as dimensões do HMM
@@ -117,13 +142,13 @@ public:
     // -------------------------------------------------------------------
     //  updateLiveParams() — CAMINHO C2 (plugin): atualiza, EM TEMPO REAL e
     //  sem realocar nada, os parâmetros que NÃO mudam as dimensões do motor
-    //  (força, zona morta em cents, glide em ms). É seguro chamar dentro do
+    //  (mix seco/molhado, zona morta em cents, retune em ms, vibrato k). É seguro chamar dentro do
     //  process()/processBlock (RT-safe: só escreve escalares lidos depois por
     //  emitirAmostras). Já os parâmetros ESTRUTURAIS (look, fmin/fmax via voz,
     //  frame, hop) mudam ringbuffers/HMM/latência → exigem prepare() de novo.
     // -------------------------------------------------------------------
-    void updateLiveParams(double forca, double tolCents, double glideMs) {
-        p.forca = forca; p.tolCents = tolCents; p.glideMs = glideMs;
+    void updateLiveParams(const ParamsCorrecao& c, double mix) {
+        p.corr = c; p.mix = mix;
     }
 
     // -------------------------------------------------------------------
@@ -153,6 +178,27 @@ public:
     // -------------------------------------------------------------------
     float getF0Atual()   const { return f0samp.empty()   ? 0.0f : f0samp.back();   }
     float getFoutAtual() const { return foutSamp.empty() ? 0.0f : foutSamp.back(); }
+
+    // -------------------------------------------------------------------
+    //  ANÁLISE (offline, fora do caminho de áudio): as trilhas inteiras de
+    //  f0 detectado e de pitch-alvo, por amostra. A razão entre elas é o
+    //  fator de deslocamento β que o PSOLA aplica — que é exatamente o que
+    //  um motor de reamostragem (ponteiro móvel) aplicaria ao espectro
+    //  INTEIRO, formantes inclusive. Medir a distribuição de β é o que
+    //  decide se a arquitetura do v3 é viável neste material; ver
+    //  docs/pesquisa-latencia-antares.md §7, questão 2.
+    //
+    //  São getters const puros, usados só pelo stream_test (dumpbeta=). Não
+    //  há caminho de áudio passando por aqui, e nada no motor os consulta.
+    // -------------------------------------------------------------------
+    const std::vector<float>& getF0Samp()   const { return f0samp;   }
+    const std::vector<float>& getFoutSamp() const { return foutSamp; }
+
+    // Etapa 6: medicao do motor de ponteiro (fora do caminho de audio).
+    long long getSaltosPonteiro()    const { return ponteiro.saltos(); }
+    double    getDistMediaPonteiro() const { return ponteiro.distMedia(); }
+    double    getDistMaxPonteiro()   const { return ponteiro.distMax(); }
+    int       getDefasagemCorrecao() const { return defasagem; }
 
     // Limpa/realoca o estado interno: buffer circular de entrada (ringIn),
     // buffer de trabalho (work) e todos os contadores do "relógio" de
@@ -199,11 +245,11 @@ public:
         //   foutSamp: pitch-ALVO por amostra (passo 3b do autotune_rt), com
         //             força+tolerância+glide aplicados, montado em paralelo
         //             a f0samp (mesmo laço de glide de 1 polo).
-        //   glideEstado/tinhaNota: estado do filtro de glide de 1 polo
-        //             (mesma matemática de 'estado'/'tinhaNota' em 3b).
+        //   corretor: estado da malha de correcao (glide + reset no ataque),
+        //             compartilhada com o gold e o causal via dsp.h.
         // -----------------------------------------------------------------
-        xAll.clear(); f0samp.clear(); foutSamp.clear();
-        glideEstado = 0.0; tinhaNota = false;
+        xAll.clear(); f0samp.clear(); foutSamp.clear(); ganhoSamp.clear();
+        corretor.prepare(fs);
 
         // -----------------------------------------------------------------
         // TAREFA 5: estado da SÍNTESE INCREMENTAL (PSOLA "online" via
@@ -216,6 +262,10 @@ public:
         //   lida:      nº de amostras já ENTREGUES ao host via process().
         // -----------------------------------------------------------------
         outBuf.clear(); synthFront = 0; lida = 0;
+
+        // Etapa 6: o motor de ponteiro zera os ponteiros e contadores sem
+        // realocar (o anel foi alocado em prepare()).
+        ponteiro.reset();
     }
 
     // -------------------------------------------------------------------
@@ -264,7 +314,14 @@ public:
                 ++qIdx;
                 passoPitch();                    // TAREFA 3: análise + Viterbi causal deste quadro
             }
+            // Etapa 6: no motor de ponteiro a saida desta amostra e' produzida
+            // AQUI, no mesmo indice do host -- nao passa por outBuf/lida, porque
+            // o atraso (MARGEM) ja esta dentro do motor. Fica depois do disparo
+            // de quadros para que a decisao lida seja funcao so do que ja
+            // chegou: e' o que torna a saida invariante ao tamanho de bloco.
+            if (p.motor == MotorSintese::Ponteiro) out[i] = passoPonteiro(in[i]);
         }
+        if (p.motor == MotorSintese::Ponteiro) { lida += n; return; }
         // TAREFA 5: avança a síntese incremental (finaliza as amostras de
         // saída cuja decisão de pitch já estabilizou) e ENTREGA ao host as
         // 'n' próximas amostras finalizadas. Enquanto o pipeline ainda está
@@ -277,9 +334,29 @@ public:
         // (lida < lat) ou enquanto a síntese ainda não finalizou essa posição,
         // entregamos silêncio. 'lida' avança SEMPRE de 'n' (amostra-a-amostra
         // com a entrada) — é o índice que materializa o atraso fixo.
+        //
+        // ETAPA 2 — mistura seco/molhado. O ponto que exige atencao: 'src' e' o
+        // indice ABSOLUTO da amostra que esta saindo agora. O molhado vem de
+        // outBuf[src] e o seco vem de xAll[src] -- o MESMO indice. Nao e'
+        // coincidencia nem economia: e' o que garante que os dois sinais estejam
+        // alinhados no tempo. Pegar o seco "de agora" (xAll.back()) somaria o
+        // sinal a uma copia sua deslocada de latSamples -> filtro-pente audivel.
+        //
+        // Consequencia deliberada: com mix=0 a saida NAO e' a entrada instantanea,
+        // e sim a entrada ATRASADA da latencia do motor. E' o comportamento certo
+        // para um plugin que reporta latencia ao host -- se o bypass nao atrasasse,
+        // baixar o Mix deslocaria o audio no tempo. O host compensa o atraso; o
+        // que ele nao pode compensar e' um atraso que aparece e some.
         for (int i = 0; i < n; ++i) {
             long long src = lida - (long long)latSamples;
-            out[i] = (src >= 0 && src < synthFront) ? outBuf[(size_t)src] : 0.0f;
+            float molhado = (src >= 0 && src < synthFront) ? outBuf[(size_t)src] : 0.0f;
+            // Etapa 5: o ganho so multiplica o MOLHADO -- e' parte do efeito, e
+            // o seco tem de continuar sendo a entrada intocada para que mix=0
+            // siga sendo bypass exato.
+            if (p.corr.vibAmp > 0.0 && src >= 0 && src < (long long)ganhoSamp.size())
+                molhado *= ganhoSamp[(size_t)src];
+            const float seco    = (src >= 0 && src < (long long)xAll.size()) ? xAll[(size_t)src] : 0.0f;
+            out[i] = misturar(seco, molhado, p.mix);
             ++lida;
         }
     }
@@ -417,25 +494,66 @@ private:
     //  emitirAmostras() — TAREFA 4, passo 2: para o quadro recém-emitido
     //  (F0 = f0q, em Hz; 0 = não-vozeado), preenche 'nHop' posições de
     //  f0samp (passo 3) e foutSamp (passo 3b do autotune_rt), aplicando o
-    //  mesmo filtro de glide de 1 polo (com reset no ataque, via
-    //  'tinhaNota'). É a versão CAUSAL/incremental do laço 3b: em vez de
+    //  mesma malha de correcao de dsp.h (glide + reset no ataque, via
+    //  CorretorAltura). É a versão CAUSAL/incremental do laço 3b: em vez de
     //  varrer todo o vetor f0samp[N] de uma vez, processa 'nHop' amostras
     //  por chamada, na ordem em que os quadros são emitidos — produzindo
     //  EXATAMENTE a mesma sequência de estados de glide que o offline.
     // -------------------------------------------------------------------
     void emitirAmostras(double f0q) {
+        // Etapa 0 do plano: a malha de correcao mora em dsp.h (CorretorAltura),
+        // identica a usada pelo gold e pelo causal. O estado (glide + ataque)
+        // vive em 'corretor', membro desta classe, e atravessa as chamadas de
+        // process() como o resto do estado de streaming.
+
         for (int k=0;k<p.nHop;++k) {
             f0samp.push_back((float)f0q);
-            if (f0q>0) {
-                double alvoHz = notaAlvo(f0q, p.forca, p.tolCents);
-                double alvoCents = 1200.0*std::log2(alvoHz/FMIN);
-                double tau = p.glideMs/1000.0;
-                double alpha = (tau>0.0)? std::exp(-1.0/(tau*fs)) : 0.0;
-                glideEstado = tinhaNota ? (alpha*glideEstado + (1.0-alpha)*alvoCents) : alvoCents;
-                foutSamp.push_back((float)(FMIN*std::pow(2.0, glideEstado/1200.0)));
-                tinhaNota = true;
-            } else { foutSamp.push_back(0.0f); tinhaNota=false; }
+            foutSamp.push_back((float)corretor.proxima(f0q, p.corr));
+            // Etapa 5: o ganho de amplitude do Create Vibrato acompanha a altura,
+            // indexado pela MESMA amostra absoluta -- e' assim que ele chega
+            // alinhado ao ponto de saida, junto com o seco e o molhado.
+            ganhoSamp.push_back((float)corretor.ultimoGanho());
         }
+    }
+
+    // -------------------------------------------------------------------
+    //  passoPonteiro() — Etapa 6: uma amostra pelo motor de ponteiro.
+    //
+    //  A decisao usada e' a da amostra 'defasagem' atras (nFrame + look*nHop):
+    //  e' a ultima que existe com certeza quando esta amostra chega, e usar um
+    //  indice FIXO (em vez de f0samp.back()) da duas coisas: a trajetoria do
+    //  Retune Speed chega ao motor amostra a amostra (nao em degraus de nHop),
+    //  e a defasagem vira um numero exato, citavel: "o beta aplicado agora foi
+    //  decidido ha nFrame + look*nHop amostras".
+    //
+    //  O seco do mix e' a entrada atrasada de latSamples (= MARGEM), pelo mesmo
+    //  indice absoluto de saida -- a regra da Etapa 2. Em beta = 1 o motor devolve
+    //  exatamente xAll[a - MARGEM]: seco e molhado SAO a mesma amostra, e por
+    //  isso mix=0 e tol=600 continuam bit-identicos.
+    //
+    //  ATENCAO, fora de beta = 1 essa igualdade NAO vale: o molhado vem de uma
+    //  leitura em R = W - dist, com dist variando em [MARGEM, MARGEM + T] (ver
+    //  MotorPonteiro::processar em dsp.h) -- entao o molhado numa dada amostra
+    //  de saida pode ter vindo de um ponto da entrada ate T amostras distante do
+    //  seco emparelhado a ele (medido: mediana 60-110 amostras, maximo ~250
+    //  amostras / 5,7 ms em exemplo-antes.wav). Em mix intermediario isso soma o
+    //  sinal com uma copia deslocada de si mesmo -- o filtro-pente que dsp.h
+    //  adverte em ALINHAMENTO, so que aqui a causa nao e' uma latencia fixa mal
+    //  contabilizada, e' a distancia VARIAVEL que o proprio motor usa por
+    //  construcao. Nao ha correcao que preserve a baixa latencia -- ver a
+    //  especificacao v3 §3.3 e a Etapa 6 do diario.
+    // -------------------------------------------------------------------
+    float passoPonteiro(float x) {
+        const long long a = (long long)xAll.size() - 1;      // indice absoluto desta amostra
+        const long long d = a - (long long)defasagem;         // decisao que a governa
+        const bool temDecisao = (d >= 0 && d < (long long)f0samp.size());
+        const double f0 = temDecisao ? (double)f0samp[(size_t)d]   : 0.0;
+        const double fo = temDecisao ? (double)foutSamp[(size_t)d] : 0.0;
+        float molhado = ponteiro.processar(x, f0, fo);
+        if (p.corr.vibAmp > 0.0 && temDecisao) molhado *= ganhoSamp[(size_t)d];
+        const long long src = a - (long long)latSamples;
+        const float seco = (src >= 0) ? xAll[(size_t)src] : 0.0f;
+        return misturar(seco, molhado, p.mix);
     }
 
     // -------------------------------------------------------------------
@@ -459,8 +577,42 @@ private:
         long long decis = std::min<long long>((long long)f0samp.size(), (long long)xAll.size());
         // Deixa ~1 período de folga (look-ahead do PSOLA) antes de finalizar.
         long long guarda = psolaGuard;                   // mesma folga do latSamples
-        long long alvo = decis - guarda;                 // até onde podemos finalizar agora
-        if (alvo <= synthFront) return;                  // nada novo a finalizar
+        long long alvoFinal = decis - guarda;            // até onde podemos finalizar agora
+        if (alvoFinal <= synthFront) return;             // nada novo a finalizar
+
+        // -----------------------------------------------------------------
+        //  INVARIANCIA AO TAMANHO DE BLOCO (correcao de 26/08/2026).
+        //
+        //  Antes, esta funcao cometia [synthFront, alvoFinal) de uma vez so.
+        //  Como ela roda uma vez por process(), um bloco do host maior que
+        //  nHop cabia DUAS emissoes de quadro numa chamada -- e entao
+        //  synthFront pulava 2*nHop de uma vez, saindo da grade k*nHop-guarda
+        //  que os blocos pequenos percorriam. Como 'winStart' e' derivado de
+        //  synthFront, a JANELA re-sintetizada passava a ser outra.
+        //
+        //  Isso importa porque a busca por correlacao que refina as marcas do
+        //  PSOLA (dsp.h) descarta candidatos com 'm - Wc < 0', ou seja, mede
+        //  contra o inicio da JANELA. Para a primeira marca de uma regiao
+        //  vozeada, uma janela que comeca em cima da regiao nao avalia
+        //  candidato nenhum e a marca seguinte cai no fallback; alguns
+        //  milissegundos a mais de contexto a esquerda mudam a marca em 1-7
+        //  amostras, e o desvio propaga pela cadeia inteira. Resultado: forma
+        //  de onda diferente (nao ganho diferente) em algumas regioes.
+        //
+        //  A correcao e' cometer em passos de no maximo nHop e derivar winEnd
+        //  de 'alvo', nao de 'decis'. Assim cada chamada a psolaSintetiza()
+        //  vira FUNCAO EXCLUSIVA de synthFront, e synthFront percorre sempre a
+        //  mesma grade -- a invariancia deixa de ser empirica e passa a ser
+        //  estrutural. Nao muda uma amostra do audio de block <= 256, que era
+        //  o que ja estava certo.
+        //
+        //  Preco: blocos grandes perdem um desconto de CPU que so existia
+        //  porque o motor estava errado. O custo fica uniforme e igual ao do
+        //  pior caso ja suportado (block=64) -- que e' o caso que o plugin tem
+        //  de aguentar de qualquer jeito.
+        // -----------------------------------------------------------------
+        while (synthFront < alvoFinal) {
+        long long alvo = std::min(alvoFinal, synthFront + (long long)p.nHop);
 
         // Janela re-sintetizada: começa 'margem' antes do que já foi
         // finalizado, para dar contexto às marcas de período; termina na
@@ -478,9 +630,50 @@ private:
         // lote. Como a síntese só COMETE [synthFront, alvo), o resto da região
         // (ainda não finalizado) será re-sintetizado na próxima janela com a
         // mesma âncora — overlap-save consistente.
+        //
+        // ---------------------------------------------------------------
+        //  UM TETO AQUI FOI TENTADO, MEDIDO E REVERTIDO (03/09/2026).
+        //
+        //  A ideia era obvia e esta na D3 do spec: limitar o recuo a 12
+        //  periodos de FMIN, para o custo por bloco parar de crescer com a
+        //  duracao da nota. Funcionou para o custo -- 38,8 % de blocos
+        //  estourando o orcamento cairam para 0 %. E introduziu um defeito
+        //  PIOR no motor PADRAO.
+        //
+        //  Medido, numa nota sustentada de 4 s com beta != 1:
+        //
+        //    sem teto : 0 descontinuidades, maior |delta| = 0,089
+        //    com teto : 30 descontinuidades, maior |delta| = 0,434
+        //               -- TODAS em i % nHop == 0, e o pico do sinal era 0,269
+        //
+        //  Ou seja: um estalo maior que o proprio sinal, ~7 por segundo, na
+        //  fronteira de cada commit. Pior que o pipoco que o teto vinha
+        //  remover.
+        //
+        //  A CAUSA, e por que ela nao tem conserto barato. psolaSintetiza()
+        //  ancora a grade de sintese em cum[0] = 0, na PRIMEIRA marca da
+        //  janela (ver o comentario dela em dsp.h). A invariancia a
+        //  truncamento que o commit e1ffd1d conquistou vale para o FIM da
+        //  regiao, nao para o INICIO: mexer no inicio muda a ancora. Com
+        //  teto, 'winStart' avanca nHop a cada commit assim que a regiao
+        //  passa do teto, entao a ancora muda a cada commit, e o
+        //  deslocamento da grade nao e' multiplo do espacamento de sintese.
+        //
+        //  Preservar a fase com um inicio movel exige carregar a contagem
+        //  acumulada de beta entre chamadas -- isto e', a CADEIA DE MARCAS
+        //  INCREMENTAL, que a propria D3 registrou como trabalho futuro e
+        //  recusou. A conclusao que a medicao acrescenta ao spec: nao ha
+        //  meio-termo. Ou a janela recua ate a ancora estavel (custo O(n)
+        //  por bloco, o defeito de hoje), ou a cadeia vira estado. Um teto
+        //  sobre uma funcao pura nao e' uma terceira opcao.
+        //
+        //  O custo por bloco continua sendo defeito ABERTO (Causa 3 do
+        //  spec). src/tests/test_custo_bloco.cpp mede os dois lados e
+        //  reprova qualquer correcao que troque custo por estalo.
+        // ---------------------------------------------------------------
         while (winStart > 0 && f0samp[winStart - 1] > 0.0f) --winStart;
 
-        long long winEnd   = decis;
+        long long winEnd   = std::min(decis, alvo + guarda);
         long long len = winEnd - winStart;
 
         std::vector<float> xv(xAll.begin()+winStart,     xAll.begin()+winEnd);
@@ -492,12 +685,15 @@ private:
         if ((long long)outBuf.size() < alvo) outBuf.resize(alvo, 0.0f);
         for (long long i = synthFront; i < alvo; ++i) outBuf[i] = y[i - winStart];
         synthFront = alvo;
+        }   // while
     }
 
     // ---- estado configurado por prepare() ----
     int fs = 44100;        // taxa de amostragem (Hz)
     int latSamples = 0;    // latência algorítmica total (amostras)
     int psolaGuard = 0;    // folga (look-ahead) do PSOLA online = 2*fs/FMIN
+    int defasagem = 0;     // Etapa 6: nFrame + look*nHop (defasagem da correcao no ponteiro)
+    MotorPonteiro ponteiro; // Etapa 6: motor v3 (so usado com p.motor == Ponteiro)
     StreamParams p;        // cópia dos parâmetros recebidos em prepare()
 
     // ---- estado do buffer circular e do "relógio" de disparo de quadros ----
@@ -530,10 +726,10 @@ private:
     std::vector<float> xAll;       // todas as amostras de entrada, em ordem
     std::vector<float> f0samp;     // F0 real por amostra (passo 3 do autotune_rt)
     std::vector<float> foutSamp;   // pitch-alvo por amostra, com glide (passo 3b)
-    double glideEstado = 0.0;      // estado do filtro de glide de 1 polo (em cents)
-    bool   tinhaNota   = false;    // true se a amostra anterior já tinha nota (p/ reset do glide)
+    CorretorAltura corretor;       // malha de correcao (dsp.h) — glide + reset no ataque
 
     // ---- TAREFA 5: síntese incremental (re-síntese em janela + overlap-save) ----
+    std::vector<float> ganhoSamp;  // ganho de amplitude por amostra (Etapa 5)
     std::vector<float> outBuf;     // saída finalizada, indexada por amostra absoluta (C2 trocará por anel limitado)
     long long synthFront = 0;      // nº de amostras de saída já finalizadas
     long long lida = 0;            // nº de amostras já entregues ao host via process()
