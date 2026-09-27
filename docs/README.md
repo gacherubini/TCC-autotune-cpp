@@ -20,7 +20,7 @@
 | **[plano-v3-ponteiro.md](plano-v3-ponteiro.md)** | 📐 Plano de execução da Etapa 6, por tarefa — o que a [execucao-do-plano.md](execucao-do-plano.md) registra como feito. | Só para reconstruir a ordem em que a Etapa 6 foi implementada. |
 | **[analise-v1-v2-v3.md](analise-v1-v2-v3.md)** | ⚠️ Compara os três caminhos de baixa latência **por estágio do pipeline**, mostra onde cada um corta e qual é o piso de cada um. **Corrige dois números de latência errados** em [modo-baixa-latencia.md](modo-baixa-latencia.md) e [pesquisa-latencia-antares.md](pesquisa-latencia-antares.md), e marca a §8 de [modo-baixa-latencia.md](modo-baixa-latencia.md) (as "questões em aberto") como desatualizada. | **Antes de citar qualquer número de latência**, e antes de discutir v1/v2/v3. |
 | **[spec-encaixe-e-estabilidade.md](spec-encaixe-e-estabilidade.md)** | 🐛 Spec das três causas medidas em 03/09/2026: a detecção reporta **uma oitava abaixo** acima do `fmax` (100 % dos quadros), a nota-alvo **pisca** (mediana de 41 ms), e o TD-PSOLA **estoura o orçamento de tempo real** em 19,6 % dos blocos. Com as decisões de implementação, a seam de teste e a ordem. | Antes de mexer na detecção de altura, na escolha de nota-alvo ou na janela do PSOLA. |
-| **[plano-distribuicao.md](plano-distribuicao.md)** | 🚀 Plano para publicar o plugin: site no GitHub Pages, binários Windows e macOS nas Releases via Actions, licença AGPLv3 (exigida pelo JUCE), nome e assinatura no macOS. **Nada implementado ainda.** | Antes de mexer em nome, licença, build de release ou site.
+| **[plano-distribuicao.md](plano-distribuicao.md)** | 🚀 Plano para publicar o plugin: site no GitHub Pages, VST3 só para Windows nas Releases via Actions, licença AGPLv3 (exigida pelo JUCE), nome, e por que macOS e Pro Tools ficam de fora. **Nada implementado ainda.** | Antes de mexer em nome, licença, build de release ou site.
 
 ## Mapa rápido
 
@@ -40,7 +40,7 @@
                   ├─ pesquisa-bibliografica.md ── as fontes de tudo acima
                   ├─ pesquisa-retune-speed-e-cor.md ─ Retune Speed e a origem da "cor"
                   ├─ pesquisa-latencia-antares.md ─ por que o Auto-Tune tem 37 amostras
-                  └─ plano-distribuicao.md ────── site, builds Windows/macOS e licença
+                  └─ plano-distribuicao.md ────── site, build Windows e licença
 ```
 
 ## ⚠️ Leia antes de citar a documentação técnica
