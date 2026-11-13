@@ -35,7 +35,7 @@ e para o site.
 - macOS, Linux, AU e AAX (Pro Tools).
 - Distribuir o Standalone. O `FORMATS VST3 Standalone` continua no CMake para
   testes locais, mas não vai no instalador nem no site.
-- Domínio próprio. Fica em `gacherubini.github.io/TCC-autotune-cpp`.
+- Domínio próprio. Fica em `tcc-autotune.fly.dev`.
 - Certificado de assinatura de código.
 - Trocar o nome do plugin.
 - A pasta local `python-tcc`, que é um protótipo antigo. Não é repositório git
@@ -85,7 +85,7 @@ e para o site.
   `actions/deploy-pages`), disparado por mudanças em `site/**` na `main`. O
   Pages precisa estar configurado no repositório para usar "GitHub Actions"
   como fonte. Quem faz isso é o autor (ou o `gh api` com a permissão dele).
-- URL final: `https://gacherubini.github.io/TCC-autotune-cpp/`.
+- URL final: `https://tcc-autotune.fly.dev/`.
 
 ### Visual
 
@@ -217,3 +217,20 @@ privado), arquivo `tcc1-sections.tex`.
 - Script do Inno Setup, rigor do pluginval e cache do JUCE no Actions.
 - Bitrate do mp3 e ferramenta de conversão.
 - Texto em inglês, traduzido do PT-BR com o mesmo conteúdo.
+
+## Mudança de 12/11/2026, à noite: Fly.io no lugar do GitHub Pages
+
+O primeiro run de Actions do PR #3 nem começou: "The job was not started
+because your account is locked due to a billing issue." Com o Actions parado,
+o Pages também não publica. Então o autor decidiu:
+
+- **Site:** vai para a Fly.io em `https://tcc-autotune.fly.dev/`, região `gru`,
+  uma máquina de 256 MB com `auto_stop_machines = 'stop'` e
+  `min_machines_running = 0` (a mesma receita do portfólio). Ele é servido por
+  nginx (`site/Dockerfile`, `site/nginx.conf`, `site/fly.toml`), e o deploy é
+  manual, com `cd site && fly deploy`. O `site.yml` do Pages foi removido.
+- **Instalador:** é compilado na máquina do autor (MSVC já instalado, Inno
+  Setup via winget) e validado com o pluginval baixado do release oficial da
+  Tracktion. Depois sobe com `gh release create v1.0.0 --draft`, porque
+  Releases não dependem do Actions. O autor publica. O `release.yml` fica no
+  repositório para quando a cobrança for resolvida.
