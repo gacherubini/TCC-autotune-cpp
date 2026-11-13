@@ -234,3 +234,10 @@ o Pages também não publica. Então o autor decidiu:
   Tracktion. Depois sobe com `gh release create v1.0.0 --draft`, porque
   Releases não dependem do Actions. O autor publica. O `release.yml` fica no
   repositório para quando a cobrança for resolvida.
+
+## Mudança de 13/11/2026: sem áudio no site
+
+O autor tirou a seção "antes e depois". Na avaliação dele, num trecho curto a
+diferença é difícil de perceber. O gráfico do topo, com a voz cantada e a
+saída corrigida, é o que mostra a correção. Saíram os mp3, os players e o
+crédito do Vocadito.

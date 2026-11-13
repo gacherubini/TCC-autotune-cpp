@@ -36,7 +36,7 @@
   --largura: 76rem;                               /* largura maxima da coluna */
   --medida: 64ch;                                 /* linha de texto confortavel */
 
-  color-scheme: dark; /* controles nativos (audio, rolagem) no tema escuro */
+  color-scheme: dark; /* controles nativos (rolagem, foco) no tema escuro */
 }
 
 *,
@@ -467,66 +467,6 @@ a.baixar[href]:hover {
 .secao > p + p,
 .secao > ol + p {
   margin-top: 1rem;
-}
-
-/* ---------- Antes e depois ---------- */
-
-.faixas {
-  margin: clamp(1.75rem, 1.25rem + 2vw, 2.75rem) 0 0;
-  padding: 0;
-  list-style: none;
-  border-top: 1px solid var(--borda);
-}
-
-.faixa {
-  display: grid;
-  gap: 0.875rem;
-  padding-block: clamp(1.25rem, 1rem + 1vw, 1.75rem);
-  border-bottom: 1px solid var(--borda);
-}
-
-.faixa h3 {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  font-size: var(--t-h3);
-  letter-spacing: -0.01em;
-}
-
-/* O tracinho antes do titulo repete a cor do grafico: azul e a voz crua,
-   verde e a saida corrigida. */
-.faixa h3::before {
-  content: "";
-  flex: none;
-  width: 1rem;
-  border-top: 2px solid var(--cantado);
-}
-
-.faixa-depois h3::before {
-  border-top: 3px solid var(--destaque);
-}
-
-.faixa-texto p {
-  margin-top: 0.375rem;
-  max-width: 56ch;
-  font-size: var(--t-pequeno);
-  color: var(--texto-secundario);
-}
-
-.faixa audio {
-  display: block;
-  width: 100%;
-  height: 3rem;
-  accent-color: var(--destaque);
-}
-
-/* Em tela larga: texto a esquerda, player a direita, na mesma linha. */
-@media (min-width: 52rem) {
-  .faixa {
-    grid-template-columns: minmax(0, 1fr) minmax(18rem, 26rem);
-    align-items: center;
-    column-gap: clamp(2rem, 4vw, 4rem);
-  }
 }
 
 /* ---------- Como funciona ---------- */

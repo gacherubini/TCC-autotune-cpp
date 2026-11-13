@@ -8,8 +8,8 @@
   <html>, que so o idioma.js liga. Sem JS, data-idioma nunca existe e a pagina
   fica inteira em portugues.
 
-  Todo caminho interno e relativo (estilo.css, audio/...), nunca /..., porque
-  o GitHub Pages serve o site em /TCC-autotune-cpp/ e nao na raiz do dominio.
+  Todo caminho interno e relativo (estilo.css, idioma.js), nunca /..., para
+  o site funcionar em qualquer pasta, nao so na raiz do dominio.
 -->
 <html lang="pt-BR">
 <head>
@@ -87,7 +87,7 @@
         a saida da correcao dura, presa as notas. Na passagem, a escala
         cromatica faz a saida descer nota a nota, em degraus.
         Os caminhos foram gerados por um script a partir de um contorno
-        sintetico; e uma ilustracao, nao a medicao do audio de exemplo.
+        sintetico; e uma ilustracao, nao uma medicao.
         A linha verde se desenha uma vez ao carregar (o unico movimento da
         pagina); com prefers-reduced-motion ela ja aparece inteira.
       -->
@@ -121,52 +121,6 @@
       </figure>
     </section>
 
-    <section class="secao moldura" aria-labelledby="ouca">
-      <h2 id="ouca">
-        <span class="pt" lang="pt-BR">Ouça antes e depois</span>
-        <span class="en" lang="en">Hear before and after</span>
-      </h2>
-      <p class="pt" lang="pt-BR">O mesmo trecho de cinco segundos, corrigido pela versão de linha de comando do TCC Autotune.</p>
-      <p class="en" lang="en">The same five-second clip, corrected by the command-line version of TCC Autotune.</p>
-
-      <!-- Os mp3 sairam do autotune.exe da raiz do repositorio, sobre o
-           exemplo-antes.wav; os argumentos de cada um estao na legenda. -->
-      <ul class="faixas">
-        <li class="faixa faixa-antes">
-          <div class="faixa-texto">
-            <h3 id="faixa-antes">
-              <span class="pt" lang="pt-BR">Antes</span>
-              <span class="en" lang="en">Before</span>
-            </h3>
-            <p class="pt" lang="pt-BR">A gravação original, sem correção.</p>
-            <p class="en" lang="en">The original recording, uncorrected.</p>
-          </div>
-          <audio controls preload="metadata" src="audio/antes.mp3" aria-labelledby="faixa-antes"></audio>
-        </li>
-        <li class="faixa faixa-depois">
-          <div class="faixa-texto">
-            <h3 id="faixa-dura">
-              <span class="pt" lang="pt-BR">Correção dura</span>
-              <span class="en" lang="en">Hard correction</span>
-            </h3>
-            <p class="pt" lang="pt-BR">Retune Speed em zero e vibrato removido: a voz salta para cada nota no mesmo instante. É o conhecido efeito robótico.</p>
-            <p class="en" lang="en">Retune Speed at zero and vibrato removed: the voice jumps to each note instantly. This is the familiar robotic effect.</p>
-          </div>
-          <audio controls preload="metadata" src="audio/depois.mp3" aria-labelledby="faixa-dura"></audio>
-        </li>
-        <li class="faixa faixa-depois">
-          <div class="faixa-texto">
-            <h3 id="faixa-natural">
-              <span class="pt" lang="pt-BR">Preset natural</span>
-              <span class="en" lang="en">Natural preset</span>
-            </h3>
-            <p class="pt" lang="pt-BR">Retune Speed de 25 ms, Natural Vibrato preservado, Humanize em 0,5 e tolerância de 15 cents. A nota chega ao alvo sem apagar o vibrato de quem canta.</p>
-            <p class="en" lang="en">Retune Speed of 25 ms, Natural Vibrato kept, Humanize at 0.5 and a 15-cent tolerance. The note reaches its target without erasing the singer’s vibrato.</p>
-          </div>
-          <audio controls preload="metadata" src="audio/depois-natural.mp3" aria-labelledby="faixa-natural"></audio>
-        </li>
-      </ul>
-    </section>
 
     <section class="secao moldura" aria-labelledby="como">
       <h2 id="como">
@@ -242,8 +196,6 @@
         </a>
       </li>
     </ul>
-    <p class="credito pt" lang="pt-BR">O trecho de voz vem do conjunto de dados Vocadito, de Bittner et al. (<a href="https://zenodo.org/records/5578807">Zenodo 5578807</a>), sob a licença <a href="https://creativecommons.org/licenses/by/4.0/deed.pt-br">CC-BY 4.0</a>. As versões corrigidas derivam dele.</p>
-    <p class="credito en" lang="en">The voice clip comes from the Vocadito dataset by Bittner et al. (<a href="https://zenodo.org/records/5578807">Zenodo 5578807</a>), under the <a href="https://creativecommons.org/licenses/by/4.0/">CC-BY 4.0</a> license. The corrected versions derive from it.</p>
   </footer>
 </body>
 </html>
