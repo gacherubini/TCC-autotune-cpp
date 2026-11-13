@@ -1,0 +1,27 @@
+# Site do TCC Autotune na Fly.io: https://tcc-autotune.fly.dev/
+#
+# A mesma receita barata do portfólio: uma máquina shared-cpu-1x de 256MB que
+# para sozinha quando ninguém está no site (máquina parada não é cobrada) e
+# acorda na primeira visita, com 1-2 s de partida a frio. `stop`, e não
+# `suspend`: no portfólio, o suspend devolvia 502 na primeira requisição depois
+# do sono (testado em 05/09/2026).
+#
+# Região gru (São Paulo), porque quase todo visitante está no Brasil.
+# Deploy:  cd site && fly deploy
+
+app = 'tcc-autotune'
+primary_region = 'gru'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = '256mb'

@@ -1,0 +1,576 @@
+/*
+ * Estilo da landing page do TCC Autotune.
+ *
+ * A paleta e a mesma do painel do plugin (namespace tccColours em
+ * plugin/PluginEditor.h), para que quem abre o plugin na DAW reconheca o
+ * site e vice-versa. Os nomes das variaveis repetem os nomes de la.
+ *
+ * Tipografia: uma familia so, a Schibsted Grotesk (800 nos titulos, 400 no
+ * texto). Tamanhos e espacos sao fluidos com clamp(): crescem com a largura
+ * da janela entre um minimo (celular de 360 px) e um maximo (desktop).
+ */
+
+:root {
+  --fundo-janela: #070c0a;
+  --fundo-painel: #0d1512;
+  --fundo-fosso: #050807;   /* interior do grafico, como no plugin */
+  --borda: #1b2f27;
+  --grade: #13231e;
+  --texto-principal: #cfe6da;
+  --texto-secundario: #6b8a7c;
+  --destaque: #2ee6a0;      /* SAIDA: o sinal corrigido */
+  --cantado: #7d94a8;       /* ENTRADA: a altura crua, azul-aco */
+
+  --fonte: "Schibsted Grotesk", system-ui, sans-serif;
+
+  /* Escala de texto fluida. */
+  --t-corpo: clamp(1rem, 0.96rem + 0.2vw, 1.125rem);
+  --t-pequeno: clamp(0.875rem, 0.85rem + 0.12vw, 0.9375rem);
+  --t-h3: clamp(1.125rem, 1.05rem + 0.35vw, 1.3125rem);
+  --t-h2: clamp(1.75rem, 1.3rem + 2vw, 2.75rem);
+  --t-h1: clamp(2.375rem, 1.5rem + 3.4vw, 4.125rem);
+
+  /* Espacos fluidos. */
+  --margem: clamp(1rem, 0.4rem + 3vw, 3.5rem);   /* respiro lateral */
+  --entre-secoes: clamp(4.5rem, 3rem + 7vw, 9rem);
+  --largura: 76rem;                               /* largura maxima da coluna */
+  --medida: 64ch;                                 /* linha de texto confortavel */
+
+  color-scheme: dark; /* controles nativos (rolagem, foco) no tema escuro */
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* O atributo hidden tem que vencer qualquer display definido abaixo. */
+[hidden] {
+  display: none !important;
+}
+
+/*
+ * Idiomas. As regras usam a CLASSE (.pt / .en), nunca [lang="en"]: um
+ * seletor de atributo lang tambem pegaria o proprio <html> quando ele vira
+ * lang="en", e a pagina inteira sumiria.
+ * Sem data-idioma (sem JS, ou PT escolhido): some o EN.
+ * Com data-idioma="en": some o PT.
+ */
+html:not([data-idioma="en"]) .en,
+html[data-idioma="en"] .pt {
+  display: none;
+}
+
+html {
+  background: var(--fundo-janela);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scrollbar-color: var(--borda) var(--fundo-janela);
+}
+
+body {
+  margin: 0;
+  background: var(--fundo-janela);
+  color: var(--texto-principal);
+  font-family: var(--fonte);
+  font-size: var(--t-corpo);
+  font-weight: 400;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-wrap: break-word;
+}
+
+::selection {
+  background: var(--destaque);
+  color: var(--fundo-fosso);
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 800;
+  line-height: 1.08;
+  text-wrap: balance;
+}
+
+p {
+  margin: 0;
+  max-width: var(--medida);
+  text-wrap: pretty;
+}
+
+a {
+  color: var(--texto-principal);
+  text-decoration-line: underline;
+  text-decoration-color: var(--texto-secundario);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.22em;
+}
+
+a[href]:hover {
+  color: var(--destaque);
+  text-decoration-color: currentColor;
+}
+
+/* Foco de teclado sempre visivel, na cor de destaque. */
+:focus-visible {
+  outline: 2px solid var(--destaque);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* A coluna: alinhada a esquerda, com o mesmo respiro em todas as faixas. */
+.moldura {
+  width: 100%;
+  max-width: calc(var(--largura) + 2 * var(--margem));
+  margin-inline: auto;
+  padding-inline: var(--margem);
+}
+
+/* Link "pular para o conteudo": so aparece quando recebe foco. */
+.pular {
+  position: absolute;
+  left: var(--margem);
+  top: 0.75rem;
+  z-index: 2;
+  padding: 0.5rem 0.875rem;
+  background: var(--fundo-painel);
+  border: 1px solid var(--borda);
+  border-radius: 6px;
+  transform: translateY(-200%);
+}
+
+.pular:focus-visible {
+  transform: none;
+}
+
+/* ---------- Topo: nome e o seletor PT/EN ---------- */
+
+.topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: clamp(1rem, 0.7rem + 1.2vw, 1.75rem);
+}
+
+.marca {
+  font-weight: 800;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+}
+
+.idiomas {
+  display: flex;
+  padding: 3px;
+  border: 1px solid var(--borda);
+  border-radius: 999px;
+}
+
+.idiomas button {
+  min-width: 2.75rem;
+  min-height: 2.25rem;
+  padding: 0 0.75rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--texto-secundario);
+  font: 600 0.875rem/1 var(--fonte);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.idiomas button:hover {
+  color: var(--texto-principal);
+}
+
+.idiomas button[aria-pressed="true"] {
+  background: var(--fundo-painel);
+  color: var(--texto-principal);
+  box-shadow: inset 0 0 0 1px var(--borda);
+}
+
+/* ---------- Topo da pagina (hero) ---------- */
+
+.heroi {
+  padding-top: clamp(2.5rem, 1rem + 6vw, 6.5rem);
+}
+
+.heroi h1 {
+  max-width: 15ch;
+  font-size: var(--t-h1);
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+}
+
+/*
+ * Em tela larga o topo vira duas colunas: texto a esquerda, grafico a
+ * direita. Numa coluna so, o grafico ficaria abaixo da dobra no desktop e a
+ * animacao dele tocaria sem ninguem ver. Abaixo disso, tudo empilha.
+ */
+@media (min-width: 68rem) {
+  .heroi {
+    display: grid;
+    grid-template-columns: minmax(0, 30rem) minmax(0, 1fr);
+    column-gap: clamp(3rem, 6vw, 6rem);
+    align-items: center;
+  }
+  .heroi .painel {
+    margin-top: 0;
+  }
+  .heroi h1 {
+    max-width: none; /* a coluna ja limita a largura */
+  }
+}
+
+.subtitulo {
+  margin-top: clamp(1.25rem, 1rem + 1vw, 1.75rem);
+  max-width: 44ch;
+  font-size: clamp(1.0625rem, 0.98rem + 0.45vw, 1.3125rem);
+  line-height: 1.5;
+  color: var(--texto-principal);
+}
+
+.download {
+  margin-top: clamp(2rem, 1.5rem + 2vw, 2.75rem);
+}
+
+/*
+ * O botao Baixar tem dois estados, ja prontos aqui:
+ *   - ligado (com href): fundo verde de destaque, como a saida do plugin;
+ *   - aria-disabled="true" (sem release ainda): apagado, com o selo "em breve".
+ * Ligar o botao e mexer so no HTML do #baixar; este CSS nao muda.
+ */
+.baixar {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.625rem;
+  min-height: 3.25rem;
+  padding: 0.75rem clamp(1rem, 0.8rem + 1vw, 1.375rem);
+  border: 1px solid var(--destaque);
+  border-radius: 10px;
+  background: var(--destaque);
+  color: var(--fundo-fosso);
+  font-weight: 600;
+  font-size: 1.0625rem;
+  line-height: 1.2;
+  text-decoration: none;
+}
+
+a.baixar[href]:hover {
+  background: #5cf0b8;
+  border-color: #5cf0b8;
+  color: var(--fundo-fosso);
+}
+
+.baixar-icone {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: none;
+}
+
+.baixar[aria-disabled="true"] {
+  border-color: var(--borda);
+  background: var(--fundo-painel);
+  color: var(--texto-principal);
+  cursor: not-allowed;
+}
+
+.baixar[aria-disabled="true"] .baixar-icone {
+  color: var(--texto-secundario);
+}
+
+.baixar-estado {
+  padding: 0.25rem 0.625rem;
+  border: 1px solid var(--borda);
+  border-radius: 999px;
+  color: var(--destaque);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.plataforma {
+  margin-top: 1rem;
+  font-size: var(--t-pequeno);
+  color: var(--texto-principal);
+}
+
+.aviso {
+  margin-top: 0.375rem;
+  max-width: 60ch;
+  font-size: var(--t-pequeno);
+  line-height: 1.55;
+  color: var(--texto-secundario);
+}
+
+/* ---------- O grafico de altura (painel + fosso, como no plugin) ---------- */
+
+.painel {
+  margin: clamp(3rem, 2rem + 4vw, 5rem) 0 0;
+  padding: clamp(0.5rem, 0.3rem + 0.8vw, 0.875rem);
+  border: 1px solid var(--borda);
+  border-radius: 14px;
+  background: var(--fundo-painel);
+}
+
+.fosso {
+  position: relative; /* referencia para os nomes das notas */
+  border-radius: 8px;
+  background: var(--fundo-fosso);
+  overflow: hidden;
+}
+
+.grafico {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/*
+ * As linhas paradas (grade, notas alvo e a voz cantada) usam
+ * non-scaling-stroke: a espessura fica em pixels de tela, a mesma no celular
+ * e no desktop. A linha corrigida nao usa, porque o desenho dela depende do
+ * tracejado medido no comprimento do proprio caminho (pathLength="1").
+ */
+.grafico-grade line,
+.grafico-alvos line,
+.grafico-cantado {
+  vector-effect: non-scaling-stroke;
+}
+
+.grafico-grade line {
+  stroke: var(--grade);
+  stroke-width: 1;
+}
+
+.grafico-alvos line {
+  stroke: var(--borda);
+  stroke-width: 1.5;
+}
+
+.nota {
+  position: absolute;
+  left: 0.5rem;
+  transform: translateY(-50%);
+  padding: 0 0.25rem;
+  background: var(--fundo-fosso);
+  color: var(--texto-secundario);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+.grafico-cantado,
+.grafico-corrigido {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.grafico-cantado {
+  stroke: var(--cantado);
+  stroke-width: 1.75;
+}
+
+/* A espessura da linha corrigida esta em unidades do viewBox (800 de
+   largura), entao muda conforme o tamanho em que o grafico aparece. */
+.grafico-corrigido {
+  stroke: var(--destaque);
+  stroke-width: 4;
+}
+
+@media (min-width: 40.0625rem) and (max-width: 67.9375rem) {
+  .grafico-corrigido {
+    stroke-width: 2.5;
+  }
+}
+
+/*
+ * O unico movimento orquestrado da pagina: a linha corrigida se desenha uma
+ * vez, da esquerda para a direita. Com pathLength="1" no SVG, o tracejado
+ * "1" cobre o caminho inteiro; o deslocamento vai de 1 (escondido) a 0
+ * (inteiro). Fica dentro de no-preference: quem pede menos movimento, ou um
+ * navegador que nao entende a media query, ve a linha ja desenhada.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .grafico-corrigido {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: desenhar 2.6s cubic-bezier(0.22, 1, 0.36, 1) 0.35s forwards;
+  }
+}
+
+@keyframes desenhar {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.painel figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 1.5rem;
+  padding: 0.875rem 0.375rem 0.25rem;
+  font-size: var(--t-pequeno);
+  color: var(--texto-secundario);
+}
+
+/* As amostras da legenda sao tracinhos com a cor e a espessura das linhas. */
+.legenda {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--texto-principal);
+}
+
+.legenda::before {
+  content: "";
+  width: 1.25rem;
+  border-top: 2px solid var(--cantado);
+}
+
+.legenda-corrigido::before {
+  border-top: 3px solid var(--destaque);
+}
+
+.legenda-nota {
+  flex-basis: 100%;
+}
+
+/* No celular o SVG encolhe uns 60%: a linha corrigida, que escala com ele,
+   precisa engrossar para continuar com uns 2,5 px de tela. */
+@media (max-width: 40rem) {
+  .grafico-corrigido {
+    stroke-width: 6;
+  }
+}
+
+/* ---------- Secoes ---------- */
+
+.secao {
+  padding-top: var(--entre-secoes);
+}
+
+.secao h2 {
+  font-size: var(--t-h2);
+  letter-spacing: -0.025em;
+  margin-bottom: clamp(1rem, 0.8rem + 0.8vw, 1.5rem);
+}
+
+/* Paragrafos seguidos dentro de uma secao. */
+.secao > p + p,
+.secao > ol + p {
+  margin-top: 1rem;
+}
+
+/* ---------- Como funciona ---------- */
+
+.etapas {
+  margin: clamp(1.5rem, 1.2rem + 1vw, 2rem) 0 clamp(1.75rem, 1.4rem + 1vw, 2.25rem);
+  padding: 0;
+  list-style: none;
+  counter-reset: etapa;
+  display: grid;
+  gap: 1.25rem;
+}
+
+.etapas li {
+  counter-increment: etapa;
+  display: grid;
+  grid-template-columns: 2.25rem minmax(0, 1fr);
+  max-width: calc(var(--medida) + 2.25rem);
+}
+
+.etapas li::before {
+  content: counter(etapa);
+  grid-row: 1 / span 2;
+  font-weight: 800;
+  color: var(--destaque);
+  font-variant-numeric: tabular-nums;
+}
+
+.etapas strong {
+  font-weight: 600;
+  color: var(--texto-principal);
+}
+
+.etapas p {
+  color: var(--texto-secundario);
+}
+
+/* ---------- O TCC ---------- */
+
+.secao cite {
+  font-style: italic;
+}
+
+.ficha {
+  margin: clamp(1.75rem, 1.4rem + 1vw, 2.25rem) 0 0;
+  max-width: 40rem;
+  border-top: 1px solid var(--borda);
+}
+
+.ficha > div {
+  display: grid;
+  grid-template-columns: clamp(5.5rem, 26%, 10rem) minmax(0, 1fr);
+  gap: 1rem;
+  padding-block: 0.875rem;
+  border-bottom: 1px solid var(--borda);
+}
+
+.ficha dt {
+  color: var(--texto-secundario);
+}
+
+.ficha dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+/* ---------- Rodape ---------- */
+
+.rodape {
+  margin-top: var(--entre-secoes);
+  padding-block: 2.5rem clamp(2.5rem, 2rem + 2vw, 4rem);
+  font-size: var(--t-pequeno);
+  color: var(--texto-secundario);
+  /* O traco de cima do rodape fica dentro da coluna (descontando o respiro
+     lateral), nao de ponta a ponta: por isso e um fundo de 1 px, nao borda. */
+  background-image: linear-gradient(var(--borda), var(--borda));
+  background-size: calc(100% - 2 * var(--margem)) 1px;
+  background-position: top center;
+  background-repeat: no-repeat;
+}
+
+.rodape-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 2rem;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+/* Uns pixels a mais de altura para os links do rodape serem faceis de tocar. */
+.rodape-links a {
+  display: inline-block;
+  padding-block: 0.375rem;
+}
+
+.credito {
+  max-width: 70ch;
+}
+
+.credito a {
+  color: var(--texto-secundario);
+}
+
+.credito a:hover {
+  color: var(--destaque);
+}
