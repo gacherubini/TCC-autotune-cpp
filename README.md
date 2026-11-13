@@ -26,6 +26,7 @@ Automática de Afinação Vocal*.
 
 | Documento | Para quê |
 |---|---|
+| [Site do projeto](https://gacherubini.github.io/TCC-autotune-cpp/) | 🌐 Página pública em PT/EN: download do plugin, áudio de antes e depois e o resumo do TCC (código em [`site/`](site/)) |
 | [`docs/documentacao-tecnica.md`](docs/documentacao-tecnica.md) | **Referência completa**: o sistema inteiro, diagnóstico dos problemas em aberto, soluções propostas e backlog priorizado |
 | [`docs/teste-de-usuario.md`](docs/teste-de-usuario.md) | O que o teste com usuário reprovou (latência e naturalidade) |
 | [`docs/arquitetura-streaming.md`](docs/arquitetura-streaming.md) | Como o motor de tempo real funciona |
