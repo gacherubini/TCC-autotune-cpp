@@ -35,7 +35,7 @@ AppId={{3A3652D4-FEED-48E3-9055-290BC2A52E5B}
 AppName=TCC Autotune
 AppVersion={#AppVersion}
 AppPublisher=Gabriel Cherubini
-AppPublisherURL=https://gacherubini.github.io/TCC-autotune-cpp/
+AppPublisherURL=https://tcc-autotune.fly.dev/
 AppSupportURL=https://github.com/gacherubini/TCC-autotune-cpp
 ; Gravar em Program Files\Common Files exige administrador.
 PrivilegesRequired=admin
