@@ -1,0 +1,111 @@
+# ============================================================================
+#  release.yml — compila o plugin VST3 no Windows, valida com o pluginval e
+#  gera o instalador (Inno Setup).
+#
+#  Quando roda:
+#    - tag v* (ex.: v1.0.0): faz tudo e cria um release em RASCUNHO com o
+#      instalador anexado. Quem publica o release é o autor, à mão;
+#    - pull_request que mexe no plugin, no núcleo (src/) ou neste arquivo: faz
+#      tudo menos o release, e sobe o instalador como artifact "instalador" do
+#      run — é assim que se testa o instalador antes do merge;
+#    - workflow_dispatch: disparo manual (só aparece depois que o arquivo está
+#      na main).
+#
+#  Se o pluginval reprovar o plugin, o job falha e não sai instalador nem
+#  release.
+# ============================================================================
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    paths: ['plugin/**', 'src/**', '.github/workflows/release.yml']
+  workflow_dispatch:
+
+# "contents: write" é o que deixa o `gh release create` criar o release.
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      VST3_DIR: plugin/build/TccAutotune_artefacts/Release/VST3/TCC Autotune.vst3
+      INSTALADOR: plugin/instalador/Output/TCC-Autotune-Setup-Windows.exe
+    steps:
+      - uses: actions/checkout@v4
+
+      # Mesmo gerador do plugin/build.bat. A 1a configuração baixa o JUCE 8.0.4
+      # (FetchContent). Sem cache do _deps de propósito: o clone é raso e rápido,
+      # e um cache velho do JUCE seria mais uma coisa para dar errado.
+      - name: Configurar (CMake + MSVC)
+        run: cmake -S plugin -B plugin/build -G "Visual Studio 17 2022" -A x64
+
+      # Só o alvo VST3: o Standalone não entra no instalador.
+      - name: Compilar o VST3
+        run: cmake --build plugin/build --config Release --target TccAutotune_VST3
+
+      # Strictness 10, o mesmo nível do plugin/build.sh: varre taxas de
+      # amostragem e tamanhos de bloco, automação, abrir/fechar o editor,
+      # salvar/restaurar estado e fuzzing de parâmetros. Roda no bash porque o
+      # pluginval.exe é um app de janela: o PowerShell não esperaria ele terminar
+      # e perderia o código de saída. Código diferente de 0 = o job falha.
+      - name: Validar com o pluginval
+        run: |
+          curl -fsSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip
+          7z x -y -opluginval pluginval.zip
+          ./pluginval/pluginval.exe --strictness-level 10 --verbose --validate "$VST3_DIR"
+
+      # A imagem do runner costuma já trazer o Inno Setup, mas sem garantia.
+      # Procura no PATH, depois na pasta padrão; se não achar, instala via choco.
+      - name: Garantir o iscc (Inno Setup)
+        run: |
+          PASTA_INNO="/c/Program Files (x86)/Inno Setup 6"
+          if ! command -v iscc >/dev/null && [ ! -x "$PASTA_INNO/ISCC.exe" ]; then
+            choco install innosetup -y --no-progress
+          fi
+          if ! command -v iscc >/dev/null; then
+            echo "C:\\Program Files (x86)\\Inno Setup 6" >> "$GITHUB_PATH"
+          fi
+
+      # Versão: a tag sem o "v" (v1.0.0 -> 1.0.0); fora de tag, "0.0.0-pr".
+      # Este passo roda no PowerShell de propósito: no bash do Git, argumentos
+      # que começam com "/" (como /DAppVersion=) seriam convertidos em caminho.
+      - name: Gerar o instalador
+        shell: pwsh
+        env:
+          TIPO_REF: ${{ github.ref_type }}
+          NOME_REF: ${{ github.ref_name }}
+        run: |
+          if ($env:TIPO_REF -eq 'tag') { $versao = $env:NOME_REF -replace '^v', '' } else { $versao = '0.0.0-pr' }
+          $vst3 = Join-Path $env:GITHUB_WORKSPACE $env:VST3_DIR
+          iscc "/DAppVersion=$versao" "/DVst3Dir=$vst3" plugin/instalador/tcc-autotune.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # Sempre sobe o que houver (em PR é o que o autor baixa para testar).
+      - name: Guardar o instalador como artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: instalador
+          path: ${{ env.INSTALADOR }}
+
+      # Só em tag: cria o release em RASCUNHO com o instalador anexado.
+      - name: Criar o release (rascunho)
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" "$INSTALADOR" \
+            --draft \
+            --title "TCC Autotune $TAG" \
+            --notes "Plugin VST3 de correção de afinação vocal para Windows (64 bits).
+
+          Baixe o TCC-Autotune-Setup-Windows.exe, rode como administrador e reescaneie os plugins no seu DAW. O plugin é instalado em C:\\Program Files\\Common Files\\VST3.
+
+          Código aberto sob a licença AGPLv3. Site: https://gacherubini.github.io/TCC-autotune-cpp/"

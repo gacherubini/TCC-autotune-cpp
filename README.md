@@ -18,6 +18,21 @@ Automática de Afinação Vocal*.
 > **Repositório irmão:** [`TCC-autotune-python`](https://github.com/gacherubini/TCC-autotune-python)
 > — o estudo comparativo de algoritmos de detecção de pitch que fundamentou a escolha do pYIN.
 
+## Baixar
+
+O plugin VST3 para **Windows (64 bits)** sai com instalador:
+**[TCC-Autotune-Setup-Windows.exe](https://github.com/gacherubini/TCC-autotune-cpp/releases/latest/download/TCC-Autotune-Setup-Windows.exe)**.
+Rode como administrador e reescaneie os plugins no DAW. O instalador copia o plugin para
+`C:\Program Files\Common Files\VST3\TCC Autotune.vst3` (a mesma pasta do
+`plugin/instalar_vst3.bat`) e registra um desinstalador. No DAW, o fabricante aparece como
+**Gabriel Cherubini**.
+
+Site do projeto: <https://gacherubini.github.io/TCC-autotune-cpp/>.
+
+O instalador é gerado pelo workflow [`.github/workflows/release.yml`](.github/workflows/release.yml)
+a cada tag `v*`, depois de o plugin passar no pluginval (nível 10). O script do Inno Setup fica
+em [`plugin/instalador/tcc-autotune.iss`](plugin/instalador/tcc-autotune.iss).
+
 ---
 
 ## 📖 Documentação
@@ -379,3 +394,12 @@ Resumo das frentes:
 - **Robustez** — janela de re-síntese limitada, buffers pré-alocados (RT-safe) e normalização
   consistente.
 - **Funcionalidades** — detecção automática de tonalidade.
+
+---
+
+## Licença
+
+O código deste repositório é distribuído sob a **GNU Affero General Public License v3**
+(AGPLv3); o texto completo está em [`LICENSE`](LICENSE). O plugin usa o JUCE 8.0.4, que é
+licenciado sob AGPLv3, e o SDK VST3 da Steinberg que vem com ele, que a Steinberg licencia
+alternativamente sob GPLv3. VST é marca registrada da Steinberg Media Technologies GmbH.
