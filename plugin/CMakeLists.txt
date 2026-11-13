@@ -27,6 +27,22 @@
 #  O build do macOS usa "build-mac" p/ não colidir com o cache do Windows.
 # ============================================================================
 cmake_minimum_required(VERSION 3.22)
+
+# ----------------------------------------------------------------------------
+# 0. Runtime do MSVC ESTÁTICO (acrescentado em 12/11/2026, para o release).
+#    Por padrão o MSVC liga o plugin ao runtime em DLL (VCRUNTIME140.dll,
+#    MSVCP140.dll), que vem do "Visual C++ Redistributable". Na máquina de quem
+#    desenvolve ele sempre existe, mas na de quem só baixa o instalador pode não
+#    existir — e aí o Ableton simplesmente não carrega o .vst3, sem mensagem
+#    clara. "MultiThreaded" (/MT) embute o runtime dentro do próprio .vst3: o
+#    arquivo fica um pouco maior, mas não depende de nada instalado à parte. Em
+#    Debug usa a variante de depuração (/MTd). Tem de vir ANTES do project(),
+#    para valer para todos os alvos — inclusive o JUCE, que é compilado junto.
+#    Conferir com:  dumpbin /dependents "...\TCC Autotune.vst3"  (não pode
+#    aparecer VCRUNTIME140.dll nem MSVCP140.dll). Fora do MSVC isto é ignorado.
+# ----------------------------------------------------------------------------
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
 project(TccAutotune VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -51,7 +67,14 @@ FetchContent_MakeAvailable(JUCE)
 # ----------------------------------------------------------------------------
 juce_add_plugin(TccAutotune
     PRODUCT_NAME              "TCC Autotune"
-    COMPANY_NAME              "PUCRS"
+    # Fabricante exibido pelo DAW. Era "PUCRS"; passou ao nome do autor no
+    # release público (12/11/2026). Os códigos de 4 letras abaixo NÃO mudam:
+    # são eles que o DAW usa para achar o plugin em projetos já salvos.
+    COMPANY_NAME              "Gabriel Cherubini"
+    # Sem esta linha o JUCE deriva o ID "com.<COMPANY_NAME>.TccAutotune", que
+    # agora teria um espaço (inválido, e o CMake avisa). Fixamos o mesmo ID de
+    # antes da troca do fabricante, para nada além do nome exibido mudar.
+    BUNDLE_ID                 "com.PUCRS.TccAutotune"
     PLUGIN_MANUFACTURER_CODE  Pucr
     PLUGIN_CODE               Tcat
     FORMATS                   VST3 Standalone

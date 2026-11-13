@@ -15,6 +15,36 @@ só como adaptador do host (callback de áudio, parâmetros, GUI, latência).
 | `build.bat` | configura + compila no **Windows** (atalho dos 2 comandos CMake) |
 | `build.sh` | configura + compila + **valida** no **macOS/Linux** (ver seção própria abaixo) |
 | `instalar_vst3.bat` | copia o `.vst3` para a pasta do sistema no Windows — exige prompt de **administrador** |
+| `instalador/tcc-autotune.iss` | script do **Inno Setup** que gera o `TCC-Autotune-Setup-Windows.exe` do release (ver *Instalador e release*, abaixo) |
+
+## Instalador e release
+
+Quem só quer usar o plugin não precisa compilar: o instalador para Windows está em
+**[TCC-Autotune-Setup-Windows.exe](https://github.com/gacherubini/TCC-autotune-cpp/releases/latest/download/TCC-Autotune-Setup-Windows.exe)**,
+e o site do projeto em <https://tcc-autotune.fly.dev/>. Só o VST3 entra no
+instalador; o Standalone continua no CMake, para teste sem DAW.
+
+- **Fabricante:** o DAW mostra **Gabriel Cherubini** (`COMPANY_NAME`; até o release era
+  "PUCRS"). Os códigos `Pucr`/`Tcat` e o nome "TCC Autotune" não mudaram, então projetos
+  salvos antes continuam achando o plugin.
+- **Destino:** `C:\Program Files\Common Files\VST3\TCC Autotune.vst3`, o mesmo do
+  `instalar_vst3.bat`. Reinstalar grava por cima; desinstalar apaga a pasta.
+- **Runtime estático:** o `CMakeLists.txt` liga o runtime do MSVC dentro do `.vst3` (`/MT`),
+  para o plugin carregar em máquina sem o *Visual C++ Redistributable*. Conferir com
+  `dumpbin /dependents` no `.vst3`: não pode aparecer `VCRUNTIME140.dll` nem `MSVCP140.dll`.
+- **Gerar o instalador à mão** (com o [Inno Setup 6](https://jrsoftware.org/isinfo.php)), depois
+  do `build.bat`, nesta pasta:
+
+  ```
+  iscc /DAppVersion=1.0.0 "/DVst3Dir=%CD%\build\TccAutotune_artefacts\Release\VST3\TCC Autotune.vst3" instalador\tcc-autotune.iss
+  ```
+
+  Saída: `instalador\Output\TCC-Autotune-Setup-Windows.exe`.
+- **No GitHub:** o workflow `../.github/workflows/release.yml` compila, valida com o pluginval
+  (nível 10) e gera o instalador em todo PR que mexe no plugin (artifact `instalador`). Numa tag
+  `v*` ele também cria o release em **rascunho**, com o instalador anexado; quem publica é o
+  autor.
+- **Licença:** AGPLv3, ver [`../LICENSE`](../LICENSE).
 
 ## A tela (GUI custom, 31/08/2026)
 
