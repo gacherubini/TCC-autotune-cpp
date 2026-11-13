@@ -24,6 +24,9 @@ textidote-report.*
 *.wav
 # exceção: o excerto usado nos exemplos do README fica versionado (Vocadito, CC-BY 4.0)
 !exemplo-antes.wav
+# e as duas versoes corrigidas citadas no TCC (subsecao "Exemplos de audio")
+!exemplo-depois.wav
+!exemplo-depois-natural.wav
 
 # O texto do TCC (LaTeX) vive em repositório próprio — gacherubini/TCC-TEXT.
 # Por isso não há mais regras de artefato de LaTeX aqui.
