@@ -27,7 +27,7 @@ Rode como administrador e reescaneie os plugins no DAW. O instalador copia o plu
 `plugin/instalar_vst3.bat`) e registra um desinstalador. No DAW, o fabricante aparece como
 **Gabriel Cherubini**.
 
-Site do projeto: <https://gacherubini.github.io/TCC-autotune-cpp/>.
+Site do projeto: <https://tcc-autotune.fly.dev/>.
 
 O instalador é gerado pelo workflow [`.github/workflows/release.yml`](.github/workflows/release.yml)
 a cada tag `v*`, depois de o plugin passar no pluginval (nível 10). O script do Inno Setup fica

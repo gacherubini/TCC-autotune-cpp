@@ -21,7 +21,7 @@ só como adaptador do host (callback de áudio, parâmetros, GUI, latência).
 
 Quem só quer usar o plugin não precisa compilar: o instalador para Windows está em
 **[TCC-Autotune-Setup-Windows.exe](https://github.com/gacherubini/TCC-autotune-cpp/releases/latest/download/TCC-Autotune-Setup-Windows.exe)**,
-e o site do projeto em <https://gacherubini.github.io/TCC-autotune-cpp/>. Só o VST3 entra no
+e o site do projeto em <https://tcc-autotune.fly.dev/>. Só o VST3 entra no
 instalador; o Standalone continua no CMake, para teste sem DAW.
 
 - **Fabricante:** o DAW mostra **Gabriel Cherubini** (`COMPANY_NAME`; até o release era
