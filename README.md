@@ -315,8 +315,10 @@ compilar.bat                        build rápido com g++ (compila os 3 exes)
 baseline.sh                         VERIFICAÇÃO: 37 casos + 8 invariantes + 19 legados
                                     + as 5 suítes de src/tests/. Rode antes e depois.
 exemplo-antes.wav                   excerto de voz cantada (Vocadito, CC-BY 4.0)
-exemplo-depois.wav                  o mesmo excerto com correção forte (28/06/2026, 1a versão)
-exemplo-depois-natural.wav          o mesmo excerto com correção natural (28/06/2026, 1a versão)
+exemplo-depois.wav                  o mesmo excerto com correção forte em Fá# maior (1a versão:
+                                    autotune.exe ... 1.0 F# tol=0 glide=0)
+exemplo-depois-natural.wav          o mesmo excerto com correção natural em Fá# maior (1a versão:
+                                    autotune.exe ... 0.8 F# tol=20 glide=90)
 
 docs/                               DOCUMENTAÇÃO — comece por docs/README.md
 
